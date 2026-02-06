@@ -4,7 +4,9 @@ import { GreetService } from "../bindings/changeme";
 
 function App() {
   const [name, setName] = useState<string>("");
-  const [result, setResult] = useState<string>("Please enter your name below 👇");
+  const [result, setResult] = useState<string>(
+    "Please enter your name below 👇",
+  );
   const [time, setTime] = useState<string>("Listening for Time event...");
 
   const doGreet = () => {
