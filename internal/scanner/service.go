@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -15,12 +16,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"go.senan.xyz/taglib"
 )
 
 const EventProgress = "scanner:progress"
 
 const metadataVersion = 2
+
+const watcherDebounceDelay = 1200 * time.Millisecond
 
 type scanMode string
 
@@ -72,6 +76,7 @@ type Emitter func(eventName string, payload any)
 type Service struct {
 	mu            sync.Mutex
 	running       bool
+	pendingScan   bool
 	lastRun       time.Time
 	lastMode      string
 	lastError     string
@@ -81,6 +86,12 @@ type Service struct {
 	emit          Emitter
 	db            *sql.DB
 	roots         *library.WatchedRootRepository
+	watcher       *fsnotify.Watcher
+	watching      bool
+	watchStop     chan struct{}
+	rootsChanged  chan struct{}
+	watchDebounce *time.Timer
+	watchedDirs   map[string]struct{}
 }
 
 type scanTotals struct {
@@ -90,13 +101,342 @@ type scanTotals struct {
 }
 
 func NewService(database *sql.DB, roots *library.WatchedRootRepository) *Service {
-	return &Service{db: database, roots: roots}
+	return &Service{
+		db:           database,
+		roots:        roots,
+		rootsChanged: make(chan struct{}, 1),
+		watchedDirs:  make(map[string]struct{}),
+	}
 }
 
 func (s *Service) SetEmitter(emitter Emitter) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.emit = emitter
+}
+
+func (s *Service) StartWatching() error {
+	s.mu.Lock()
+	if s.watching {
+		s.mu.Unlock()
+		return nil
+	}
+	s.mu.Unlock()
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("create fs watcher: %w", err)
+	}
+
+	stopCh := make(chan struct{})
+
+	s.mu.Lock()
+	if s.watching {
+		s.mu.Unlock()
+		watcher.Close()
+		return nil
+	}
+	s.watcher = watcher
+	s.watching = true
+	s.watchStop = stopCh
+	s.watchedDirs = make(map[string]struct{})
+	s.mu.Unlock()
+
+	go s.watchLoop(watcher, stopCh)
+	s.NotifyWatchedRootsChanged()
+
+	return nil
+}
+
+func (s *Service) StopWatching() error {
+	s.mu.Lock()
+	if !s.watching {
+		s.mu.Unlock()
+		return nil
+	}
+
+	watcher := s.watcher
+	stopCh := s.watchStop
+	debounce := s.watchDebounce
+
+	s.watcher = nil
+	s.watching = false
+	s.watchStop = nil
+	s.watchDebounce = nil
+	s.watchedDirs = make(map[string]struct{})
+	s.mu.Unlock()
+
+	if debounce != nil {
+		debounce.Stop()
+	}
+	if stopCh != nil {
+		close(stopCh)
+	}
+	if watcher != nil {
+		if err := watcher.Close(); err != nil {
+			return fmt.Errorf("close fs watcher: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) NotifyWatchedRootsChanged() {
+	s.mu.Lock()
+	watching := s.watching
+	ch := s.rootsChanged
+	s.mu.Unlock()
+
+	if !watching || ch == nil {
+		return
+	}
+
+	select {
+	case ch <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Service) watchLoop(watcher *fsnotify.Watcher, stopCh <-chan struct{}) {
+	for {
+		select {
+		case <-stopCh:
+			return
+		case <-s.rootsChanged:
+			if err := s.refreshWatcherRoots(watcher); err != nil {
+				s.emitProgress(Progress{
+					Phase:   "watcher",
+					Message: fmt.Sprintf("watcher refresh failed: %v", err),
+					Percent: 0,
+					Status:  "failed",
+					At:      time.Now().UTC().Format(time.RFC3339),
+				})
+			}
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+
+			if s.handleWatcherEvent(watcher, event) {
+				s.scheduleWatcherIncrementalScan()
+			}
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			s.emitProgress(Progress{
+				Phase:   "watcher",
+				Message: fmt.Sprintf("watcher error: %v", err),
+				Percent: 0,
+				Status:  "failed",
+				At:      time.Now().UTC().Format(time.RFC3339),
+			})
+		}
+	}
+}
+
+func (s *Service) refreshWatcherRoots(watcher *fsnotify.Watcher) error {
+	roots, err := s.roots.List(context.Background())
+	if err != nil {
+		return fmt.Errorf("list watched roots for watcher: %w", err)
+	}
+
+	desired := make(map[string]struct{})
+	for _, root := range roots {
+		if !root.Enabled {
+			continue
+		}
+
+		rootPath := filepath.Clean(root.Path)
+		dirs, collectErr := collectWatchDirs(rootPath)
+		if collectErr != nil {
+			continue
+		}
+		for _, dir := range dirs {
+			desired[dir] = struct{}{}
+		}
+	}
+
+	s.mu.Lock()
+	if !s.watching || s.watcher != watcher {
+		s.mu.Unlock()
+		return nil
+	}
+	current := copyStringSet(s.watchedDirs)
+	s.mu.Unlock()
+
+	for dir := range current {
+		if _, ok := desired[dir]; ok {
+			continue
+		}
+		_ = watcher.Remove(dir)
+	}
+
+	for dir := range desired {
+		if _, ok := current[dir]; ok {
+			continue
+		}
+		if err := watcher.Add(dir); err != nil {
+			return fmt.Errorf("watch directory %s: %w", dir, err)
+		}
+	}
+
+	s.mu.Lock()
+	if s.watching && s.watcher == watcher {
+		s.watchedDirs = desired
+	}
+	s.mu.Unlock()
+
+	return nil
+}
+
+func collectWatchDirs(rootPath string) ([]string, error) {
+	info, err := os.Stat(rootPath)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("watch root %s is not a directory", rootPath)
+	}
+
+	dirs := make([]string, 0, 64)
+	walkErr := filepath.WalkDir(rootPath, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+
+		dirs = append(dirs, filepath.Clean(path))
+		return nil
+	})
+	if walkErr != nil {
+		return nil, walkErr
+	}
+
+	return dirs, nil
+}
+
+func copyStringSet(input map[string]struct{}) map[string]struct{} {
+	output := make(map[string]struct{}, len(input))
+	for value := range input {
+		output[value] = struct{}{}
+	}
+
+	return output
+}
+
+func (s *Service) handleWatcherEvent(watcher *fsnotify.Watcher, event fsnotify.Event) bool {
+	if event.Op&fsnotify.Create != 0 {
+		if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+			if err := s.addWatchDirTree(watcher, filepath.Clean(event.Name)); err != nil {
+				s.emitProgress(Progress{
+					Phase:   "watcher",
+					Message: fmt.Sprintf("watch new directory failed: %v", err),
+					Percent: 0,
+					Status:  "failed",
+					At:      time.Now().UTC().Format(time.RFC3339),
+				})
+			}
+		}
+	}
+
+	return shouldTriggerIncremental(event.Name, event.Op)
+}
+
+func (s *Service) addWatchDirTree(watcher *fsnotify.Watcher, rootPath string) error {
+	dirs, err := collectWatchDirs(rootPath)
+	if err != nil {
+		return err
+	}
+
+	for _, dir := range dirs {
+		if err := s.addWatchDir(watcher, dir); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) addWatchDir(watcher *fsnotify.Watcher, dir string) error {
+	cleanDir := filepath.Clean(dir)
+
+	s.mu.Lock()
+	if !s.watching || s.watcher != watcher {
+		s.mu.Unlock()
+		return nil
+	}
+	_, exists := s.watchedDirs[cleanDir]
+	s.mu.Unlock()
+
+	if exists {
+		return nil
+	}
+
+	if err := watcher.Add(cleanDir); err != nil {
+		return fmt.Errorf("watch directory %s: %w", cleanDir, err)
+	}
+
+	s.mu.Lock()
+	if s.watching && s.watcher == watcher {
+		s.watchedDirs[cleanDir] = struct{}{}
+	}
+	s.mu.Unlock()
+
+	return nil
+}
+
+func shouldTriggerIncremental(path string, op fsnotify.Op) bool {
+	if op&(fsnotify.Remove|fsnotify.Rename) != 0 {
+		return true
+	}
+
+	if op&(fsnotify.Create|fsnotify.Write) == 0 {
+		return false
+	}
+
+	info, err := os.Stat(path)
+	if err == nil && info.IsDir() {
+		return true
+	}
+
+	extension := strings.ToLower(filepath.Ext(path))
+	_, supported := supportedExtensions[extension]
+	return supported
+}
+
+func (s *Service) scheduleWatcherIncrementalScan() {
+	s.mu.Lock()
+	if !s.watching {
+		s.mu.Unlock()
+		return
+	}
+
+	if s.watchDebounce != nil {
+		s.watchDebounce.Reset(watcherDebounceDelay)
+		s.mu.Unlock()
+		return
+	}
+
+	s.watchDebounce = time.AfterFunc(watcherDebounceDelay, func() {
+		s.queueIncrementalScan()
+	})
+	s.mu.Unlock()
+}
+
+func (s *Service) queueIncrementalScan() {
+	s.mu.Lock()
+	s.watchDebounce = nil
+	if s.running {
+		s.pendingScan = true
+		s.mu.Unlock()
+		return
+	}
+
+	s.startScanLocked(scanModeIncremental)
+	s.mu.Unlock()
 }
 
 func (s *Service) TriggerFullScan() error {
@@ -113,12 +453,16 @@ func (s *Service) triggerScan(mode scanMode) error {
 		s.mu.Unlock()
 		return errors.New("scan already in progress")
 	}
-	s.running = true
-	s.lastError = ""
+	s.startScanLocked(mode)
 	s.mu.Unlock()
 
-	go s.runScan(mode)
 	return nil
+}
+
+func (s *Service) startScanLocked(mode scanMode) {
+	s.running = true
+	s.lastError = ""
+	go s.runScan(mode)
 }
 
 func (s *Service) GetStatus() Status {
@@ -146,6 +490,8 @@ func (s *Service) runScan(mode scanMode) {
 
 	s.mu.Lock()
 	s.running = false
+	shouldRunPending := s.pendingScan
+	s.pendingScan = false
 	if err != nil {
 		s.lastError = err.Error()
 	} else {
@@ -155,6 +501,9 @@ func (s *Service) runScan(mode scanMode) {
 		s.lastFilesSeen = totals.filesSeen
 		s.lastIndexed = totals.indexed
 		s.lastSkipped = totals.skipped
+	}
+	if shouldRunPending {
+		s.startScanLocked(scanModeIncremental)
 	}
 	s.mu.Unlock()
 

@@ -10,11 +10,16 @@ import (
 )
 
 type SettingsService struct {
-	roots *library.WatchedRootRepository
+	roots    *library.WatchedRootRepository
+	notifier watchedRootsNotifier
 }
 
-func NewSettingsService(roots *library.WatchedRootRepository) *SettingsService {
-	return &SettingsService{roots: roots}
+type watchedRootsNotifier interface {
+	NotifyWatchedRootsChanged()
+}
+
+func NewSettingsService(roots *library.WatchedRootRepository, notifier watchedRootsNotifier) *SettingsService {
+	return &SettingsService{roots: roots, notifier: notifier}
 }
 
 func (s *SettingsService) ListWatchedRoots() ([]library.WatchedRoot, error) {
@@ -27,13 +32,22 @@ func (s *SettingsService) AddWatchedRoot(path string) (library.WatchedRoot, erro
 		return library.WatchedRoot{}, err
 	}
 
-	return s.roots.Add(context.Background(), cleaned)
+	root, err := s.roots.Add(context.Background(), cleaned)
+	if err != nil {
+		return library.WatchedRoot{}, err
+	}
+
+	s.notifyRootsChanged()
+	return root, nil
 }
 
 func (s *SettingsService) RemoveWatchedRoot(id int64) error {
 	err := s.roots.Delete(context.Background(), id)
 	if errors.Is(err, library.ErrWatchedRootNotFound) {
 		return fmt.Errorf("watched root %d does not exist", id)
+	}
+	if err == nil {
+		s.notifyRootsChanged()
 	}
 	return err
 }
@@ -43,7 +57,18 @@ func (s *SettingsService) SetWatchedRootEnabled(id int64, enabled bool) error {
 	if errors.Is(err, library.ErrWatchedRootNotFound) {
 		return fmt.Errorf("watched root %d does not exist", id)
 	}
+	if err == nil {
+		s.notifyRootsChanged()
+	}
 	return err
+}
+
+func (s *SettingsService) notifyRootsChanged() {
+	if s.notifier == nil {
+		return
+	}
+
+	s.notifier.NotifyWatchedRootsChanged()
 }
 
 func normalizePath(path string) (string, error) {

@@ -37,10 +37,10 @@ func main() {
 
 	watchedRoots := library.NewWatchedRootRepository(sqliteDB)
 	browseRepo := library.NewBrowseRepository(sqliteDB)
-	settingsService := NewSettingsService(watchedRoots)
+	scannerDomain := scanner.NewService(sqliteDB, watchedRoots)
+	settingsService := NewSettingsService(watchedRoots, scannerDomain)
 	libraryService := NewLibraryService(browseRepo)
 
-	scannerDomain := scanner.NewService(sqliteDB, watchedRoots)
 	scannerService := NewScannerService(scannerDomain)
 
 	app := application.New(application.Options{
@@ -62,6 +62,11 @@ func main() {
 	scannerDomain.SetEmitter(func(eventName string, payload any) {
 		app.Event.Emit(eventName, payload)
 	})
+
+	if err := scannerDomain.StartWatching(); err != nil {
+		log.Printf("scanner watcher disabled: %v", err)
+	}
+	defer scannerDomain.StopWatching()
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "Ben",
