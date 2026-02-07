@@ -79,6 +79,7 @@ body {
 
 h1,
 h2,
+h3,
 p {
   margin: 0;
 }
@@ -92,6 +93,11 @@ h1 {
 h2 {
   font-size: 1.1rem;
   margin-bottom: 0.4rem;
+}
+
+h3 {
+  font-size: 0.95rem;
+  color: var(--text-main);
 }
 
 p {
@@ -187,6 +193,41 @@ button:disabled {
   border: 1px solid rgba(133, 182, 179, 0.2);
   display: grid;
   gap: 0.55rem;
+}
+
+.scan-totals {
+  display: flex;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.library-preview {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.library-preview ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.library-preview li {
+  border-radius: 10px;
+  border: 1px solid rgba(133, 182, 179, 0.2);
+  background: rgba(8, 29, 38, 0.74);
+  padding: 0.55rem 0.6rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.library-preview li span {
+  color: var(--text-muted);
+  font-size: 0.9rem;
 }
 
 .progress-top {

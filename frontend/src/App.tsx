@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Call, Events } from "@wailsio/runtime";
 
 type WatchedRoot = {
@@ -12,6 +12,9 @@ type ScanStatus = {
   running: boolean;
   lastRunAt?: string;
   lastError?: string;
+  lastFilesSeen?: number;
+  lastIndexed?: number;
+  lastSkipped?: number;
 };
 
 type ScanProgress = {
@@ -22,7 +25,27 @@ type ScanProgress = {
   at: string;
 };
 
+type LibraryArtist = {
+  name: string;
+  trackCount: number;
+};
+
+type LibraryAlbum = {
+  title: string;
+  albumArtist: string;
+  trackCount: number;
+};
+
+type LibraryTrack = {
+  id: number;
+  title: string;
+  artist: string;
+  album: string;
+  path: string;
+};
+
 const settingsService = "main.SettingsService";
+const libraryService = "main.LibraryService";
 const scannerService = "main.ScannerService";
 const scanProgressEvent = "scanner:progress";
 
@@ -31,6 +54,9 @@ function App() {
   const [newRootPath, setNewRootPath] = useState("");
   const [scanStatus, setScanStatus] = useState<ScanStatus>({ running: false });
   const [lastProgress, setLastProgress] = useState<ScanProgress | null>(null);
+  const [artists, setArtists] = useState<LibraryArtist[]>([]);
+  const [albums, setAlbums] = useState<LibraryAlbum[]>([]);
+  const [tracks, setTracks] = useState<LibraryTrack[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<
     "library" | "queue" | "settings"
@@ -46,10 +72,23 @@ function App() {
     setScanStatus((status ?? { running: false }) as ScanStatus);
   }, []);
 
+  const loadLibraryData = useCallback(async () => {
+    const [artistRows, albumRows, trackRows] = await Promise.all([
+      Call.ByName(`${libraryService}.ListArtists`),
+      Call.ByName(`${libraryService}.ListAlbums`),
+      Call.ByName(`${libraryService}.ListTracks`),
+    ]);
+
+    setArtists((artistRows ?? []) as LibraryArtist[]);
+    setAlbums((albumRows ?? []) as LibraryAlbum[]);
+    setTracks((trackRows ?? []) as LibraryTrack[]);
+  }, []);
+
   useEffect(() => {
     const initialize = async () => {
       try {
         await Promise.all([loadWatchedRoots(), loadScanStatus()]);
+        await loadLibraryData();
       } catch (error) {
         setErrorMessage(parseError(error));
       }
@@ -59,15 +98,16 @@ function App() {
       const progress = event.data as ScanProgress;
       setLastProgress(progress);
       void loadScanStatus();
+      if (progress.status === "completed") {
+        void loadLibraryData();
+      }
     });
 
     void initialize();
     return () => {
       unsubscribe();
     };
-  }, [loadScanStatus, loadWatchedRoots]);
-
-  const watchedRootCount = useMemo(() => watchedRoots.length, [watchedRoots]);
+  }, [loadLibraryData, loadScanStatus, loadWatchedRoots]);
 
   const onAddWatchedRoot = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -162,30 +202,46 @@ function App() {
       <main className="panel-grid">
         <section className="panel">
           <h2>Library Snapshot</h2>
-          <p>
-            Library browsing views come next after scanner and metadata wiring.
-          </p>
+          <p>Live data from SQLite after each successful scan.</p>
           <div className="stat-list">
             <div>
-              <span>Watched folders</span>
-              <strong>{watchedRootCount}</strong>
+              <span>Artists</span>
+              <strong>{artists.length}</strong>
             </div>
             <div>
-              <span>Scan state</span>
-              <strong>{scanStatus.running ? "Running" : "Idle"}</strong>
+              <span>Albums</span>
+              <strong>{albums.length}</strong>
             </div>
             <div>
-              <span>Current view</span>
-              <strong>{activeView}</strong>
+              <span>Tracks</span>
+              <strong>{tracks.length}</strong>
             </div>
+          </div>
+
+          <div className="library-preview">
+            <h3>Recently Indexed Tracks</h3>
+            {tracks.length ? (
+              <ul>
+                {tracks.slice(0, 8).map((track) => (
+                  <li key={track.id}>
+                    <strong>{track.title}</strong>
+                    <span>
+                      {track.artist} - {track.album}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No tracks indexed yet. Add a folder and run a scan.</p>
+            )}
           </div>
         </section>
 
         <section className="panel">
           <h2>Scanner Progress</h2>
           <p>
-            The scanner service is a skeleton flow and now emits progress
-            events.
+            Full scan now walks folders, upserts files, and refreshes track
+            rows.
           </p>
           {lastProgress ? (
             <div className="progress-card">
@@ -203,6 +259,13 @@ function App() {
           )}
           {scanStatus.lastRunAt ? (
             <p>Last run: {new Date(scanStatus.lastRunAt).toLocaleString()}</p>
+          ) : null}
+          {scanStatus.lastRunAt ? (
+            <div className="scan-totals">
+              <span>Seen: {scanStatus.lastFilesSeen ?? 0}</span>
+              <span>Indexed: {scanStatus.lastIndexed ?? 0}</span>
+              <span>Skipped: {scanStatus.lastSkipped ?? 0}</span>
+            </div>
           ) : null}
           {scanStatus.lastError ? (
             <p className="error">{scanStatus.lastError}</p>

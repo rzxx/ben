@@ -46,6 +46,9 @@ export class Status {
     "running": boolean;
     "lastRunAt": string;
     "lastError"?: string;
+    "lastFilesSeen": number;
+    "lastIndexed": number;
+    "lastSkipped": number;
 
     /** Creates a new Status instance. */
     constructor($$source: Partial<Status> = {}) {
@@ -54,6 +57,15 @@ export class Status {
         }
         if (!("lastRunAt" in $$source)) {
             this["lastRunAt"] = "";
+        }
+        if (!("lastFilesSeen" in $$source)) {
+            this["lastFilesSeen"] = 0;
+        }
+        if (!("lastIndexed" in $$source)) {
+            this["lastIndexed"] = 0;
+        }
+        if (!("lastSkipped" in $$source)) {
+            this["lastSkipped"] = 0;
         }
 
         Object.assign(this, $$source);

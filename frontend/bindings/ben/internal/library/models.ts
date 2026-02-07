@@ -5,6 +5,97 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+export class AlbumSummary {
+    "title": string;
+    "albumArtist": string;
+    "trackCount": number;
+
+    /** Creates a new AlbumSummary instance. */
+    constructor($$source: Partial<AlbumSummary> = {}) {
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("albumArtist" in $$source)) {
+            this["albumArtist"] = "";
+        }
+        if (!("trackCount" in $$source)) {
+            this["trackCount"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AlbumSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AlbumSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AlbumSummary($$parsedSource as Partial<AlbumSummary>);
+    }
+}
+
+export class ArtistSummary {
+    "name": string;
+    "trackCount": number;
+
+    /** Creates a new ArtistSummary instance. */
+    constructor($$source: Partial<ArtistSummary> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("trackCount" in $$source)) {
+            this["trackCount"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ArtistSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ArtistSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ArtistSummary($$parsedSource as Partial<ArtistSummary>);
+    }
+}
+
+export class TrackSummary {
+    "id": number;
+    "title": string;
+    "artist": string;
+    "album": string;
+    "path": string;
+
+    /** Creates a new TrackSummary instance. */
+    constructor($$source: Partial<TrackSummary> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("artist" in $$source)) {
+            this["artist"] = "";
+        }
+        if (!("album" in $$source)) {
+            this["album"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TrackSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TrackSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TrackSummary($$parsedSource as Partial<TrackSummary>);
+    }
+}
+
 export class WatchedRoot {
     "id": number;
     "path": string;

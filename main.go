@@ -36,9 +36,11 @@ func main() {
 	defer sqliteDB.Close()
 
 	watchedRoots := library.NewWatchedRootRepository(sqliteDB)
+	browseRepo := library.NewBrowseRepository(sqliteDB)
 	settingsService := NewSettingsService(watchedRoots)
+	libraryService := NewLibraryService(browseRepo)
 
-	scannerDomain := scanner.NewService()
+	scannerDomain := scanner.NewService(sqliteDB, watchedRoots)
 	scannerService := NewScannerService(scannerDomain)
 
 	app := application.New(application.Options{
@@ -46,6 +48,7 @@ func main() {
 		Description: "Desktop music player",
 		Services: []application.Service{
 			application.NewService(settingsService),
+			application.NewService(libraryService),
 			application.NewService(scannerService),
 		},
 		Assets: application.AssetOptions{
