@@ -10,14 +10,23 @@ import (
 	"io/fs"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"go.senan.xyz/taglib"
 )
 
 const EventProgress = "scanner:progress"
 
+const metadataVersion = 2
+
 var trackPrefixPattern = regexp.MustCompile(`^\s*(\d{1,2})[\s._-]+(.+)$`)
+
+var leadingIntegerPattern = regexp.MustCompile(`\d+`)
+
+var yearPattern = regexp.MustCompile(`\b(19|20)\d{2}\b`)
 
 var supportedExtensions = map[string]struct{}{
 	".aac":  {},
@@ -383,15 +392,19 @@ func upsertFileAndTrack(
 	}
 
 	if !metadataNeedsUpdate {
-		var hasTrack int
-		if existsErr := tx.QueryRowContext(
+		var storedTags sql.NullString
+		tagErr := tx.QueryRowContext(
 			ctx,
-			"SELECT COUNT(1) FROM tracks WHERE file_id = ?",
+			"SELECT tags_json FROM tracks WHERE file_id = ?",
 			fileID,
-		).Scan(&hasTrack); existsErr != nil {
-			return false, fmt.Errorf("check track for file %s: %w", cleanPath, existsErr)
+		).Scan(&storedTags)
+		if errors.Is(tagErr, sql.ErrNoRows) {
+			metadataNeedsUpdate = true
+		} else if tagErr != nil {
+			return false, fmt.Errorf("check track metadata for file %s: %w", cleanPath, tagErr)
+		} else {
+			metadataNeedsUpdate = !strings.Contains(storedTags.String, `"metadata_version":2`)
 		}
-		metadataNeedsUpdate = hasTrack == 0
 	}
 
 	if !metadataNeedsUpdate {
@@ -411,9 +424,24 @@ func upsertFileAndTrack(
 	if _, upsertErr := tx.ExecContext(
 		ctx,
 		`INSERT INTO tracks(
-			file_id, title, artist, album_artist, album, disc_no, track_no, tags_json, updated_at
+			file_id,
+			title,
+			artist,
+			album_artist,
+			album,
+			disc_no,
+			track_no,
+			year,
+			genre,
+			duration_ms,
+			codec,
+			sample_rate,
+			bit_depth,
+			bitrate,
+			tags_json,
+			updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(file_id) DO UPDATE SET
 			title = excluded.title,
 			artist = excluded.artist,
@@ -421,6 +449,13 @@ func upsertFileAndTrack(
 			album = excluded.album,
 			disc_no = excluded.disc_no,
 			track_no = excluded.track_no,
+			year = excluded.year,
+			genre = excluded.genre,
+			duration_ms = excluded.duration_ms,
+			codec = excluded.codec,
+			sample_rate = excluded.sample_rate,
+			bit_depth = excluded.bit_depth,
+			bitrate = excluded.bitrate,
 			tags_json = excluded.tags_json,
 			updated_at = excluded.updated_at`,
 		fileID,
@@ -428,8 +463,15 @@ func upsertFileAndTrack(
 		metadata.artist,
 		metadata.albumArtist,
 		metadata.album,
-		metadata.discNo,
-		metadata.trackNo,
+		nullableInt(metadata.discNo),
+		nullableInt(metadata.trackNo),
+		nullableInt(metadata.year),
+		nullableString(metadata.genre),
+		nullableInt(metadata.durationMS),
+		nullableString(metadata.codec),
+		nullableInt(metadata.sampleRate),
+		nullableInt(metadata.bitDepth),
+		nullableInt(metadata.bitrate),
 		string(tagsJSON),
 		time.Now().UTC().Format(time.RFC3339),
 	); upsertErr != nil {
@@ -444,18 +486,80 @@ type extractedMetadata struct {
 	artist      string
 	albumArtist string
 	album       string
+	year        *int
+	genre       string
+	durationMS  *int
+	codec       string
+	sampleRate  *int
+	bitDepth    *int
+	bitrate     *int
 	discNo      *int
 	trackNo     *int
-	tags        map[string]string
+	tags        map[string]any
 }
 
 func deriveMetadata(rootPath string, fullPath string) (extractedMetadata, error) {
-	relativePath, err := filepath.Rel(rootPath, fullPath)
-	if err != nil {
-		return extractedMetadata{}, fmt.Errorf("resolve relative path for %s: %w", fullPath, err)
+	metadata, relativePath := deriveFallbackMetadata(rootPath, fullPath)
+
+	tags, tagsErr := taglib.ReadTags(fullPath)
+	if tagsErr != nil {
+		metadata.tags["source"] = "filename_fallback"
+		metadata.tags["metadata_version"] = metadataVersion
+		metadata.tags["taglib_error"] = tagsErr.Error()
+		return metadata, nil
 	}
 
-	parts := strings.Split(filepath.ToSlash(relativePath), "/")
+	applyTagValues(&metadata, tags)
+	metadata.tags["source"] = "taglib_primary"
+	metadata.tags["metadata_version"] = metadataVersion
+	metadata.tags["taglib_tags"] = tags
+
+	properties, propertiesErr := taglib.ReadProperties(fullPath)
+	if propertiesErr != nil {
+		metadata.tags["taglib_properties_error"] = propertiesErr.Error()
+	} else {
+		if properties.Length > 0 {
+			durationMS := int(properties.Length.Milliseconds())
+			if durationMS > 0 {
+				metadata.durationMS = &durationMS
+			}
+		}
+		if properties.SampleRate > 0 {
+			sampleRate := int(properties.SampleRate)
+			metadata.sampleRate = &sampleRate
+		}
+		if properties.Bitrate > 0 {
+			bitrate := int(properties.Bitrate)
+			metadata.bitrate = &bitrate
+		}
+
+		metadata.tags["taglib_properties"] = map[string]any{
+			"length_ms":      properties.Length.Milliseconds(),
+			"sample_rate_hz": properties.SampleRate,
+			"bitrate_kbps":   properties.Bitrate,
+			"channels":       properties.Channels,
+			"image_count":    len(properties.Images),
+		}
+	}
+
+	metadata.tags["relative_path"] = relativePath
+	metadata.tags["extension"] = strings.ToLower(filepath.Ext(fullPath))
+
+	if metadata.codec == "" {
+		metadata.codec = codecFromPath(fullPath)
+	}
+
+	return metadata, nil
+}
+
+func deriveFallbackMetadata(rootPath string, fullPath string) (extractedMetadata, string) {
+	relativePath := filepath.Base(fullPath)
+	if rel, err := filepath.Rel(rootPath, fullPath); err == nil {
+		relativePath = rel
+	}
+
+	relativePath = filepath.ToSlash(relativePath)
+	parts := strings.Split(relativePath, "/")
 	fileName := parts[len(parts)-1]
 	baseName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
 
@@ -474,18 +578,57 @@ func deriveMetadata(rootPath string, fullPath string) (extractedMetadata, error)
 	}
 
 	return extractedMetadata{
-		title:       title,
-		artist:      artist,
-		albumArtist: artist,
-		album:       album,
-		discNo:      nil,
+		title:       strings.TrimSpace(title),
+		artist:      strings.TrimSpace(artist),
+		albumArtist: strings.TrimSpace(artist),
+		album:       strings.TrimSpace(album),
 		trackNo:     trackNo,
-		tags: map[string]string{
-			"source":        "filename_fallback",
-			"relative_path": filepath.ToSlash(relativePath),
-			"extension":     strings.ToLower(filepath.Ext(fullPath)),
+		codec:       codecFromPath(fullPath),
+		tags: map[string]any{
+			"source":           "filename_fallback",
+			"metadata_version": metadataVersion,
+			"relative_path":    relativePath,
+			"extension":        strings.ToLower(filepath.Ext(fullPath)),
 		},
-	}, nil
+	}, relativePath
+}
+
+func applyTagValues(metadata *extractedMetadata, tags map[string][]string) {
+	if value := firstTagValue(tags, taglib.Title, "TITLE"); value != "" {
+		metadata.title = value
+	}
+	if value := firstTagValue(tags, taglib.Artist, "ARTIST"); value != "" {
+		metadata.artist = value
+	}
+	if value := firstTagValue(tags, taglib.AlbumArtist, "ALBUMARTIST"); value != "" {
+		metadata.albumArtist = value
+	}
+	if value := firstTagValue(tags, taglib.Album, "ALBUM"); value != "" {
+		metadata.album = value
+	}
+	if value := firstTagValue(tags, taglib.Genre, "GENRE"); value != "" {
+		metadata.genre = value
+	}
+
+	if trackNo := parseNumericTag(firstTagValue(tags, taglib.TrackNumber, "TRACKNUMBER", "TRCK")); trackNo != nil {
+		metadata.trackNo = trackNo
+	}
+	if discNo := parseNumericTag(firstTagValue(tags, taglib.DiscNumber, "DISCNUMBER", "TPOS")); discNo != nil {
+		metadata.discNo = discNo
+	}
+	if year := parseYearTag(firstTagValue(tags, taglib.Date, "DATE", "YEAR", "ORIGINALDATE", "RELEASEDATE")); year != nil {
+		metadata.year = year
+	}
+	if bitDepth := parseNumericTag(firstTagValue(tags, "BITS_PER_SAMPLE", "BITDEPTH", "BIT_DEPTH")); bitDepth != nil {
+		metadata.bitDepth = bitDepth
+	}
+	if codec := firstTagValue(tags, taglib.FileType, "FILETYPE"); codec != "" {
+		metadata.codec = normalizeCodec(codec)
+	}
+
+	if metadata.albumArtist == "" {
+		metadata.albumArtist = metadata.artist
+	}
 }
 
 func parseTrackNumber(baseName string) (*int, string) {
@@ -506,6 +649,101 @@ func parseTrackNumber(baseName string) (*int, string) {
 
 	trimmedTitle := strings.TrimSpace(match[2])
 	return &number, trimmedTitle
+}
+
+func firstTagValue(tags map[string][]string, keys ...string) string {
+	for _, key := range keys {
+		values, ok := tags[key]
+		if !ok {
+			continue
+		}
+		for _, value := range values {
+			trimmed := strings.TrimSpace(value)
+			if trimmed != "" {
+				return trimmed
+			}
+		}
+	}
+
+	return ""
+}
+
+func parseNumericTag(value string) *int {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+
+	match := leadingIntegerPattern.FindString(trimmed)
+	if match == "" {
+		return nil
+	}
+
+	parsed, err := strconv.Atoi(match)
+	if err != nil || parsed <= 0 {
+		return nil
+	}
+
+	return &parsed
+}
+
+func parseYearTag(value string) *int {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+
+	match := yearPattern.FindString(trimmed)
+	if match == "" {
+		if fallback := parseNumericTag(trimmed); fallback != nil {
+			if *fallback >= 1000 && *fallback <= 3000 {
+				return fallback
+			}
+		}
+		return nil
+	}
+
+	parsed, err := strconv.Atoi(match)
+	if err != nil {
+		return nil
+	}
+
+	return &parsed
+}
+
+func codecFromPath(path string) string {
+	extension := strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
+	if extension == "" {
+		return ""
+	}
+
+	return extension
+}
+
+func normalizeCodec(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+
+	return strings.ToLower(trimmed)
+}
+
+func nullableInt(value *int) any {
+	if value == nil {
+		return nil
+	}
+
+	return *value
+}
+
+func nullableString(value string) any {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+
+	return trimmed
 }
 
 func (s *Service) emitProgress(progress Progress) {
