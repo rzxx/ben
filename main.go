@@ -43,6 +43,7 @@ func main() {
 	browseRepo := library.NewBrowseRepository(sqliteDB)
 	queueDomain := queue.NewService(sqliteDB)
 	playerDomain := player.NewService(queueDomain)
+	defer playerDomain.Close()
 	scannerDomain := scanner.NewService(sqliteDB, watchedRoots)
 	settingsService := NewSettingsService(watchedRoots, scannerDomain)
 	libraryService := NewLibraryService(browseRepo)

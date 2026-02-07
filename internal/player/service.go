@@ -4,6 +4,7 @@ import (
 	"ben/internal/library"
 	"ben/internal/queue"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -15,6 +16,18 @@ const (
 	StatusPaused  = "paused"
 	StatusPlaying = "playing"
 )
+
+const defaultVolume = 80
+
+const tickerInterval = 500 * time.Millisecond
+
+const mpvPositionProperty = "time-pos"
+
+const mpvDurationProperty = "duration"
+
+const mpvVolumeProperty = "volume"
+
+const mpvPauseProperty = "pause"
 
 type Emitter func(eventName string, payload any)
 
@@ -35,18 +48,30 @@ type Service struct {
 	status         string
 	positionMS     int
 	volume         int
+	durationMS     *int
 	updatedAt      time.Time
 	emit           Emitter
 	tickStop       chan struct{}
 	hasCurrent     bool
 	currentTrackID int64
+	backend        playbackBackend
+	backendErr     string
 }
 
 func NewService(queueService *queue.Service) *Service {
 	service := &Service{
 		queue:  queueService,
 		status: StatusStopped,
-		volume: 80,
+		volume: defaultVolume,
+	}
+
+	backend, err := newPlaybackBackend()
+	if err != nil {
+		service.backendErr = err.Error()
+	} else {
+		service.backend = backend
+		service.backend.SetOnEOF(service.onBackendEOF)
+		_ = service.backend.SetVolume(service.volume)
 	}
 
 	if queueService != nil {
@@ -54,6 +79,20 @@ func NewService(queueService *queue.Service) *Service {
 	}
 
 	return service
+}
+
+func (s *Service) Close() error {
+	s.mu.Lock()
+	s.stopTickerLocked()
+	backend := s.backend
+	s.backend = nil
+	s.mu.Unlock()
+
+	if backend != nil {
+		return backend.Close()
+	}
+
+	return nil
 }
 
 func (s *Service) SetEmitter(emitter Emitter) {
@@ -68,6 +107,11 @@ func (s *Service) GetState() State {
 }
 
 func (s *Service) Play() (State, error) {
+	backend, err := s.requireBackend()
+	if err != nil {
+		return s.GetState(), err
+	}
+
 	queueState := s.queue.GetState()
 	if queueState.Total == 0 {
 		return s.stateFromQueue(queueState), errors.New("queue is empty")
@@ -79,28 +123,43 @@ func (s *Service) Play() (State, error) {
 		queueState = s.queue.GetState()
 	}
 
+	if err := s.loadTrack(backend, queueState.CurrentTrack, false); err != nil {
+		return s.GetState(), err
+	}
+
+	if err := backend.Play(); err != nil {
+		return s.GetState(), fmt.Errorf("start playback: %w", err)
+	}
+
 	s.mu.Lock()
 	s.status = StatusPlaying
-	s.setCurrentTrackLocked(queueState.CurrentTrack, false)
-	if duration := trackDuration(queueState.CurrentTrack); duration != nil && s.positionMS > *duration {
-		s.positionMS = *duration
-	}
 	s.updatedAt = time.Now().UTC()
 	s.ensureTickerLocked()
 	s.mu.Unlock()
 
+	s.refreshPlaybackPosition(backend)
 	state := s.stateFromQueue(queueState)
 	s.emitState(state)
 	return state, nil
 }
 
 func (s *Service) Pause() (State, error) {
+	backend, err := s.requireBackend()
+	if err != nil {
+		return s.GetState(), err
+	}
+
+	if err := backend.Pause(); err != nil {
+		return s.GetState(), fmt.Errorf("pause playback: %w", err)
+	}
+
 	s.mu.Lock()
 	s.status = StatusPaused
 	s.updatedAt = time.Now().UTC()
 	s.stopTickerLocked()
 	s.mu.Unlock()
 
+	s.refreshPlaybackPosition(backend)
 	state := s.GetState()
 	s.emitState(state)
 	return state, nil
@@ -116,6 +175,15 @@ func (s *Service) TogglePlayback() (State, error) {
 }
 
 func (s *Service) Stop() (State, error) {
+	backend, err := s.requireBackend()
+	if err != nil {
+		return s.GetState(), err
+	}
+
+	if err := backend.Stop(); err != nil {
+		return s.GetState(), fmt.Errorf("stop playback: %w", err)
+	}
+
 	s.mu.Lock()
 	s.status = StatusStopped
 	s.positionMS = 0
@@ -129,28 +197,65 @@ func (s *Service) Stop() (State, error) {
 }
 
 func (s *Service) Next() (State, error) {
+	backend, err := s.requireBackend()
+	if err != nil {
+		return s.GetState(), err
+	}
+
+	s.mu.Lock()
+	wasPlaying := s.status == StatusPlaying
+	wasPaused := s.status == StatusPaused
+	s.mu.Unlock()
+
 	queueState, moved := s.queue.Next()
 	if !moved {
 		return s.Stop()
 	}
 
-	s.mu.Lock()
-	s.positionMS = 0
-	s.setCurrentTrackLocked(queueState.CurrentTrack, false)
-	s.updatedAt = time.Now().UTC()
-	if s.status == StatusPlaying {
-		s.ensureTickerLocked()
+	if err := s.loadTrack(backend, queueState.CurrentTrack, true); err != nil {
+		return s.GetState(), err
 	}
+
+	if wasPlaying {
+		if err := backend.Play(); err != nil {
+			return s.GetState(), fmt.Errorf("start next track: %w", err)
+		}
+	} else {
+		if err := backend.Pause(); err != nil {
+			return s.GetState(), fmt.Errorf("prepare next track: %w", err)
+		}
+	}
+
+	s.mu.Lock()
+	if wasPlaying {
+		s.status = StatusPlaying
+		s.ensureTickerLocked()
+	} else if wasPaused {
+		s.status = StatusPaused
+		s.stopTickerLocked()
+	} else {
+		s.status = StatusStopped
+		s.stopTickerLocked()
+	}
+	s.updatedAt = time.Now().UTC()
 	s.mu.Unlock()
 
+	s.refreshPlaybackPosition(backend)
 	state := s.stateFromQueue(queueState)
 	s.emitState(state)
 	return state, nil
 }
 
 func (s *Service) Previous() (State, error) {
+	backend, err := s.requireBackend()
+	if err != nil {
+		return s.GetState(), err
+	}
+
 	s.mu.Lock()
 	positionMS := s.positionMS
+	wasPlaying := s.status == StatusPlaying
+	wasPaused := s.status == StatusPaused
 	s.mu.Unlock()
 
 	if positionMS > 3000 {
@@ -162,21 +267,46 @@ func (s *Service) Previous() (State, error) {
 		return s.Seek(0)
 	}
 
-	s.mu.Lock()
-	s.positionMS = 0
-	s.setCurrentTrackLocked(queueState.CurrentTrack, false)
-	s.updatedAt = time.Now().UTC()
-	if s.status == StatusPlaying {
-		s.ensureTickerLocked()
+	if err := s.loadTrack(backend, queueState.CurrentTrack, true); err != nil {
+		return s.GetState(), err
 	}
+
+	if wasPlaying {
+		if err := backend.Play(); err != nil {
+			return s.GetState(), fmt.Errorf("start previous track: %w", err)
+		}
+	} else {
+		if err := backend.Pause(); err != nil {
+			return s.GetState(), fmt.Errorf("prepare previous track: %w", err)
+		}
+	}
+
+	s.mu.Lock()
+	if wasPlaying {
+		s.status = StatusPlaying
+		s.ensureTickerLocked()
+	} else if wasPaused {
+		s.status = StatusPaused
+		s.stopTickerLocked()
+	} else {
+		s.status = StatusStopped
+		s.stopTickerLocked()
+	}
+	s.updatedAt = time.Now().UTC()
 	s.mu.Unlock()
 
+	s.refreshPlaybackPosition(backend)
 	state := s.stateFromQueue(queueState)
 	s.emitState(state)
 	return state, nil
 }
 
 func (s *Service) Seek(positionMS int) (State, error) {
+	backend, err := s.requireBackend()
+	if err != nil {
+		return s.GetState(), err
+	}
+
 	if positionMS < 0 {
 		positionMS = 0
 	}
@@ -186,27 +316,40 @@ func (s *Service) Seek(positionMS int) (State, error) {
 		return s.stateFromQueue(queueState), errors.New("no track selected")
 	}
 
-	if duration := trackDuration(queueState.CurrentTrack); duration != nil && positionMS > *duration {
+	if duration := s.currentDuration(queueState.CurrentTrack); duration != nil && positionMS > *duration {
 		positionMS = *duration
+	}
+
+	if err := backend.Seek(positionMS); err != nil {
+		return s.GetState(), fmt.Errorf("seek playback: %w", err)
 	}
 
 	s.mu.Lock()
 	s.positionMS = positionMS
-	s.setCurrentTrackLocked(queueState.CurrentTrack, false)
 	s.updatedAt = time.Now().UTC()
 	s.mu.Unlock()
 
+	s.refreshPlaybackPosition(backend)
 	state := s.stateFromQueue(queueState)
 	s.emitState(state)
 	return state, nil
 }
 
 func (s *Service) SetVolume(volume int) (State, error) {
+	backend, err := s.requireBackend()
+	if err != nil {
+		return s.GetState(), err
+	}
+
 	if volume < 0 {
 		volume = 0
 	}
 	if volume > 100 {
 		volume = 100
+	}
+
+	if err := backend.SetVolume(volume); err != nil {
+		return s.GetState(), fmt.Errorf("set volume: %w", err)
 	}
 
 	s.mu.Lock()
@@ -220,41 +363,168 @@ func (s *Service) SetVolume(volume int) (State, error) {
 }
 
 func (s *Service) onQueueChanged(queueState queue.State) {
-	s.mu.Lock()
 	if queueState.CurrentTrack == nil {
+		if backend := s.tryBackend(); backend != nil {
+			_ = backend.Stop()
+		}
+
+		s.mu.Lock()
 		s.status = StatusStopped
 		s.positionMS = 0
+		s.durationMS = nil
 		s.hasCurrent = false
 		s.currentTrackID = 0
+		s.updatedAt = time.Now().UTC()
 		s.stopTickerLocked()
-	} else {
-		s.setCurrentTrackLocked(queueState.CurrentTrack, true)
-		if duration := trackDuration(queueState.CurrentTrack); duration != nil && s.positionMS > *duration {
-			s.positionMS = *duration
-		}
-		if s.status == StatusPlaying {
-			s.ensureTickerLocked()
+		s.mu.Unlock()
+
+		s.emitState(s.stateFromQueue(queueState))
+		return
+	}
+
+	s.mu.Lock()
+	previousStatus := s.status
+	trackChanged := !s.hasCurrent || s.currentTrackID != queueState.CurrentTrack.ID
+	if trackChanged {
+		s.positionMS = 0
+		s.durationMS = trackDuration(queueState.CurrentTrack)
+	}
+	s.setCurrentTrackLocked(queueState.CurrentTrack, false)
+	s.updatedAt = time.Now().UTC()
+	if previousStatus == StatusPlaying {
+		s.ensureTickerLocked()
+	}
+	s.mu.Unlock()
+
+	backend := s.tryBackend()
+	if backend != nil && trackChanged {
+		if err := s.loadTrack(backend, queueState.CurrentTrack, true); err == nil {
+			if previousStatus == StatusPlaying {
+				_ = backend.Play()
+			} else {
+				_ = backend.Pause()
+			}
 		}
 	}
-	s.updatedAt = time.Now().UTC()
-	s.mu.Unlock()
+
+	if backend != nil {
+		s.refreshPlaybackPosition(backend)
+	}
 
 	s.emitState(s.stateFromQueue(queueState))
 }
 
-func (s *Service) setCurrentTrackLocked(track *library.TrackSummary, resetPositionIfChanged bool) {
-	if track == nil {
-		s.hasCurrent = false
-		s.currentTrackID = 0
+func (s *Service) onBackendEOF() {
+	backend := s.tryBackend()
+	if backend == nil {
 		return
 	}
 
-	if resetPositionIfChanged && (!s.hasCurrent || s.currentTrackID != track.ID) {
-		s.positionMS = 0
+	s.mu.Lock()
+	if s.status != StatusPlaying {
+		s.mu.Unlock()
+		return
+	}
+	s.mu.Unlock()
+
+	queueState, moved := s.queue.Next()
+	if !moved {
+		_, _ = s.Stop()
+		return
 	}
 
-	s.hasCurrent = true
-	s.currentTrackID = track.ID
+	if err := s.loadTrack(backend, queueState.CurrentTrack, true); err != nil {
+		return
+	}
+
+	if err := backend.Play(); err != nil {
+		return
+	}
+
+	s.mu.Lock()
+	s.status = StatusPlaying
+	s.updatedAt = time.Now().UTC()
+	s.ensureTickerLocked()
+	s.mu.Unlock()
+
+	s.refreshPlaybackPosition(backend)
+	s.emitState(s.stateFromQueue(queueState))
+}
+
+func (s *Service) requireBackend() (playbackBackend, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.backend != nil {
+		return s.backend, nil
+	}
+	if s.backendErr != "" {
+		return nil, errors.New(s.backendErr)
+	}
+
+	return nil, errors.New("playback backend is unavailable")
+}
+
+func (s *Service) tryBackend() playbackBackend {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.backend
+}
+
+func (s *Service) loadTrack(backend playbackBackend, track *library.TrackSummary, force bool) error {
+	if track == nil {
+		return errors.New("no track selected")
+	}
+
+	s.mu.Lock()
+	alreadyCurrent := s.hasCurrent && s.currentTrackID == track.ID
+	s.mu.Unlock()
+
+	if alreadyCurrent && !force {
+		return nil
+	}
+
+	if err := backend.Load(track.Path); err != nil {
+		return fmt.Errorf("load track %q: %w", track.Path, err)
+	}
+
+	s.mu.Lock()
+	s.setCurrentTrackLocked(track, false)
+	s.positionMS = 0
+	s.durationMS = trackDuration(track)
+	s.updatedAt = time.Now().UTC()
+	s.mu.Unlock()
+
+	return nil
+}
+
+func (s *Service) refreshPlaybackPosition(backend playbackBackend) {
+	positionMS, positionErr := backend.PositionMS()
+	durationMS, durationErr := backend.DurationMS()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if positionErr == nil {
+		s.positionMS = positionMS
+	}
+	if durationErr == nil {
+		s.durationMS = durationMS
+	}
+	s.updatedAt = time.Now().UTC()
+}
+
+func (s *Service) currentDuration(track *library.TrackSummary) *int {
+	s.mu.Lock()
+	duration := s.durationMS
+	s.mu.Unlock()
+
+	if duration != nil {
+		value := *duration
+		return &value
+	}
+
+	return trackDuration(track)
 }
 
 func (s *Service) ensureTickerLocked() {
@@ -277,7 +547,7 @@ func (s *Service) stopTickerLocked() {
 }
 
 func (s *Service) runTicker(stop <-chan struct{}) {
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(tickerInterval)
 	defer ticker.Stop()
 
 	for {
@@ -291,43 +561,42 @@ func (s *Service) runTicker(stop <-chan struct{}) {
 }
 
 func (s *Service) onTick() {
+	backend := s.tryBackend()
+	if backend == nil {
+		return
+	}
+
 	queueState := s.queue.GetState()
 	if queueState.CurrentTrack == nil {
 		_, _ = s.Stop()
 		return
 	}
 
-	duration := trackDuration(queueState.CurrentTrack)
-
 	s.mu.Lock()
-	if s.status != StatusPlaying {
-		s.mu.Unlock()
-		return
-	}
-
-	s.positionMS += 1000
-	s.updatedAt = time.Now().UTC()
-	advance := duration != nil && s.positionMS >= *duration
+	playing := s.status == StatusPlaying
 	s.mu.Unlock()
 
-	if !advance {
-		s.emitState(s.stateFromQueue(queueState))
+	if !playing {
 		return
 	}
 
-	queueState, moved := s.queue.Next()
-	if !moved {
-		_, _ = s.Stop()
-		return
-	}
-
-	s.mu.Lock()
-	s.positionMS = 0
-	s.setCurrentTrackLocked(queueState.CurrentTrack, false)
-	s.updatedAt = time.Now().UTC()
-	s.mu.Unlock()
-
+	s.refreshPlaybackPosition(backend)
 	s.emitState(s.stateFromQueue(queueState))
+}
+
+func (s *Service) setCurrentTrackLocked(track *library.TrackSummary, resetPositionIfChanged bool) {
+	if track == nil {
+		s.hasCurrent = false
+		s.currentTrackID = 0
+		return
+	}
+
+	if resetPositionIfChanged && (!s.hasCurrent || s.currentTrackID != track.ID) {
+		s.positionMS = 0
+	}
+
+	s.hasCurrent = true
+	s.currentTrackID = track.ID
 }
 
 func (s *Service) stateFromQueue(queueState queue.State) State {
@@ -335,15 +604,20 @@ func (s *Service) stateFromQueue(queueState queue.State) State {
 	status := s.status
 	positionMS := s.positionMS
 	volume := s.volume
+	duration := s.durationMS
 	updatedAt := s.updatedAt
 	s.mu.Unlock()
 
 	if queueState.CurrentTrack == nil {
 		status = StatusStopped
 		positionMS = 0
+		duration = nil
 	}
 
-	duration := trackDuration(queueState.CurrentTrack)
+	if duration == nil {
+		duration = trackDuration(queueState.CurrentTrack)
+	}
+
 	if duration != nil && positionMS > *duration {
 		positionMS = *duration
 	}

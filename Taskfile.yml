@@ -12,6 +12,7 @@ vars:
   APP_NAME: "ben"
   BIN_DIR: "bin"
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+  PLAYER_TAGS: "libmpv,nocgo"
 
 tasks:
   build:
@@ -32,7 +33,7 @@ tasks:
   dev:
     summary: Runs the application in development mode
     cmds:
-      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}} -f "-tags={{.PLAYER_TAGS}}"
 
   setup:docker:
     summary: Builds Docker image for cross-compilation (~800MB download)
