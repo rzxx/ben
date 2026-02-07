@@ -19,5 +19,9 @@ export function TriggerFullScan(): $CancellablePromise<void> {
     return $Call.ByID(1583516401);
 }
 
+export function TriggerIncrementalScan(): $CancellablePromise<void> {
+    return $Call.ByID(4128331878);
+}
+
 // Private type creation functions
 const $$createType0 = scanner$0.Status.createFrom;

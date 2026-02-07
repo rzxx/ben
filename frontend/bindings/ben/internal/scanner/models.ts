@@ -45,6 +45,7 @@ export class Progress {
 export class Status {
     "running": boolean;
     "lastRunAt": string;
+    "lastMode"?: string;
     "lastError"?: string;
     "lastFilesSeen": number;
     "lastIndexed": number;

@@ -11,6 +11,7 @@ type WatchedRoot = {
 type ScanStatus = {
   running: boolean;
   lastRunAt?: string;
+  lastMode?: string;
   lastError?: string;
   lastFilesSeen?: number;
   lastIndexed?: number;
@@ -162,6 +163,16 @@ function App() {
     }
   };
 
+  const onRunIncrementalScan = async () => {
+    try {
+      setErrorMessage(null);
+      await Call.ByName(`${scannerService}.TriggerIncrementalScan`);
+      await loadScanStatus();
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
   return (
     <div className="app-shell">
       <header className="top-bar">
@@ -169,13 +180,18 @@ function App() {
           <p className="eyebrow">Ben</p>
           <h1>Desktop Music Player</h1>
         </div>
-        <button
-          className="scan-button"
-          onClick={onRunFullScan}
-          disabled={scanStatus.running}
-        >
-          {scanStatus.running ? "Scanning..." : "Run Full Scan"}
-        </button>
+        <div className="scan-actions">
+          <button onClick={onRunIncrementalScan} disabled={scanStatus.running}>
+            {scanStatus.running ? "Scanning..." : "Run Incremental Scan"}
+          </button>
+          <button
+            className="scan-button"
+            onClick={onRunFullScan}
+            disabled={scanStatus.running}
+          >
+            {scanStatus.running ? "Scanning..." : "Run Full Scan"}
+          </button>
+        </div>
       </header>
 
       <nav className="main-nav" aria-label="Main sections">
@@ -240,8 +256,8 @@ function App() {
         <section className="panel">
           <h2>Scanner Progress</h2>
           <p>
-            Full scan now walks folders, upserts files, and refreshes track
-            rows.
+            Full and incremental scans walk folders, upsert changes, and
+            reconcile stale track rows.
           </p>
           {lastProgress ? (
             <div className="progress-card">
@@ -260,6 +276,7 @@ function App() {
           {scanStatus.lastRunAt ? (
             <p>Last run: {new Date(scanStatus.lastRunAt).toLocaleString()}</p>
           ) : null}
+          {scanStatus.lastMode ? <p>Mode: {scanStatus.lastMode}</p> : null}
           {scanStatus.lastRunAt ? (
             <div className="scan-totals">
               <span>Seen: {scanStatus.lastFilesSeen ?? 0}</span>
