@@ -8,15 +8,25 @@ import { Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as player$0 from "../../../../../ben/internal/player/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as queue$0 from "../../../../../ben/internal/queue/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as scanner$0 from "../../../../../ben/internal/scanner/models.js";
 
 function configure() {
     Object.freeze(Object.assign($Create.Events, {
-        "scanner:progress": $$createType0,
+        "player:state": $$createType0,
+        "queue:state": $$createType1,
+        "scanner:progress": $$createType2,
     }));
 }
 
 // Private type creation functions
-const $$createType0 = scanner$0.Progress.createFrom;
+const $$createType0 = player$0.State.createFrom;
+const $$createType1 = queue$0.State.createFrom;
+const $$createType2 = scanner$0.Progress.createFrom;
 
 configure();

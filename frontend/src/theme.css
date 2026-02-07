@@ -256,8 +256,25 @@ button:disabled {
   gap: 0.5rem;
 }
 
+.action-row {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
 .summary-row {
   color: var(--text-muted);
+}
+
+.inline-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.inline-actions button {
+  padding: 0.32rem 0.55rem;
+  font-size: 0.82rem;
 }
 
 .stat-list div {
@@ -390,9 +407,98 @@ button:disabled {
   gap: 1rem;
 }
 
+.player-main {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.player-main p,
+.player-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-controls {
+  min-width: min(560px, 100%);
+  display: grid;
+  gap: 0.55rem;
+}
+
 .transport-placeholder {
   display: flex;
   gap: 0.5rem;
+}
+
+.seek-wrap,
+.volume-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.seek-wrap {
+  width: 100%;
+}
+
+.seek-wrap input,
+.volume-wrap input {
+  width: 100%;
+  accent-color: var(--accent-2);
+}
+
+.queue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.queue-actions {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.queue-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.queue-list li {
+  border-radius: 10px;
+  border: 1px solid rgba(133, 182, 179, 0.2);
+  background: rgba(8, 29, 38, 0.74);
+  padding: 0.58rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.queue-list li.active {
+  border-color: rgba(116, 212, 190, 0.6);
+  background: rgba(116, 212, 190, 0.18);
+}
+
+.queue-select {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  display: grid;
+  gap: 0.18rem;
+  flex: 1;
+}
+
+.queue-select span {
+  color: var(--text-muted);
+  font-size: 0.88rem;
 }
 
 .error {
@@ -422,6 +528,13 @@ button:disabled {
     align-items: flex-start;
   }
 
+  .player-controls,
+  .seek-wrap,
+  .volume-wrap {
+    width: 100%;
+    min-width: 0;
+  }
+
   .scan-actions {
     width: 100%;
     justify-content: flex-start;
@@ -440,6 +553,11 @@ button:disabled {
   }
 
   .root-list li {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .queue-list li {
     flex-direction: column;
     align-items: flex-start;
   }

@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Call, Events } from "@wailsio/runtime";
 
 type WatchedRoot = {
@@ -79,10 +79,34 @@ type AlbumDetail = {
   page: PageInfo;
 };
 
+type QueueState = {
+  entries: LibraryTrack[];
+  currentIndex: number;
+  currentTrack?: LibraryTrack;
+  total: number;
+  updatedAt: string;
+};
+
+type PlayerState = {
+  status: string;
+  positionMs: number;
+  volume: number;
+  currentTrack?: LibraryTrack;
+  currentIndex: number;
+  queueLength: number;
+  durationMs?: number;
+  updatedAt: string;
+};
+
 const settingsService = "main.SettingsService";
 const libraryService = "main.LibraryService";
 const scannerService = "main.ScannerService";
+const queueService = "main.QueueService";
+const playerService = "main.PlayerService";
+
 const scanProgressEvent = "scanner:progress";
+const queueStateEvent = "queue:state";
+const playerStateEvent = "player:state";
 
 const browsePageSize = 10;
 const detailPageSize = 14;
@@ -92,6 +116,26 @@ function createEmptyPage(limit: number, offset: number): PageInfo {
     limit,
     offset,
     total: 0,
+  };
+}
+
+function createEmptyQueueState(): QueueState {
+  return {
+    entries: [],
+    currentIndex: -1,
+    total: 0,
+    updatedAt: "",
+  };
+}
+
+function createEmptyPlayerState(): PlayerState {
+  return {
+    status: "stopped",
+    positionMs: 0,
+    volume: 80,
+    currentIndex: -1,
+    queueLength: 0,
+    updatedAt: "",
   };
 }
 
@@ -116,6 +160,8 @@ function App() {
   const [newRootPath, setNewRootPath] = useState("");
   const [scanStatus, setScanStatus] = useState<ScanStatus>({ running: false });
   const [lastProgress, setLastProgress] = useState<ScanProgress | null>(null);
+  const [queueState, setQueueState] = useState<QueueState>(createEmptyQueueState());
+  const [playerState, setPlayerState] = useState<PlayerState>(createEmptyPlayerState());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<"library" | "queue" | "settings">(
     "library",
@@ -156,6 +202,16 @@ function App() {
   const loadScanStatus = useCallback(async () => {
     const status = await Call.ByName(`${scannerService}.GetStatus`);
     setScanStatus((status ?? { running: false }) as ScanStatus);
+  }, []);
+
+  const loadQueueState = useCallback(async () => {
+    const state = await Call.ByName(`${queueService}.GetState`);
+    setQueueState((state ?? createEmptyQueueState()) as QueueState);
+  }, []);
+
+  const loadPlayerState = useCallback(async () => {
+    const state = await Call.ByName(`${playerService}.GetState`);
+    setPlayerState((state ?? createEmptyPlayerState()) as PlayerState);
   }, []);
 
   const loadLibraryData = useCallback(async () => {
@@ -212,13 +268,18 @@ function App() {
   useEffect(() => {
     const initialize = async () => {
       try {
-        await Promise.all([loadWatchedRoots(), loadScanStatus()]);
+        await Promise.all([
+          loadWatchedRoots(),
+          loadScanStatus(),
+          loadQueueState(),
+          loadPlayerState(),
+        ]);
       } catch (error) {
         setErrorMessage(parseError(error));
       }
     };
 
-    const unsubscribe = Events.On(scanProgressEvent, (event) => {
+    const unsubscribeScanner = Events.On(scanProgressEvent, (event) => {
       const progress = event.data as ScanProgress;
       setLastProgress(progress);
       void loadScanStatus();
@@ -236,15 +297,27 @@ function App() {
       }
     });
 
+    const unsubscribeQueue = Events.On(queueStateEvent, (event) => {
+      setQueueState(event.data as QueueState);
+    });
+
+    const unsubscribePlayer = Events.On(playerStateEvent, (event) => {
+      setPlayerState(event.data as PlayerState);
+    });
+
     void initialize();
 
     return () => {
-      unsubscribe();
+      unsubscribeScanner();
+      unsubscribeQueue();
+      unsubscribePlayer();
     };
   }, [
     loadAlbumDetail,
     loadArtistDetail,
     loadLibraryData,
+    loadPlayerState,
+    loadQueueState,
     loadScanStatus,
     loadWatchedRoots,
     selectedAlbum,
@@ -370,12 +443,136 @@ function App() {
     setAlbumDetail(null);
   };
 
+  const onSetQueue = async (trackIDs: number[], autoplay: boolean) => {
+    if (trackIDs.length === 0) {
+      return;
+    }
+
+    try {
+      setErrorMessage(null);
+      await Call.ByName(`${queueService}.SetQueue`, trackIDs, 0);
+      if (autoplay) {
+        await Call.ByName(`${playerService}.Play`);
+      }
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onAppendTrack = async (trackID: number) => {
+    try {
+      setErrorMessage(null);
+      await Call.ByName(`${queueService}.AppendTracks`, [trackID]);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onPlayTrackNow = async (trackID: number) => {
+    await onSetQueue([trackID], true);
+  };
+
+  const onSelectQueueIndex = async (index: number) => {
+    try {
+      setErrorMessage(null);
+      await Call.ByName(`${queueService}.SetCurrentIndex`, index);
+      if (playerState.status === "playing") {
+        await Call.ByName(`${playerService}.Play`);
+      }
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onRemoveQueueTrack = async (index: number) => {
+    try {
+      setErrorMessage(null);
+      await Call.ByName(`${queueService}.RemoveTrack`, index);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onClearQueue = async () => {
+    try {
+      setErrorMessage(null);
+      await Call.ByName(`${queueService}.Clear`);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onTogglePlayback = async () => {
+    try {
+      setErrorMessage(null);
+      await Call.ByName(`${playerService}.TogglePlayback`);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onStopPlayback = async () => {
+    try {
+      setErrorMessage(null);
+      await Call.ByName(`${playerService}.Stop`);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onNextTrack = async () => {
+    try {
+      setErrorMessage(null);
+      await Call.ByName(`${playerService}.Next`);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onPreviousTrack = async () => {
+    try {
+      setErrorMessage(null);
+      await Call.ByName(`${playerService}.Previous`);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onSeek = async (positionMS: number) => {
+    try {
+      setErrorMessage(null);
+      await Call.ByName(`${playerService}.Seek`, positionMS);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onSetVolume = async (volume: number) => {
+    try {
+      setErrorMessage(null);
+      await Call.ByName(`${playerService}.SetVolume`, volume);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
   const artistCanGoBack = artistOffset > 0;
   const artistCanGoNext = artistOffset + artistsPage.page.limit < artistsPage.page.total;
   const albumCanGoBack = albumOffset > 0;
   const albumCanGoNext = albumOffset + albumsPage.page.limit < albumsPage.page.total;
   const trackCanGoBack = trackOffset > 0;
   const trackCanGoNext = trackOffset + tracksPage.page.limit < tracksPage.page.total;
+
+  const currentTrack = playerState.currentTrack;
+  const hasCurrentTrack = !!currentTrack;
+  const seekMax = Math.max(playerState.durationMs ?? 0, 1);
+  const seekValue = Math.min(playerState.positionMs, seekMax);
+  const playPauseLabel = playerState.status === "playing" ? "Pause" : "Play";
+
+  const visibleTrackIDs = useMemo(
+    () => tracksPage.items.map((track) => track.id),
+    [tracksPage.items],
+  );
 
   return (
     <div className="app-shell">
@@ -424,7 +621,7 @@ function App() {
           <>
             <section className="panel">
               <h2>Library Browser</h2>
-              <p>Paginated data contracts for artists, albums, and tracks.</p>
+              <p>Paginated browse API wired from the Go backend.</p>
 
               <form className="search-form" onSubmit={onSubmitLibrarySearch}>
                 <input
@@ -449,6 +646,15 @@ function App() {
                   <span>Tracks Matched</span>
                   <strong>{tracksPage.page.total}</strong>
                 </div>
+              </div>
+
+              <div className="action-row">
+                <button onClick={() => void onSetQueue(visibleTrackIDs, false)} disabled={!visibleTrackIDs.length}>
+                  Replace Queue
+                </button>
+                <button onClick={() => void onSetQueue(visibleTrackIDs, true)} disabled={!visibleTrackIDs.length}>
+                  Play Visible Tracks
+                </button>
               </div>
 
               <div className="library-groups">
@@ -545,6 +751,10 @@ function App() {
                           <span>
                             {track.artist} - {track.album}
                           </span>
+                          <div className="inline-actions">
+                            <button onClick={() => void onAppendTrack(track.id)}>Queue</button>
+                            <button onClick={() => void onPlayTrackNow(track.id)}>Play</button>
+                          </div>
                         </div>
                       </li>
                     ))}
@@ -611,6 +821,10 @@ function App() {
                             {track.title}
                           </strong>
                           <span>{track.artist}</span>
+                          <div className="inline-actions">
+                            <button onClick={() => void onAppendTrack(track.id)}>Queue</button>
+                            <button onClick={() => void onPlayTrackNow(track.id)}>Play</button>
+                          </div>
                         </div>
                       </li>
                     ))}
@@ -702,20 +916,20 @@ function App() {
             </section>
 
             <section className="panel">
-              <h2>Library Counters</h2>
-              <p>Browse contracts now report totals directly per screen.</p>
+              <h2>Runtime State</h2>
+              <p>Queue and player state now come from backend events.</p>
               <div className="stat-list">
                 <div>
-                  <span>Artists</span>
-                  <strong>{artistsPage.page.total}</strong>
+                  <span>Queue Length</span>
+                  <strong>{queueState.total}</strong>
                 </div>
                 <div>
-                  <span>Albums</span>
-                  <strong>{albumsPage.page.total}</strong>
+                  <span>Player Status</span>
+                  <strong>{playerState.status}</strong>
                 </div>
                 <div>
-                  <span>Tracks</span>
-                  <strong>{tracksPage.page.total}</strong>
+                  <span>Volume</span>
+                  <strong>{playerState.volume}%</strong>
                 </div>
               </div>
             </section>
@@ -724,27 +938,135 @@ function App() {
 
         {activeView === "queue" ? (
           <section className="panel queue-panel">
-            <h2>Queue</h2>
-            <p>
-              Queue and playback controls are still pending the Player v1 slice.
-            </p>
+            <div className="queue-header">
+              <div>
+                <h2>Queue</h2>
+                <p>{queueState.total} track(s) in queue.</p>
+              </div>
+              <div className="queue-actions">
+                <button onClick={onPreviousTrack} disabled={!hasCurrentTrack}>
+                  Prev
+                </button>
+                <button onClick={onTogglePlayback} disabled={queueState.total === 0}>
+                  {playPauseLabel}
+                </button>
+                <button onClick={onNextTrack} disabled={!hasCurrentTrack}>
+                  Next
+                </button>
+                <button onClick={onClearQueue} disabled={queueState.total === 0}>
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {queueState.entries.length === 0 ? (
+              <p>Add tracks from Library to build your queue.</p>
+            ) : (
+              <ul className="queue-list">
+                {queueState.entries.map((track, index) => (
+                  <li key={`${track.id}-${index}`} className={index === queueState.currentIndex ? "active" : ""}>
+                    <button
+                      className="queue-select"
+                      onClick={() => {
+                        void onSelectQueueIndex(index);
+                      }}
+                    >
+                      <strong>{track.title}</strong>
+                      <span>
+                        {track.artist} - {track.album}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        void onRemoveQueueTrack(index);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         ) : null}
       </main>
 
       <footer className="player-bar">
-        <div>
+        <div className="player-main">
           <p className="eyebrow">Player</p>
-          <strong>Queue and playback controls ship in the next slice.</strong>
+          {currentTrack ? (
+            <>
+              <strong>
+                {currentTrack.title} - {currentTrack.artist}
+              </strong>
+              <p>
+                {currentTrack.album} • {playerState.status}
+              </p>
+            </>
+          ) : (
+            <strong>No track selected</strong>
+          )}
         </div>
-        <div className="transport-placeholder">
-          <button disabled>Prev</button>
-          <button disabled>Play</button>
-          <button disabled>Next</button>
+
+        <div className="player-controls">
+          <div className="transport-placeholder">
+            <button onClick={onPreviousTrack} disabled={!hasCurrentTrack}>
+              Prev
+            </button>
+            <button onClick={onTogglePlayback} disabled={queueState.total === 0}>
+              {playPauseLabel}
+            </button>
+            <button onClick={onStopPlayback} disabled={!hasCurrentTrack}>
+              Stop
+            </button>
+            <button onClick={onNextTrack} disabled={!hasCurrentTrack}>
+              Next
+            </button>
+          </div>
+
+          <div className="seek-wrap">
+            <span>{formatDuration(playerState.positionMs)}</span>
+            <input
+              type="range"
+              min={0}
+              max={seekMax}
+              value={seekValue}
+              onChange={(event) => {
+                void onSeek(Number(event.target.value));
+              }}
+              disabled={!hasCurrentTrack}
+            />
+            <span>{formatDuration(playerState.durationMs)}</span>
+          </div>
+
+          <div className="volume-wrap">
+            <span>Vol</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={playerState.volume}
+              onChange={(event) => {
+                void onSetVolume(Number(event.target.value));
+              }}
+            />
+            <span>{playerState.volume}%</span>
+          </div>
         </div>
       </footer>
     </div>
   );
+}
+
+function formatDuration(durationMS?: number): string {
+  if (!durationMS || durationMS < 0) {
+    return "0:00";
+  }
+
+  const totalSeconds = Math.floor(durationMS / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 function parseError(error: unknown): string {

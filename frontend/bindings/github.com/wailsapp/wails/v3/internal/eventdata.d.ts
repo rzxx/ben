@@ -7,11 +7,19 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as player$0 from "../../../../../ben/internal/player/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as queue$0 from "../../../../../ben/internal/queue/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as scanner$0 from "../../../../../ben/internal/scanner/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "player:state": player$0.State;
+            "queue:state": queue$0.State;
             "scanner:progress": scanner$0.Progress;
         }
     }

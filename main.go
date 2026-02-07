@@ -4,6 +4,8 @@ import (
 	"ben/internal/config"
 	"ben/internal/db"
 	"ben/internal/library"
+	"ben/internal/player"
+	"ben/internal/queue"
 	"ben/internal/scanner"
 	"embed"
 	"log"
@@ -21,6 +23,8 @@ var assets embed.FS
 
 func init() {
 	application.RegisterEvent[scanner.Progress](scanner.EventProgress)
+	application.RegisterEvent[queue.State](queue.EventStateChanged)
+	application.RegisterEvent[player.State](player.EventStateChanged)
 }
 
 func main() {
@@ -37,10 +41,13 @@ func main() {
 
 	watchedRoots := library.NewWatchedRootRepository(sqliteDB)
 	browseRepo := library.NewBrowseRepository(sqliteDB)
+	queueDomain := queue.NewService(sqliteDB)
+	playerDomain := player.NewService(queueDomain)
 	scannerDomain := scanner.NewService(sqliteDB, watchedRoots)
 	settingsService := NewSettingsService(watchedRoots, scannerDomain)
 	libraryService := NewLibraryService(browseRepo)
-
+	queueService := NewQueueService(queueDomain)
+	playerService := NewPlayerService(playerDomain)
 	scannerService := NewScannerService(scannerDomain)
 
 	app := application.New(application.Options{
@@ -49,6 +56,8 @@ func main() {
 		Services: []application.Service{
 			application.NewService(settingsService),
 			application.NewService(libraryService),
+			application.NewService(queueService),
+			application.NewService(playerService),
 			application.NewService(scannerService),
 		},
 		Assets: application.AssetOptions{
@@ -60,6 +69,12 @@ func main() {
 	})
 
 	scannerDomain.SetEmitter(func(eventName string, payload any) {
+		app.Event.Emit(eventName, payload)
+	})
+	queueDomain.SetEmitter(func(eventName string, payload any) {
+		app.Event.Emit(eventName, payload)
+	})
+	playerDomain.SetEmitter(func(eventName string, payload any) {
 		app.Event.Emit(eventName, payload)
 	})
 
