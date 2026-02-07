@@ -1,10 +1,12 @@
 package main
 
 import (
+	"ben/internal/config"
+	"ben/internal/db"
+	"ben/internal/library"
+	"ben/internal/scanner"
 	"embed"
-	_ "embed"
 	"log"
-	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -18,27 +20,33 @@ import (
 var assets embed.FS
 
 func init() {
-	// Register a custom event whose associated data type is string.
-	// This is not required, but the binding generator will pick up registered events
-	// and provide a strongly typed JS/TS API for them.
-	application.RegisterEvent[string]("time")
+	application.RegisterEvent[scanner.Progress](scanner.EventProgress)
 }
 
-// main function serves as the application's entry point. It initializes the application, creates a window,
-// and starts a goroutine that emits a time-based event every second. It subsequently runs the application and
-// logs any error that might occur.
 func main() {
+	paths, err := config.ResolvePaths("ben")
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// Create a new Wails application by providing the necessary options.
-	// Variables 'Name' and 'Description' are for application metadata.
-	// 'Assets' configures the asset server with the 'FS' variable pointing to the frontend files.
-	// 'Bind' is a list of Go struct instances. The frontend has access to the methods of these instances.
-	// 'Mac' options tailor the application when running an macOS.
+	sqliteDB, err := db.Bootstrap(paths.DBPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer sqliteDB.Close()
+
+	watchedRoots := library.NewWatchedRootRepository(sqliteDB)
+	settingsService := NewSettingsService(watchedRoots)
+
+	scannerDomain := scanner.NewService()
+	scannerService := NewScannerService(scannerDomain)
+
 	app := application.New(application.Options{
-		Name:        "ben",
-		Description: "A demo of using raw HTML & CSS",
+		Name:        "Ben",
+		Description: "Desktop music player",
 		Services: []application.Service{
-			application.NewService(&GreetService{}),
+			application.NewService(settingsService),
+			application.NewService(scannerService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -48,36 +56,22 @@ func main() {
 		},
 	})
 
-	// Create a new window with the necessary options.
-	// 'Title' is the title of the window.
-	// 'Mac' options tailor the window when running on macOS.
-	// 'BackgroundColour' is the background colour of the window.
-	// 'URL' is the URL that will be loaded into the webview.
+	scannerDomain.SetEmitter(func(eventName string, payload any) {
+		app.Event.Emit(eventName, payload)
+	})
+
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "Window 1",
+		Title: "Ben",
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,
 			TitleBar:                application.MacTitleBarHiddenInset,
 		},
-		BackgroundColour: application.NewRGB(27, 38, 54),
+		BackgroundColour: application.NewRGB(12, 18, 24),
 		URL:              "/",
 	})
 
-	// Create a goroutine that emits an event containing the current time every second.
-	// The frontend can listen to this event and update the UI accordingly.
-	go func() {
-		for {
-			now := time.Now().Format(time.RFC1123)
-			app.Event.Emit("time", now)
-			time.Sleep(time.Second)
-		}
-	}()
-
-	// Run the application. This blocks until the application has been exited.
-	err := app.Run()
-
-	// If an error occurred while running the application, log it and exit.
+	err = app.Run()
 	if err != nil {
 		log.Fatal(err)
 	}

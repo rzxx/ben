@@ -6,9 +6,17 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as scanner$0 from "../../../../../ben/internal/scanner/models.js";
+
 function configure() {
     Object.freeze(Object.assign($Create.Events, {
+        "scanner:progress": $$createType0,
     }));
 }
+
+// Private type creation functions
+const $$createType0 = scanner$0.Progress.createFrom;
 
 configure();
