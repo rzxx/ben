@@ -1,0 +1,16 @@
+{
+  "$schema": "https://btca.dev/btca.schema.json",
+  "dataDirectory": ".btca",
+  "resources": [
+    {
+      "type": "git",
+      "name": "wails3",
+      "url": "https://github.com/wailsapp/wails",
+      "branch": "v3-alpha",
+      "searchPath": "docs/src/content",
+      "specialNotes": "This resource contains repo that has both old website with v2 docs, and new one with wails3. Please, make sure that you're reading info about new version. New docs are in docs/ folder, old are in website/",
+    },
+  ],
+  "model": "gpt-5.3-codex",
+  "provider": "openai",
+}
