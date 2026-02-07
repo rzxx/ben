@@ -5,9 +5,56 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+export class AlbumDetail {
+    "title": string;
+    "albumArtist": string;
+    "year"?: number | null;
+    "trackCount": number;
+    "tracks": TrackSummary[];
+    "page": PageInfo;
+
+    /** Creates a new AlbumDetail instance. */
+    constructor($$source: Partial<AlbumDetail> = {}) {
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("albumArtist" in $$source)) {
+            this["albumArtist"] = "";
+        }
+        if (!("trackCount" in $$source)) {
+            this["trackCount"] = 0;
+        }
+        if (!("tracks" in $$source)) {
+            this["tracks"] = [];
+        }
+        if (!("page" in $$source)) {
+            this["page"] = (new PageInfo());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AlbumDetail instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AlbumDetail {
+        const $$createField4_0 = $$createType1;
+        const $$createField5_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("tracks" in $$parsedSource) {
+            $$parsedSource["tracks"] = $$createField4_0($$parsedSource["tracks"]);
+        }
+        if ("page" in $$parsedSource) {
+            $$parsedSource["page"] = $$createField5_0($$parsedSource["page"]);
+        }
+        return new AlbumDetail($$parsedSource as Partial<AlbumDetail>);
+    }
+}
+
 export class AlbumSummary {
     "title": string;
     "albumArtist": string;
+    "year"?: number | null;
     "trackCount": number;
 
     /** Creates a new AlbumSummary instance. */
@@ -34,9 +81,88 @@ export class AlbumSummary {
     }
 }
 
+export class AlbumsPage {
+    "items": AlbumSummary[];
+    "page": PageInfo;
+
+    /** Creates a new AlbumsPage instance. */
+    constructor($$source: Partial<AlbumsPage> = {}) {
+        if (!("items" in $$source)) {
+            this["items"] = [];
+        }
+        if (!("page" in $$source)) {
+            this["page"] = (new PageInfo());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AlbumsPage instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AlbumsPage {
+        const $$createField0_0 = $$createType4;
+        const $$createField1_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("items" in $$parsedSource) {
+            $$parsedSource["items"] = $$createField0_0($$parsedSource["items"]);
+        }
+        if ("page" in $$parsedSource) {
+            $$parsedSource["page"] = $$createField1_0($$parsedSource["page"]);
+        }
+        return new AlbumsPage($$parsedSource as Partial<AlbumsPage>);
+    }
+}
+
+export class ArtistDetail {
+    "name": string;
+    "trackCount": number;
+    "albumCount": number;
+    "albums": AlbumSummary[];
+    "page": PageInfo;
+
+    /** Creates a new ArtistDetail instance. */
+    constructor($$source: Partial<ArtistDetail> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("trackCount" in $$source)) {
+            this["trackCount"] = 0;
+        }
+        if (!("albumCount" in $$source)) {
+            this["albumCount"] = 0;
+        }
+        if (!("albums" in $$source)) {
+            this["albums"] = [];
+        }
+        if (!("page" in $$source)) {
+            this["page"] = (new PageInfo());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ArtistDetail instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ArtistDetail {
+        const $$createField3_0 = $$createType4;
+        const $$createField4_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("albums" in $$parsedSource) {
+            $$parsedSource["albums"] = $$createField3_0($$parsedSource["albums"]);
+        }
+        if ("page" in $$parsedSource) {
+            $$parsedSource["page"] = $$createField4_0($$parsedSource["page"]);
+        }
+        return new ArtistDetail($$parsedSource as Partial<ArtistDetail>);
+    }
+}
+
 export class ArtistSummary {
     "name": string;
     "trackCount": number;
+    "albumCount": number;
 
     /** Creates a new ArtistSummary instance. */
     constructor($$source: Partial<ArtistSummary> = {}) {
@@ -45,6 +171,9 @@ export class ArtistSummary {
         }
         if (!("trackCount" in $$source)) {
             this["trackCount"] = 0;
+        }
+        if (!("albumCount" in $$source)) {
+            this["albumCount"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -59,11 +188,77 @@ export class ArtistSummary {
     }
 }
 
+export class ArtistsPage {
+    "items": ArtistSummary[];
+    "page": PageInfo;
+
+    /** Creates a new ArtistsPage instance. */
+    constructor($$source: Partial<ArtistsPage> = {}) {
+        if (!("items" in $$source)) {
+            this["items"] = [];
+        }
+        if (!("page" in $$source)) {
+            this["page"] = (new PageInfo());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ArtistsPage instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ArtistsPage {
+        const $$createField0_0 = $$createType6;
+        const $$createField1_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("items" in $$parsedSource) {
+            $$parsedSource["items"] = $$createField0_0($$parsedSource["items"]);
+        }
+        if ("page" in $$parsedSource) {
+            $$parsedSource["page"] = $$createField1_0($$parsedSource["page"]);
+        }
+        return new ArtistsPage($$parsedSource as Partial<ArtistsPage>);
+    }
+}
+
+export class PageInfo {
+    "limit": number;
+    "offset": number;
+    "total": number;
+
+    /** Creates a new PageInfo instance. */
+    constructor($$source: Partial<PageInfo> = {}) {
+        if (!("limit" in $$source)) {
+            this["limit"] = 0;
+        }
+        if (!("offset" in $$source)) {
+            this["offset"] = 0;
+        }
+        if (!("total" in $$source)) {
+            this["total"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PageInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PageInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PageInfo($$parsedSource as Partial<PageInfo>);
+    }
+}
+
 export class TrackSummary {
     "id": number;
     "title": string;
     "artist": string;
     "album": string;
+    "albumArtist": string;
+    "discNo"?: number | null;
+    "trackNo"?: number | null;
+    "durationMs"?: number | null;
     "path": string;
 
     /** Creates a new TrackSummary instance. */
@@ -80,6 +275,9 @@ export class TrackSummary {
         if (!("album" in $$source)) {
             this["album"] = "";
         }
+        if (!("albumArtist" in $$source)) {
+            this["albumArtist"] = "";
+        }
         if (!("path" in $$source)) {
             this["path"] = "";
         }
@@ -93,6 +291,39 @@ export class TrackSummary {
     static createFrom($$source: any = {}): TrackSummary {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new TrackSummary($$parsedSource as Partial<TrackSummary>);
+    }
+}
+
+export class TracksPage {
+    "items": TrackSummary[];
+    "page": PageInfo;
+
+    /** Creates a new TracksPage instance. */
+    constructor($$source: Partial<TracksPage> = {}) {
+        if (!("items" in $$source)) {
+            this["items"] = [];
+        }
+        if (!("page" in $$source)) {
+            this["page"] = (new PageInfo());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TracksPage instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TracksPage {
+        const $$createField0_0 = $$createType1;
+        const $$createField1_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("items" in $$parsedSource) {
+            $$parsedSource["items"] = $$createField0_0($$parsedSource["items"]);
+        }
+        if ("page" in $$parsedSource) {
+            $$parsedSource["page"] = $$createField1_0($$parsedSource["page"]);
+        }
+        return new TracksPage($$parsedSource as Partial<TracksPage>);
     }
 }
 
@@ -128,3 +359,12 @@ export class WatchedRoot {
         return new WatchedRoot($$parsedSource as Partial<WatchedRoot>);
     }
 }
+
+// Private type creation functions
+const $$createType0 = TrackSummary.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = PageInfo.createFrom;
+const $$createType3 = AlbumSummary.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = ArtistSummary.createFrom;
+const $$createType6 = $Create.Array($$createType5);

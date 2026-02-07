@@ -184,6 +184,82 @@ button:disabled {
   gap: 0.65rem;
 }
 
+.search-form {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.search-form input {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(133, 182, 179, 0.35);
+  background: rgba(3, 16, 22, 0.85);
+  color: var(--text-main);
+  padding: 0.55rem 0.7rem;
+}
+
+.library-groups {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.library-group {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.entity-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.entity-row {
+  border-radius: 10px;
+  border: 1px solid rgba(133, 182, 179, 0.2);
+  background: rgba(8, 29, 38, 0.74);
+  padding: 0.55rem 0.6rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.entity-row span {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.entity-button {
+  width: 100%;
+  text-align: left;
+  border-radius: 10px;
+  border: 1px solid rgba(133, 182, 179, 0.2);
+  background: rgba(8, 29, 38, 0.74);
+  padding: 0.55rem 0.6rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.entity-button span {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.entity-button.selected {
+  border-color: rgba(116, 212, 190, 0.6);
+  background: rgba(116, 212, 190, 0.18);
+}
+
+.pager {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.summary-row {
+  color: var(--text-muted);
+}
+
 .stat-list div {
   padding: 0.7rem;
   border-radius: 12px;
@@ -323,6 +399,10 @@ button:disabled {
   color: var(--danger);
 }
 
+.queue-panel {
+  grid-column: span 12;
+}
+
 @media (max-width: 960px) {
   .panel:nth-child(1),
   .panel:nth-child(2),
@@ -352,6 +432,10 @@ button:disabled {
   }
 
   .add-form {
+    flex-direction: column;
+  }
+
+  .search-form {
     flex-direction: column;
   }
 

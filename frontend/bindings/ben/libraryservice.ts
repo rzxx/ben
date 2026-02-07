@@ -9,28 +9,39 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // @ts-ignore: Unused imports
 import * as library$0 from "./internal/library/models.js";
 
-export function ListAlbums(): $CancellablePromise<library$0.AlbumSummary[]> {
-    return $Call.ByID(1263870718).then(($result: any) => {
+export function GetAlbumDetail(title: string, albumArtist: string, limit: number, offset: number): $CancellablePromise<library$0.AlbumDetail> {
+    return $Call.ByID(210486280, title, albumArtist, limit, offset).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
+export function GetArtistDetail(name: string, limit: number, offset: number): $CancellablePromise<library$0.ArtistDetail> {
+    return $Call.ByID(64858316, name, limit, offset).then(($result: any) => {
         return $$createType1($result);
     });
 }
 
-export function ListArtists(): $CancellablePromise<library$0.ArtistSummary[]> {
-    return $Call.ByID(1280729162).then(($result: any) => {
+export function ListAlbums(search: string, artist: string, limit: number, offset: number): $CancellablePromise<library$0.AlbumsPage> {
+    return $Call.ByID(1263870718, search, artist, limit, offset).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
+export function ListArtists(search: string, limit: number, offset: number): $CancellablePromise<library$0.ArtistsPage> {
+    return $Call.ByID(1280729162, search, limit, offset).then(($result: any) => {
         return $$createType3($result);
     });
 }
 
-export function ListTracks(): $CancellablePromise<library$0.TrackSummary[]> {
-    return $Call.ByID(1495798414).then(($result: any) => {
-        return $$createType5($result);
+export function ListTracks(search: string, artist: string, album: string, limit: number, offset: number): $CancellablePromise<library$0.TracksPage> {
+    return $Call.ByID(1495798414, search, artist, album, limit, offset).then(($result: any) => {
+        return $$createType4($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = library$0.AlbumSummary.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = library$0.ArtistSummary.createFrom;
-const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = library$0.TrackSummary.createFrom;
-const $$createType5 = $Create.Array($$createType4);
+const $$createType0 = library$0.AlbumDetail.createFrom;
+const $$createType1 = library$0.ArtistDetail.createFrom;
+const $$createType2 = library$0.AlbumsPage.createFrom;
+const $$createType3 = library$0.ArtistsPage.createFrom;
+const $$createType4 = library$0.TracksPage.createFrom;
