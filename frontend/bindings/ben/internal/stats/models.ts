@@ -39,6 +39,7 @@ export class Overview {
     "tracksPlayed": number;
     "completeCount": number;
     "skipCount": number;
+    "partialCount": number;
     "topTracks": TrackStat[];
     "topArtists": ArtistStat[];
 
@@ -56,6 +57,9 @@ export class Overview {
         if (!("skipCount" in $$source)) {
             this["skipCount"] = 0;
         }
+        if (!("partialCount" in $$source)) {
+            this["partialCount"] = 0;
+        }
         if (!("topTracks" in $$source)) {
             this["topTracks"] = [];
         }
@@ -70,14 +74,14 @@ export class Overview {
      * Creates a new Overview instance from a string or object.
      */
     static createFrom($$source: any = {}): Overview {
-        const $$createField4_0 = $$createType1;
-        const $$createField5_0 = $$createType3;
+        const $$createField5_0 = $$createType1;
+        const $$createField6_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("topTracks" in $$parsedSource) {
-            $$parsedSource["topTracks"] = $$createField4_0($$parsedSource["topTracks"]);
+            $$parsedSource["topTracks"] = $$createField5_0($$parsedSource["topTracks"]);
         }
         if ("topArtists" in $$parsedSource) {
-            $$parsedSource["topArtists"] = $$createField5_0($$parsedSource["topArtists"]);
+            $$parsedSource["topArtists"] = $$createField6_0($$parsedSource["topArtists"]);
         }
         return new Overview($$parsedSource as Partial<Overview>);
     }
@@ -92,6 +96,7 @@ export class TrackStat {
     "playedMs": number;
     "completeCount": number;
     "skipCount": number;
+    "partialCount": number;
 
     /** Creates a new TrackStat instance. */
     constructor($$source: Partial<TrackStat> = {}) {
@@ -115,6 +120,9 @@ export class TrackStat {
         }
         if (!("skipCount" in $$source)) {
             this["skipCount"] = 0;
+        }
+        if (!("partialCount" in $$source)) {
+            this["partialCount"] = 0;
         }
 
         Object.assign(this, $$source);

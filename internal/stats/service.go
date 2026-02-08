@@ -18,7 +18,13 @@ const EventSkip = "skip"
 
 const EventPartial = "partial"
 
-const heartbeatInterval = 10 * time.Second
+const heartbeatInterval = 30 * time.Second
+
+const compactionCheckInterval = 6 * time.Hour
+
+const rawEventRetentionDays = 30
+
+const dayKeyLayout = "2006-01-02"
 
 const maxDeltaMS = 30000
 
@@ -90,6 +96,9 @@ type Service struct {
 	activePlayedMS  int
 	pendingPlayedMS int
 	lastObservedAt  time.Time
+
+	lastCompactionAt  time.Time
+	compactionRunning bool
 }
 
 type playEvent struct {
@@ -100,7 +109,9 @@ type playEvent struct {
 }
 
 func NewService(database *sql.DB) *Service {
-	return &Service{db: database}
+	service := &Service{db: database}
+	service.maybeCompact(time.Now().UTC())
+	return service
 }
 
 func (s *Service) HandlePlayerState(state player.State) {
@@ -135,6 +146,17 @@ func (s *Service) HandlePlayerState(state player.State) {
 					})
 				}
 			}
+		}
+
+		pausedOrInterrupted := s.activePlayback && (status != player.StatusPlaying || trackID != s.activeTrackID)
+		if pausedOrInterrupted && s.pendingPlayedMS > 0 {
+			events = append(events, playEvent{
+				trackID:   s.activeTrackID,
+				eventType: EventHeartbeat,
+				position:  s.pendingPlayedMS,
+				at:        observedAt,
+			})
+			s.pendingPlayedMS = 0
 		}
 
 		finalize := shouldFinalizeTrack(s.activeTrackID, trackID, status)
@@ -192,6 +214,7 @@ func (s *Service) HandlePlayerState(state player.State) {
 	s.mu.Unlock()
 
 	s.persistEvents(events)
+	s.maybeCompact(time.Now().UTC())
 }
 
 func (s *Service) GetOverview(limit int) (Overview, error) {
@@ -199,19 +222,37 @@ func (s *Service) GetOverview(limit int) (Overview, error) {
 		return Overview{}, nil
 	}
 
+	s.maybeCompact(time.Now().UTC())
+
 	normalizedLimit := normalizeTopLimit(limit)
 	ctx := context.Background()
 
 	overview := Overview{}
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT
-			COALESCE(SUM(CASE WHEN event_type = ? THEN COALESCE(position_ms, 0) ELSE 0 END), 0) AS total_played_ms,
-			COUNT(DISTINCT CASE WHEN event_type = ? AND COALESCE(position_ms, 0) > 0 THEN track_id END) AS tracks_played,
-			COALESCE(SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END), 0) AS complete_count,
-			COALESCE(SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END), 0) AS skip_count,
-			COALESCE(SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END), 0) AS partial_count
-		FROM play_events
-	`, EventHeartbeat, EventHeartbeat, EventComplete, EventSkip, EventPartial).Scan(
+			COALESCE(SUM(played_ms), 0) AS total_played_ms,
+			COUNT(DISTINCT CASE WHEN played_ms > 0 THEN track_id END) AS tracks_played,
+			COALESCE(SUM(complete_count), 0) AS complete_count,
+			COALESCE(SUM(skip_count), 0) AS skip_count,
+			COALESCE(SUM(partial_count), 0) AS partial_count
+		FROM (
+			SELECT
+				track_id,
+				CASE WHEN event_type = ? THEN COALESCE(position_ms, 0) ELSE 0 END AS played_ms,
+				CASE WHEN event_type = ? THEN 1 ELSE 0 END AS complete_count,
+				CASE WHEN event_type = ? THEN 1 ELSE 0 END AS skip_count,
+				CASE WHEN event_type = ? THEN 1 ELSE 0 END AS partial_count
+			FROM play_events
+			UNION ALL
+			SELECT
+				track_id,
+				played_ms,
+				complete_count,
+				skip_count,
+				partial_count
+			FROM play_stats_daily
+		) AS metrics
+	`, EventHeartbeat, EventComplete, EventSkip, EventPartial).Scan(
 		&overview.TotalPlayedMS,
 		&overview.TracksPlayed,
 		&overview.CompleteCount,
@@ -238,34 +279,57 @@ func (s *Service) GetOverview(limit int) (Overview, error) {
 
 func (s *Service) readTopTracks(ctx context.Context, limit int) ([]TrackStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
+		WITH track_metrics AS (
+			SELECT
+				track_id,
+				COALESCE(SUM(played_ms), 0) AS played_ms,
+				COALESCE(SUM(complete_count), 0) AS complete_count,
+				COALESCE(SUM(skip_count), 0) AS skip_count,
+				COALESCE(SUM(partial_count), 0) AS partial_count
+			FROM (
+				SELECT
+					track_id,
+					CASE WHEN event_type = ? THEN COALESCE(position_ms, 0) ELSE 0 END AS played_ms,
+					CASE WHEN event_type = ? THEN 1 ELSE 0 END AS complete_count,
+					CASE WHEN event_type = ? THEN 1 ELSE 0 END AS skip_count,
+					CASE WHEN event_type = ? THEN 1 ELSE 0 END AS partial_count
+				FROM play_events
+				UNION ALL
+				SELECT
+					track_id,
+					played_ms,
+					complete_count,
+					skip_count,
+					partial_count
+				FROM play_stats_daily
+			) AS metrics
+			GROUP BY track_id
+		)
 		SELECT
 			t.id,
 			COALESCE(NULLIF(TRIM(t.title), ''), 'Unknown Title') AS track_title,
 			COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist') AS track_artist,
 			COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album') AS track_album,
 			cover.cache_path,
-			COALESCE(SUM(CASE WHEN pe.event_type = ? THEN COALESCE(pe.position_ms, 0) ELSE 0 END), 0) AS played_ms,
-			COALESCE(SUM(CASE WHEN pe.event_type = ? THEN 1 ELSE 0 END), 0) AS complete_count,
-			COALESCE(SUM(CASE WHEN pe.event_type = ? THEN 1 ELSE 0 END), 0) AS skip_count,
-			COALESCE(SUM(CASE WHEN pe.event_type = ? THEN 1 ELSE 0 END), 0) AS partial_count
-		FROM play_events pe
-		JOIN tracks t ON t.id = pe.track_id
+			tm.played_ms,
+			tm.complete_count,
+			tm.skip_count,
+			tm.partial_count
+		FROM track_metrics tm
+		JOIN tracks t ON t.id = tm.track_id
 		JOIN files f ON f.id = t.file_id
 		LEFT JOIN covers cover ON cover.source_file_id = t.file_id
-		WHERE f.file_exists = 1
-		GROUP BY t.id, track_title, track_artist, track_album, cover.cache_path
-		HAVING
-			COALESCE(SUM(CASE WHEN pe.event_type = ? THEN COALESCE(pe.position_ms, 0) ELSE 0 END), 0) > 0
-			OR COALESCE(SUM(CASE WHEN pe.event_type = ? THEN 1 ELSE 0 END), 0) > 0
-			OR COALESCE(SUM(CASE WHEN pe.event_type = ? THEN 1 ELSE 0 END), 0) > 0
-			OR COALESCE(SUM(CASE WHEN pe.event_type = ? THEN 1 ELSE 0 END), 0) > 0
+		WHERE
+			f.file_exists = 1
+			AND (
+				tm.played_ms > 0
+				OR tm.complete_count > 0
+				OR tm.skip_count > 0
+				OR tm.partial_count > 0
+			)
 		ORDER BY played_ms DESC, complete_count DESC, skip_count ASC, LOWER(track_title)
 		LIMIT ?
 	`,
-		EventHeartbeat,
-		EventComplete,
-		EventSkip,
-		EventPartial,
 		EventHeartbeat,
 		EventComplete,
 		EventSkip,
@@ -308,19 +372,45 @@ func (s *Service) readTopTracks(ctx context.Context, limit int) ([]TrackStat, er
 
 func (s *Service) readTopArtists(ctx context.Context, limit int) ([]ArtistStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
+		WITH track_metrics AS (
+			SELECT
+				track_id,
+				COALESCE(SUM(played_ms), 0) AS played_ms,
+				COALESCE(SUM(complete_count), 0) AS complete_count,
+				COALESCE(SUM(skip_count), 0) AS skip_count,
+				COALESCE(SUM(partial_count), 0) AS partial_count
+			FROM (
+				SELECT
+					track_id,
+					CASE WHEN event_type = ? THEN COALESCE(position_ms, 0) ELSE 0 END AS played_ms,
+					CASE WHEN event_type = ? THEN 1 ELSE 0 END AS complete_count,
+					CASE WHEN event_type = ? THEN 1 ELSE 0 END AS skip_count,
+					CASE WHEN event_type = ? THEN 1 ELSE 0 END AS partial_count
+				FROM play_events
+				UNION ALL
+				SELECT
+					track_id,
+					played_ms,
+					complete_count,
+					skip_count,
+					partial_count
+				FROM play_stats_daily
+			) AS metrics
+			GROUP BY track_id
+		)
 		SELECT
 			COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist') AS artist_name,
-			COALESCE(SUM(CASE WHEN pe.event_type = ? THEN COALESCE(pe.position_ms, 0) ELSE 0 END), 0) AS played_ms,
+			COALESCE(SUM(tm.played_ms), 0) AS played_ms,
 			COUNT(DISTINCT t.id) AS track_count
-		FROM play_events pe
-		JOIN tracks t ON t.id = pe.track_id
+		FROM track_metrics tm
+		JOIN tracks t ON t.id = tm.track_id
 		JOIN files f ON f.id = t.file_id
 		WHERE f.file_exists = 1
 		GROUP BY artist_name
-		HAVING COALESCE(SUM(CASE WHEN pe.event_type = ? THEN COALESCE(pe.position_ms, 0) ELSE 0 END), 0) > 0
+		HAVING COALESCE(SUM(tm.played_ms), 0) > 0
 		ORDER BY played_ms DESC, LOWER(artist_name)
 		LIMIT ?
-	`, EventHeartbeat, EventHeartbeat, limit)
+	`, EventHeartbeat, EventComplete, EventSkip, EventPartial, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -376,6 +466,107 @@ func (s *Service) persistEvents(events []playEvent) {
 	}
 
 	_ = tx.Commit()
+}
+
+func (s *Service) maybeCompact(reference time.Time) {
+	if s.db == nil {
+		return
+	}
+
+	now := reference.UTC()
+
+	s.mu.Lock()
+	if s.compactionRunning {
+		s.mu.Unlock()
+		return
+	}
+	if !s.lastCompactionAt.IsZero() && now.Sub(s.lastCompactionAt) < compactionCheckInterval {
+		s.mu.Unlock()
+		return
+	}
+
+	s.compactionRunning = true
+	s.lastCompactionAt = now
+	s.mu.Unlock()
+
+	s.compactOldEvents(now)
+
+	s.mu.Lock()
+	s.compactionRunning = false
+	s.mu.Unlock()
+}
+
+func (s *Service) compactOldEvents(reference time.Time) {
+	if s.db == nil {
+		return
+	}
+
+	cutoff := startOfUTCDay(reference).AddDate(0, 0, -rawEventRetentionDays)
+	cutoffTimestamp := cutoff.Format(time.RFC3339)
+	updatedAt := reference.UTC().Format(time.RFC3339)
+
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return
+	}
+
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO play_stats_daily(
+			day,
+			track_id,
+			played_ms,
+			heartbeat_count,
+			complete_count,
+			skip_count,
+			partial_count,
+			updated_at
+		)
+		SELECT
+			substr(ts, 1, 10) AS day,
+			track_id,
+			COALESCE(SUM(CASE WHEN event_type = ? THEN COALESCE(position_ms, 0) ELSE 0 END), 0) AS played_ms,
+			COALESCE(SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END), 0) AS heartbeat_count,
+			COALESCE(SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END), 0) AS complete_count,
+			COALESCE(SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END), 0) AS skip_count,
+			COALESCE(SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END), 0) AS partial_count,
+			? AS updated_at
+		FROM play_events
+		WHERE ts < ?
+		GROUP BY day, track_id
+		ON CONFLICT(day, track_id) DO UPDATE SET
+			played_ms = excluded.played_ms,
+			heartbeat_count = excluded.heartbeat_count,
+			complete_count = excluded.complete_count,
+			skip_count = excluded.skip_count,
+			partial_count = excluded.partial_count,
+			updated_at = excluded.updated_at
+	`,
+		EventHeartbeat,
+		EventHeartbeat,
+		EventComplete,
+		EventSkip,
+		EventPartial,
+		updatedAt,
+		cutoffTimestamp,
+	); err != nil {
+		return
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM play_events WHERE ts < ?`, cutoffTimestamp); err != nil {
+		return
+	}
+
+	_ = tx.Commit()
+}
+
+func startOfUTCDay(value time.Time) time.Time {
+	utcValue := value.UTC()
+	return time.Date(utcValue.Year(), utcValue.Month(), utcValue.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 func shouldFinalizeTrack(activeTrackID int64, currentTrackID int64, status string) bool {
