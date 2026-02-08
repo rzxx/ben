@@ -2,10 +2,10 @@
 set -e
 
 # Build configuration
-APP_NAME="ben.exe"
-BUNDLE_ID="com.example.ben"
-VERSION="0.1.0"
-BUILD_NUMBER="0.1.0"
+APP_NAME="ben"
+BUNDLE_ID="io.ben.player"
+VERSION="0.0.1"
+BUILD_NUMBER="0.0.1"
 BUILD_DIR="build/ios"
 TARGET="simulator"
 

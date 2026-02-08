@@ -12,7 +12,6 @@ type PlayerBarProps = {
   seekValue: number;
   onPreviousTrack: () => Promise<void>;
   onTogglePlayback: () => Promise<void>;
-  onStopPlayback: () => Promise<void>;
   onNextTrack: () => Promise<void>;
   onSeek: (positionMS: number) => Promise<void>;
   onSetVolume: (volume: number) => Promise<void>;
@@ -53,9 +52,6 @@ export function PlayerBar(props: PlayerBarProps) {
           </button>
           <button onClick={() => void props.onTogglePlayback()} disabled={props.queueState.total === 0 || props.transportBusy}>
             {props.playPauseLabel}
-          </button>
-          <button onClick={() => void props.onStopPlayback()} disabled={!props.hasCurrentTrack || props.transportBusy}>
-            Stop
           </button>
           <button onClick={() => void props.onNextTrack()} disabled={!props.hasCurrentTrack || props.transportBusy}>
             Next

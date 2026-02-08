@@ -26,10 +26,6 @@ func (s *PlayerService) TogglePlayback() (player.State, error) {
 	return s.player.TogglePlayback()
 }
 
-func (s *PlayerService) Stop() (player.State, error) {
-	return s.player.Stop()
-}
-
 func (s *PlayerService) Next() (player.State, error) {
 	return s.player.Next()
 }

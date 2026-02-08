@@ -15,7 +15,7 @@ import (
 const EventStateChanged = "player:state"
 
 const (
-	StatusStopped = "stopped"
+	StatusIdle    = "idle"
 	StatusPaused  = "paused"
 	StatusPlaying = "playing"
 )
@@ -67,7 +67,7 @@ func NewService(database *sql.DB, queueService *queue.Service) *Service {
 	service := &Service{
 		db:     database,
 		queue:  queueService,
-		status: StatusStopped,
+		status: StatusIdle,
 		volume: defaultVolume,
 	}
 
@@ -185,28 +185,6 @@ func (s *Service) TogglePlayback() (State, error) {
 	return s.Play()
 }
 
-func (s *Service) Stop() (State, error) {
-	backend, err := s.requireBackend()
-	if err != nil {
-		return s.GetState(), err
-	}
-
-	if err := backend.Stop(); err != nil {
-		return s.GetState(), fmt.Errorf("stop playback: %w", err)
-	}
-
-	s.mu.Lock()
-	s.status = StatusStopped
-	s.positionMS = 0
-	s.updatedAt = time.Now().UTC()
-	s.stopTickerLocked()
-	s.mu.Unlock()
-
-	state := s.GetState()
-	s.emitState(state)
-	return state, nil
-}
-
 func (s *Service) Next() (State, error) {
 	backend, err := s.requireBackend()
 	if err != nil {
@@ -222,7 +200,7 @@ func (s *Service) Next() (State, error) {
 	queueState, moved := s.queue.Next()
 	restore()
 	if !moved {
-		return s.Stop()
+		return s.transitionToIdle(queueState, backend, true), nil
 	}
 
 	if err := s.loadTrack(backend, queueState.CurrentTrack, true); err != nil {
@@ -247,7 +225,7 @@ func (s *Service) Next() (State, error) {
 		s.status = StatusPaused
 		s.stopTickerLocked()
 	} else {
-		s.status = StatusStopped
+		s.status = StatusIdle
 		s.stopTickerLocked()
 	}
 	s.updatedAt = time.Now().UTC()
@@ -304,7 +282,7 @@ func (s *Service) Previous() (State, error) {
 		s.status = StatusPaused
 		s.stopTickerLocked()
 	} else {
-		s.status = StatusStopped
+		s.status = StatusIdle
 		s.stopTickerLocked()
 	}
 	s.updatedAt = time.Now().UTC()
@@ -383,21 +361,7 @@ func (s *Service) onQueueChanged(queueState queue.State) {
 	}
 
 	if queueState.CurrentTrack == nil {
-		if backend := s.tryBackend(); backend != nil {
-			_ = backend.Stop()
-		}
-
-		s.mu.Lock()
-		s.status = StatusStopped
-		s.positionMS = 0
-		s.durationMS = nil
-		s.hasCurrent = false
-		s.currentTrackID = 0
-		s.updatedAt = time.Now().UTC()
-		s.stopTickerLocked()
-		s.mu.Unlock()
-
-		s.emitState(s.stateFromQueue(queueState))
+		s.transitionToIdle(queueState, nil, true)
 		return
 	}
 
@@ -450,7 +414,7 @@ func (s *Service) onBackendEOF() {
 	queueState, moved := s.queue.AdvanceAutoplay()
 	restore()
 	if !moved {
-		_, _ = s.Stop()
+		s.transitionToIdle(queueState, backend, true)
 		return
 	}
 
@@ -517,7 +481,7 @@ func (s *Service) loadPlaybackStateSnapshot() {
 	}
 
 	if queueState.CurrentTrack == nil {
-		loadedStatus = StatusStopped
+		loadedStatus = StatusIdle
 		loadedPosition = 0
 		loadedDuration = nil
 	}
@@ -593,6 +557,42 @@ func (s *Service) refreshPlaybackPosition(backend playbackBackend) {
 	s.updatedAt = time.Now().UTC()
 }
 
+func (s *Service) transitionToIdle(queueState queue.State, backend playbackBackend, resetPosition bool) State {
+	if backend == nil {
+		backend = s.tryBackend()
+	}
+
+	if backend != nil {
+		_ = backend.Pause()
+		if resetPosition {
+			_ = backend.Seek(0)
+		}
+	}
+
+	s.mu.Lock()
+	s.status = StatusIdle
+	if resetPosition {
+		s.positionMS = 0
+	}
+	if queueState.CurrentTrack == nil {
+		s.durationMS = nil
+		s.hasCurrent = false
+		s.currentTrackID = 0
+	} else {
+		s.setCurrentTrackLocked(queueState.CurrentTrack, false)
+		if resetPosition {
+			s.durationMS = trackDuration(queueState.CurrentTrack)
+		}
+	}
+	s.updatedAt = time.Now().UTC()
+	s.stopTickerLocked()
+	s.mu.Unlock()
+
+	state := s.stateFromQueue(queueState)
+	s.emitState(state)
+	return state
+}
+
 func (s *Service) currentDuration(track *library.TrackSummary) *int {
 	s.mu.Lock()
 	duration := s.durationMS
@@ -647,7 +647,7 @@ func (s *Service) onTick() {
 
 	queueState := s.queue.GetState()
 	if queueState.CurrentTrack == nil {
-		_, _ = s.Stop()
+		s.transitionToIdle(queueState, backend, true)
 		return
 	}
 
@@ -688,7 +688,7 @@ func (s *Service) stateFromQueue(queueState queue.State) State {
 	s.mu.Unlock()
 
 	if queueState.CurrentTrack == nil {
-		status = StatusStopped
+		status = StatusIdle
 		positionMS = 0
 		duration = nil
 	}
@@ -802,7 +802,9 @@ func normalizePlayerStatus(value string) string {
 		return StatusPlaying
 	case StatusPaused:
 		return StatusPaused
+	case StatusIdle, "stopped":
+		return StatusIdle
 	default:
-		return StatusStopped
+		return StatusIdle
 	}
 }

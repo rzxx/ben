@@ -17,6 +17,8 @@ type mpvBackend struct {
 	onEOF       func()
 	closeOnce   sync.Once
 	closed      chan struct{}
+	stopLoop    chan struct{}
+	closing     bool
 	eventLoopWG sync.WaitGroup
 }
 
@@ -37,8 +39,9 @@ func newPlaybackBackend() (playbackBackend, error) {
 	}
 
 	backend := &mpvBackend{
-		client: client,
-		closed: make(chan struct{}),
+		client:   client,
+		closed:   make(chan struct{}),
+		stopLoop: make(chan struct{}),
 	}
 
 	_ = client.RequestEvent(mpv.EventEnd, true)
@@ -53,12 +56,16 @@ func newPlaybackBackend() (playbackBackend, error) {
 func (b *mpvBackend) Load(path string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	client, err := b.requireClientLocked()
+	if err != nil {
+		return err
+	}
 
-	if err := b.client.SetPropertyString(mpvPauseProperty, "yes"); err != nil {
+	if err := client.SetPropertyString(mpvPauseProperty, "yes"); err != nil {
 		return fmt.Errorf("set pause before load: %w", err)
 	}
 
-	if err := b.client.Command([]string{"loadfile", path, "replace"}); err != nil {
+	if err := client.Command([]string{"loadfile", path, "replace"}); err != nil {
 		return fmt.Errorf("load file %q: %w", path, err)
 	}
 
@@ -68,8 +75,12 @@ func (b *mpvBackend) Load(path string) error {
 func (b *mpvBackend) Play() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	client, err := b.requireClientLocked()
+	if err != nil {
+		return err
+	}
 
-	if err := b.client.SetPropertyString(mpvPauseProperty, "no"); err != nil {
+	if err := client.SetPropertyString(mpvPauseProperty, "no"); err != nil {
 		return fmt.Errorf("resume playback: %w", err)
 	}
 
@@ -79,20 +90,13 @@ func (b *mpvBackend) Play() error {
 func (b *mpvBackend) Pause() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
-	if err := b.client.SetPropertyString(mpvPauseProperty, "yes"); err != nil {
-		return fmt.Errorf("pause playback: %w", err)
+	client, err := b.requireClientLocked()
+	if err != nil {
+		return err
 	}
 
-	return nil
-}
-
-func (b *mpvBackend) Stop() error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	if err := b.client.Command([]string{"stop"}); err != nil {
-		return fmt.Errorf("stop playback: %w", err)
+	if err := client.SetPropertyString(mpvPauseProperty, "yes"); err != nil {
+		return fmt.Errorf("pause playback: %w", err)
 	}
 
 	return nil
@@ -101,9 +105,13 @@ func (b *mpvBackend) Stop() error {
 func (b *mpvBackend) Seek(positionMS int) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	client, err := b.requireClientLocked()
+	if err != nil {
+		return err
+	}
 
 	seconds := float64(positionMS) / 1000.0
-	if err := b.client.SetProperty(mpvPositionProperty, mpv.FormatDouble, seconds); err != nil {
+	if err := client.SetProperty(mpvPositionProperty, mpv.FormatDouble, seconds); err != nil {
 		return fmt.Errorf("seek playback: %w", err)
 	}
 
@@ -113,8 +121,12 @@ func (b *mpvBackend) Seek(positionMS int) error {
 func (b *mpvBackend) SetVolume(volume int) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	client, err := b.requireClientLocked()
+	if err != nil {
+		return err
+	}
 
-	if err := b.client.SetProperty(mpvVolumeProperty, mpv.FormatDouble, float64(volume)); err != nil {
+	if err := client.SetProperty(mpvVolumeProperty, mpv.FormatDouble, float64(volume)); err != nil {
 		return fmt.Errorf("set volume: %w", err)
 	}
 
@@ -124,6 +136,10 @@ func (b *mpvBackend) SetVolume(volume int) error {
 func (b *mpvBackend) PositionMS() (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	_, err := b.requireClientLocked()
+	if err != nil {
+		return 0, err
+	}
 
 	milliseconds, ok, err := b.readMillisecondsPropertyLocked(mpvPositionProperty)
 	if err != nil {
@@ -139,6 +155,10 @@ func (b *mpvBackend) PositionMS() (int, error) {
 func (b *mpvBackend) DurationMS() (*int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	_, err := b.requireClientLocked()
+	if err != nil {
+		return nil, err
+	}
 
 	milliseconds, ok, err := b.readMillisecondsPropertyLocked(mpvDurationProperty)
 	if err != nil {
@@ -155,21 +175,39 @@ func (b *mpvBackend) DurationMS() (*int, error) {
 func (b *mpvBackend) SetOnEOF(callback func()) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.closing {
+		return
+	}
 	b.onEOF = callback
 }
 
 func (b *mpvBackend) Close() error {
 	b.closeOnce.Do(func() {
 		b.mu.Lock()
+		b.closing = true
 		client := b.client
+		stopLoop := b.stopLoop
 		b.mu.Unlock()
+
+		if stopLoop != nil {
+			close(stopLoop)
+		}
 
 		if client != nil {
 			client.Wakeup()
-			client.TerminateDestroy()
 		}
 
 		b.eventLoopWG.Wait()
+
+		if client != nil {
+			client.TerminateDestroy()
+		}
+
+		b.mu.Lock()
+		b.client = nil
+		b.onEOF = nil
+		b.mu.Unlock()
+
 		close(b.closed)
 	})
 
@@ -181,7 +219,27 @@ func (b *mpvBackend) eventLoop() {
 	defer b.eventLoopWG.Done()
 
 	for {
-		event := b.client.WaitEvent(0.5)
+		select {
+		case <-b.stopLoop:
+			return
+		default:
+		}
+
+		b.mu.Lock()
+		client := b.client
+		b.mu.Unlock()
+		if client == nil {
+			return
+		}
+
+		event := client.WaitEvent(0.5)
+
+		select {
+		case <-b.stopLoop:
+			return
+		default:
+		}
+
 		if event == nil {
 			continue
 		}
@@ -197,12 +255,21 @@ func (b *mpvBackend) eventLoop() {
 
 			b.mu.Lock()
 			onEOF := b.onEOF
+			closing := b.closing
 			b.mu.Unlock()
-			if onEOF != nil {
+			if !closing && onEOF != nil {
 				onEOF()
 			}
 		}
 	}
+}
+
+func (b *mpvBackend) requireClientLocked() (*mpv.Mpv, error) {
+	if b.closing || b.client == nil {
+		return nil, errors.New("libmpv backend is closed")
+	}
+
+	return b.client, nil
 }
 
 func (b *mpvBackend) readMillisecondsPropertyLocked(property string) (int, bool, error) {

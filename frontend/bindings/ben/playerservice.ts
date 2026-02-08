@@ -51,12 +51,6 @@ export function SetVolume(volume: number): $CancellablePromise<player$0.State> {
     });
 }
 
-export function Stop(): $CancellablePromise<player$0.State> {
-    return $Call.ByID(2311398648).then(($result: any) => {
-        return $$createType0($result);
-    });
-}
-
 export function TogglePlayback(): $CancellablePromise<player$0.State> {
     return $Call.ByID(427686917).then(($result: any) => {
         return $$createType0($result);

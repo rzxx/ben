@@ -7,11 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/zzl/go-com/com"
@@ -20,12 +19,13 @@ import (
 )
 
 const (
-	smtcClassName                  = "Windows.Media.SystemMediaTransportControls"
-	timelineClassName              = "Windows.Media.SystemMediaTransportControlsTimelineProperties"
-	uriClassName                   = "Windows.Foundation.Uri"
-	streamReferenceClassName       = "Windows.Storage.Streams.RandomAccessStreamReference"
-	appMediaID                     = "Ben"
-	timespanTickPerMS        int64 = 10000
+	smtcClassName                   = "Windows.Media.SystemMediaTransportControls"
+	timelineClassName               = "Windows.Media.SystemMediaTransportControlsTimelineProperties"
+	streamReferenceClassName        = "Windows.Storage.Streams.RandomAccessStreamReference"
+	storageFileClassName            = "Windows.Storage.StorageFile"
+	appMediaID                      = "Ben"
+	timespanTickPerMS         int64 = 10000
+	storageFileResolveTimeout       = 2 * time.Second
 )
 
 type Service struct {
@@ -45,11 +45,12 @@ type runtimeState struct {
 	musicProps   *winrt.IMusicDisplayProperties
 	musicProps2  *winrt.IMusicDisplayProperties2
 	timeline     *winrt.ISystemMediaTransportControlsTimelineProperties
-	uriFactory   *winrt.IUriRuntimeClassFactory
 	streamRefs   *winrt.IRandomAccessStreamReferenceStatics
+	storageFiles *winrt.IStorageFileStatics
 	buttonToken  winrt.EventRegistrationToken
 	hookAttached bool
 	lastTrackID  int64
+	lastCover    string
 	hasTrack     bool
 }
 
@@ -202,7 +203,7 @@ func newRuntimeState(playerService *player.Service, hwnd win32.HWND) (*runtimeSt
 	state.controls.Put_IsEnabled(true)
 	state.controls.Put_IsPlayEnabled(true)
 	state.controls.Put_IsPauseEnabled(true)
-	state.controls.Put_IsStopEnabled(true)
+	state.controls.Put_IsStopEnabled(false)
 	state.controls.Put_IsNextEnabled(true)
 	state.controls.Put_IsPreviousEnabled(true)
 
@@ -230,8 +231,8 @@ func newRuntimeState(playerService *player.Service, hwnd win32.HWND) (*runtimeSt
 		state.timeline = newTimelineProperties()
 	}
 
-	state.uriFactory = newURIFactory()
 	state.streamRefs = newRandomAccessStreamReferenceStatics()
+	state.storageFiles = newStorageFileStatics()
 
 	state.buttonToken = state.controls.Add_ButtonPressed(state.onButtonPressed)
 	state.hookAttached = true
@@ -263,7 +264,7 @@ func (s *runtimeState) apply(state player.State) {
 
 	s.controls.Put_IsPlayEnabled(hasQueue)
 	s.controls.Put_IsPauseEnabled(hasTrack)
-	s.controls.Put_IsStopEnabled(hasTrack)
+	s.controls.Put_IsStopEnabled(false)
 	s.controls.Put_IsNextEnabled(hasQueue)
 	s.controls.Put_IsPreviousEnabled(hasTrack)
 
@@ -274,10 +275,11 @@ func (s *runtimeState) apply(state player.State) {
 	}
 
 	track := state.CurrentTrack
-	if trackChanged(s, track.ID) {
+	if metadataChanged(s, track.ID, track.CoverPath) {
 		s.applyMetadata(state)
 		s.hasTrack = true
 		s.lastTrackID = track.ID
+		s.lastCover = normalizedCoverPath(track.CoverPath)
 	}
 
 	durationMS := optionalIntValue(state.DurationMS)
@@ -292,6 +294,7 @@ func (s *runtimeState) applyEmptyTrack() {
 
 	s.hasTrack = false
 	s.lastTrackID = 0
+	s.lastCover = ""
 
 	if s.updater == nil {
 		return
@@ -332,37 +335,90 @@ func (s *runtimeState) applyMetadata(state player.State) {
 		}
 	}
 
-	s.updater.Put_Thumbnail(s.resolveTrackThumbnail(track.CoverPath))
+	thumbnail, _ := s.resolveTrackThumbnail(track.CoverPath)
+	s.updater.Put_Thumbnail(thumbnail)
 
 	s.updater.Update()
 }
 
-func (s *runtimeState) resolveTrackThumbnail(coverPath *string) *winrt.IRandomAccessStreamReference {
-	if s.uriFactory == nil || s.streamRefs == nil || coverPath == nil {
-		return nil
+func (s *runtimeState) resolveTrackThumbnail(coverPath *string) (*winrt.IRandomAccessStreamReference, error) {
+	if s.streamRefs == nil {
+		return nil, errors.New("random access stream reference factory unavailable")
+	}
+	if s.storageFiles == nil {
+		return nil, errors.New("storage file factory unavailable")
+	}
+	if coverPath == nil {
+		return nil, nil
 	}
 
 	trimmedPath := strings.TrimSpace(*coverPath)
 	if trimmedPath == "" {
-		return nil
+		return nil, nil
 	}
 
 	info, err := os.Stat(trimmedPath)
 	if err != nil || info.IsDir() {
-		return nil
+		if err != nil {
+			return nil, fmt.Errorf("stat cover path %q: %w", trimmedPath, err)
+		}
+
+		return nil, fmt.Errorf("cover path is a directory: %q", trimmedPath)
 	}
 
-	coverURI, err := fileURIFromPath(trimmedPath)
-	if err != nil {
-		return nil
+	storageFile, storageFileErr := s.resolveStorageFile(trimmedPath)
+	if storageFileErr != nil {
+		return nil, storageFileErr
 	}
 
-	uri := s.uriFactory.CreateUri(coverURI)
-	if uri == nil {
-		return nil
+	thumbnail := s.streamRefs.CreateFromFile(storageFile)
+	if thumbnail == nil {
+		return nil, fmt.Errorf("CreateFromFile returned nil for %q", trimmedPath)
 	}
 
-	return s.streamRefs.CreateFromUri(uri)
+	return thumbnail, nil
+}
+
+func (s *runtimeState) resolveStorageFile(path string) (*winrt.IStorageFile, error) {
+	if s.storageFiles == nil {
+		return nil, errors.New("storage file factory unavailable")
+	}
+
+	operation := s.storageFiles.GetFileFromPathAsync(path)
+	if operation == nil {
+		return nil, fmt.Errorf("GetFileFromPathAsync returned nil for %q", path)
+	}
+
+	var asyncInfo *winrt.IAsyncInfo
+	hr := operation.QueryInterface(&winrt.IID_IAsyncInfo, unsafe.Pointer(&asyncInfo))
+	if win32.FAILED(hr) || asyncInfo == nil {
+		return nil, fmt.Errorf("query IAsyncInfo for %q failed: %s", path, win32.HRESULT_ToString(hr))
+	}
+	com.AddToScope(asyncInfo)
+
+	deadline := time.Now().Add(storageFileResolveTimeout)
+	for {
+		switch asyncInfo.Get_Status() {
+		case winrt.AsyncStatus_Completed:
+			file := operation.GetResults()
+			if file == nil {
+				return nil, fmt.Errorf("GetResults returned nil for %q", path)
+			}
+
+			return file, nil
+		case winrt.AsyncStatus_Error:
+			errorCode := asyncInfo.Get_ErrorCode()
+			return nil, fmt.Errorf("GetFileFromPathAsync failed for %q: %s", path, win32.HRESULT_ToString(win32.HRESULT(errorCode.Value)))
+		case winrt.AsyncStatus_Canceled:
+			return nil, fmt.Errorf("GetFileFromPathAsync canceled for %q", path)
+		default:
+			if time.Now().After(deadline) {
+				asyncInfo.Cancel()
+				return nil, fmt.Errorf("GetFileFromPathAsync timed out for %q", path)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
 }
 
 func (s *runtimeState) applyTimeline(positionMS int, durationMS int) {
@@ -392,8 +448,6 @@ func (s *runtimeState) onButtonPressed(
 		go s.runAction("play", s.player.Play)
 	case winrt.SystemMediaTransportControlsButton_Pause:
 		go s.runAction("pause", s.player.Pause)
-	case winrt.SystemMediaTransportControlsButton_Stop:
-		go s.runAction("stop", s.player.Stop)
 	case winrt.SystemMediaTransportControlsButton_Next:
 		go s.runAction("next", s.player.Next)
 	case winrt.SystemMediaTransportControlsButton_Previous:
@@ -424,18 +478,18 @@ func newTimelineProperties() *winrt.ISystemMediaTransportControlsTimelinePropert
 	return timeline
 }
 
-func newURIFactory() *winrt.IUriRuntimeClassFactory {
-	hs := winrt.NewHStr(uriClassName)
+func newStorageFileStatics() *winrt.IStorageFileStatics {
+	hs := winrt.NewHStr(storageFileClassName)
 	defer hs.Dispose()
 
-	var uriFactory *winrt.IUriRuntimeClassFactory
-	hr := win32.RoGetActivationFactory(hs.Ptr, &winrt.IID_IUriRuntimeClassFactory, unsafe.Pointer(&uriFactory))
-	if win32.FAILED(hr) || uriFactory == nil {
+	var storageFiles *winrt.IStorageFileStatics
+	hr := win32.RoGetActivationFactory(hs.Ptr, &winrt.IID_IStorageFileStatics, unsafe.Pointer(&storageFiles))
+	if win32.FAILED(hr) || storageFiles == nil {
 		return nil
 	}
 
-	com.AddToScope(uriFactory)
-	return uriFactory
+	com.AddToScope(storageFiles)
+	return storageFiles
 }
 
 func newRandomAccessStreamReferenceStatics() *winrt.IRandomAccessStreamReferenceStatics {
@@ -450,20 +504,6 @@ func newRandomAccessStreamReferenceStatics() *winrt.IRandomAccessStreamReference
 
 	com.AddToScope(streamRefs)
 	return streamRefs
-}
-
-func fileURIFromPath(path string) (string, error) {
-	absolutePath, err := filepath.Abs(filepath.Clean(path))
-	if err != nil {
-		return "", err
-	}
-
-	normalizedPath := filepath.ToSlash(absolutePath)
-	if strings.HasPrefix(normalizedPath, "/") {
-		return (&url.URL{Scheme: "file", Path: normalizedPath}).String(), nil
-	}
-
-	return (&url.URL{Scheme: "file", Path: "/" + normalizedPath}).String(), nil
 }
 
 func mapPlaybackStatus(status string) winrt.MediaPlaybackStatus {
@@ -516,10 +556,22 @@ func clampMS(value int, min int, max int) int {
 	return value
 }
 
-func trackChanged(state *runtimeState, trackID int64) bool {
+func metadataChanged(state *runtimeState, trackID int64, coverPath *string) bool {
 	if !state.hasTrack {
 		return true
 	}
 
-	return state.lastTrackID != trackID
+	if state.lastTrackID != trackID {
+		return true
+	}
+
+	return state.lastCover != normalizedCoverPath(coverPath)
+}
+
+func normalizedCoverPath(coverPath *string) string {
+	if coverPath == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(*coverPath)
 }

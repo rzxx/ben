@@ -57,7 +57,7 @@ function createEmptyQueueState(): QueueState {
 
 function createEmptyPlayerState(): PlayerState {
   return {
-    status: "stopped",
+    status: "idle",
     positionMs: 0,
     volume: 80,
     currentIndex: -1,
@@ -476,22 +476,6 @@ function AppContent() {
     }
   };
 
-  const onStopPlayback = async () => {
-    if (transportBusy) {
-      return;
-    }
-
-    try {
-      setTransportBusy(true);
-      setErrorMessage(null);
-      await Call.ByName(`${playerService}.Stop`);
-    } catch (error) {
-      setErrorMessage(parseError(error));
-    } finally {
-      setTransportBusy(false);
-    }
-  };
-
   const onNextTrack = async () => {
     if (transportBusy) {
       return;
@@ -695,7 +679,6 @@ function AppContent() {
         seekValue={seekValue}
         onPreviousTrack={onPreviousTrack}
         onTogglePlayback={onTogglePlayback}
-        onStopPlayback={onStopPlayback}
         onNextTrack={onNextTrack}
         onSeek={onSeek}
         onSetVolume={onSetVolume}

@@ -18,7 +18,6 @@ const (
 	acceleratorMediaPlayPause = "MEDIA_PLAY_PAUSE"
 	acceleratorMediaNextTrack = "MEDIA_NEXT_TRACK"
 	acceleratorMediaPrevTrack = "MEDIA_PREV_TRACK"
-	acceleratorMediaStop      = "MEDIA_STOP"
 )
 
 type windowsService struct {
@@ -47,6 +46,10 @@ func (s *windowsService) Start() error {
 		return nil
 	}
 
+	if err := initializeProcessIdentity(); err != nil {
+		log.Printf("platform app identity setup failed: %v", err)
+	}
+
 	if s.app.Window != nil {
 		for _, window := range s.app.Window.GetAll() {
 			s.watchWindow(window)
@@ -73,12 +76,6 @@ func (s *windowsService) Start() error {
 	s.registerBinding(acceleratorMediaPrevTrack, func() {
 		if _, err := s.player.Previous(); err != nil {
 			log.Printf("platform media key previous failed: %v", err)
-		}
-	})
-
-	s.registerBinding(acceleratorMediaStop, func() {
-		if _, err := s.player.Stop(); err != nil {
-			log.Printf("platform media key stop failed: %v", err)
 		}
 	})
 
