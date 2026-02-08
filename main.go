@@ -8,6 +8,7 @@ import (
 	"ben/internal/player"
 	"ben/internal/queue"
 	"ben/internal/scanner"
+	"ben/internal/stats"
 	"embed"
 	"log"
 
@@ -45,12 +46,14 @@ func main() {
 	queueDomain := queue.NewService(sqliteDB)
 	playerDomain := player.NewService(sqliteDB, queueDomain)
 	defer playerDomain.Close()
+	statsDomain := stats.NewService(sqliteDB)
 	scannerDomain := scanner.NewService(sqliteDB, watchedRoots, paths.CoverCacheDir)
 	settingsService := NewSettingsService(watchedRoots, scannerDomain)
 	libraryService := NewLibraryService(browseRepo)
 	coverService := NewCoverService(paths.CoverCacheDir)
 	queueService := NewQueueService(queueDomain)
 	playerService := NewPlayerService(playerDomain)
+	statsService := NewStatsService(statsDomain)
 	scannerService := NewScannerService(scannerDomain)
 
 	app := application.New(application.Options{
@@ -62,6 +65,7 @@ func main() {
 			application.NewServiceWithOptions(coverService, application.ServiceOptions{Route: "/covers"}),
 			application.NewService(queueService),
 			application.NewService(playerService),
+			application.NewService(statsService),
 			application.NewService(scannerService),
 		},
 		Assets: application.AssetOptions{
@@ -94,6 +98,7 @@ func main() {
 		if eventName == player.EventStateChanged {
 			if state, ok := payload.(player.State); ok {
 				platformService.HandlePlayerState(state)
+				statsDomain.HandlePlayerState(state)
 			}
 		}
 	})

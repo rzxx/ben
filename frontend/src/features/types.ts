@@ -104,3 +104,29 @@ export type SelectedAlbum = {
   title: string;
   albumArtist: string;
 };
+
+export type StatsTrack = {
+  trackId: number;
+  title: string;
+  artist: string;
+  album: string;
+  coverPath?: string;
+  playedMs: number;
+  completeCount: number;
+  skipCount: number;
+};
+
+export type StatsArtist = {
+  name: string;
+  playedMs: number;
+  trackCount: number;
+};
+
+export type StatsOverview = {
+  totalPlayedMs: number;
+  tracksPlayed: number;
+  completeCount: number;
+  skipCount: number;
+  topTracks: StatsTrack[];
+  topArtists: StatsArtist[];
+};

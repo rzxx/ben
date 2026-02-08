@@ -6,10 +6,12 @@ import * as PlayerService from "./playerservice.js";
 import * as QueueService from "./queueservice.js";
 import * as ScannerService from "./scannerservice.js";
 import * as SettingsService from "./settingsservice.js";
+import * as StatsService from "./statsservice.js";
 export {
     LibraryService,
     PlayerService,
     QueueService,
     ScannerService,
-    SettingsService
+    SettingsService,
+    StatsService
 };

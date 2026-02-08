@@ -1,5 +1,12 @@
 import { FormEvent } from "react";
-import { PlayerState, QueueState, ScanProgress, ScanStatus, WatchedRoot } from "../types";
+import {
+  PlayerState,
+  QueueState,
+  ScanProgress,
+  ScanStatus,
+  StatsOverview,
+  WatchedRoot,
+} from "../types";
 
 type SettingsViewProps = {
   lastProgress: ScanProgress | null;
@@ -9,6 +16,7 @@ type SettingsViewProps = {
   errorMessage: string | null;
   queueState: QueueState;
   playerState: PlayerState;
+  statsOverview: StatsOverview;
   onNewRootPathChange: (value: string) => void;
   onAddWatchedRoot: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onToggleWatchedRoot: (root: WatchedRoot) => Promise<void>;
@@ -105,6 +113,85 @@ export function SettingsView(props: SettingsViewProps) {
           </div>
         </div>
       </section>
+
+      <section className="panel">
+        <h2>Listening Stats</h2>
+        <p>Stats are tracked from player heartbeat, skip, and completion events.</p>
+
+        <div className="stat-list">
+          <div>
+            <span>Total Played</span>
+            <strong>{formatPlayedTime(props.statsOverview.totalPlayedMs)}</strong>
+          </div>
+          <div>
+            <span>Tracks Played</span>
+            <strong>{props.statsOverview.tracksPlayed}</strong>
+          </div>
+          <div>
+            <span>Completions</span>
+            <strong>{props.statsOverview.completeCount}</strong>
+          </div>
+          <div>
+            <span>Skips</span>
+            <strong>{props.statsOverview.skipCount}</strong>
+          </div>
+        </div>
+
+        <h3>Top Tracks</h3>
+        {props.statsOverview.topTracks.length === 0 ? (
+          <p>No listening history yet.</p>
+        ) : (
+          <ul className="entity-list">
+            {props.statsOverview.topTracks.map((track) => (
+              <li key={track.trackId}>
+                <div className="entity-row">
+                  <strong>{track.title}</strong>
+                  <span>
+                    {track.artist} - {track.album}
+                  </span>
+                  <span>
+                    {formatPlayedTime(track.playedMs)} - {track.completeCount} completes - {track.skipCount} skips
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <h3>Top Artists</h3>
+        {props.statsOverview.topArtists.length === 0 ? (
+          <p>No artist stats yet.</p>
+        ) : (
+          <ul className="entity-list">
+            {props.statsOverview.topArtists.map((artist) => (
+              <li key={artist.name}>
+                <div className="entity-row">
+                  <strong>{artist.name}</strong>
+                  <span>
+                    {formatPlayedTime(artist.playedMs)} across {artist.trackCount} tracks
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </>
   );
+}
+
+function formatPlayedTime(durationMS: number): string {
+  if (!durationMS || durationMS <= 0) {
+    return "0m";
+  }
+
+  const totalMinutes = Math.floor(durationMS / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours <= 0) {
+    return `${minutes}m`;
+  }
+
+  return `${hours}h ${minutes}m`;
 }

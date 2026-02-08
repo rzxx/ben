@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Redirect, Route, Router, Switch, useLocation } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { Call, Events } from "@wailsio/runtime";
@@ -18,6 +18,7 @@ import {
   QueueState,
   ScanProgress,
   ScanStatus,
+  StatsOverview,
   WatchedRoot,
 } from "./features/types";
 import { useLibraryUIStore } from "./shared/store/libraryUIStore";
@@ -27,6 +28,7 @@ const libraryService = "main.LibraryService";
 const scannerService = "main.ScannerService";
 const queueService = "main.QueueService";
 const playerService = "main.PlayerService";
+const statsService = "main.StatsService";
 
 const scanProgressEvent = "scanner:progress";
 const queueStateEvent = "queue:state";
@@ -63,6 +65,17 @@ function createEmptyPlayerState(): PlayerState {
     currentIndex: -1,
     queueLength: 0,
     updatedAt: "",
+  };
+}
+
+function createEmptyStatsOverview(): StatsOverview {
+  return {
+    totalPlayedMs: 0,
+    tracksPlayed: 0,
+    completeCount: 0,
+    skipCount: 0,
+    topTracks: [],
+    topArtists: [],
   };
 }
 
@@ -106,8 +119,10 @@ function AppContent() {
   const [lastProgress, setLastProgress] = useState<ScanProgress | null>(null);
   const [queueState, setQueueState] = useState<QueueState>(createEmptyQueueState());
   const [playerState, setPlayerState] = useState<PlayerState>(createEmptyPlayerState());
+  const [statsOverview, setStatsOverview] = useState<StatsOverview>(createEmptyStatsOverview());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [transportBusy, setTransportBusy] = useState(false);
+  const statsRefreshKeyRef = useRef("");
 
   const [artistsPage, setArtistsPage] = useState<PagedResult<LibraryArtist>>({
     items: [],
@@ -143,6 +158,11 @@ function AppContent() {
   const loadPlayerState = useCallback(async () => {
     const state = await Call.ByName(`${playerService}.GetState`);
     setPlayerState((state ?? createEmptyPlayerState()) as PlayerState);
+  }, []);
+
+  const loadStatsOverview = useCallback(async () => {
+    const overview = await Call.ByName(`${statsService}.GetOverview`, 5);
+    setStatsOverview((overview ?? createEmptyStatsOverview()) as StatsOverview);
   }, []);
 
   const loadLibraryData = useCallback(async () => {
@@ -204,6 +224,7 @@ function AppContent() {
           loadScanStatus(),
           loadQueueState(),
           loadPlayerState(),
+          loadStatsOverview(),
         ]);
       } catch (error) {
         setErrorMessage(parseError(error));
@@ -233,7 +254,14 @@ function AppContent() {
     });
 
     const unsubscribePlayer = Events.On(playerStateEvent, (event) => {
-      setPlayerState(event.data as PlayerState);
+      const nextState = event.data as PlayerState;
+      setPlayerState(nextState);
+
+      const refreshKey = `${nextState.status}:${nextState.currentTrack?.id ?? 0}`;
+      if (refreshKey !== statsRefreshKeyRef.current) {
+        statsRefreshKeyRef.current = refreshKey;
+        void loadStatsOverview();
+      }
     });
 
     void initialize();
@@ -248,12 +276,23 @@ function AppContent() {
     loadArtistDetail,
     loadLibraryData,
     loadPlayerState,
+    loadStatsOverview,
     loadQueueState,
     loadScanStatus,
     loadWatchedRoots,
     selectedAlbum,
     selectedArtist,
   ]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void loadStatsOverview();
+    }, 12000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [loadStatsOverview]);
 
   useEffect(() => {
     const runLoad = async () => {
@@ -634,6 +673,7 @@ function AppContent() {
               errorMessage={errorMessage}
               queueState={queueState}
               playerState={playerState}
+              statsOverview={statsOverview}
               onNewRootPathChange={setNewRootPath}
               onAddWatchedRoot={onAddWatchedRoot}
               onToggleWatchedRoot={onToggleWatchedRoot}
