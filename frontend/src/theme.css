@@ -241,6 +241,31 @@ button:disabled {
   gap: 0.2rem;
 }
 
+.entity-media {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.entity-media-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.entity-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.entity-copy strong,
+.entity-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .entity-button span {
   color: var(--text-muted);
   font-size: 0.88rem;
@@ -275,6 +300,40 @@ button:disabled {
 .inline-actions button {
   padding: 0.32rem 0.55rem;
   font-size: 0.82rem;
+}
+
+.cover-art {
+  border-radius: 10px;
+  border: 1px solid rgba(133, 182, 179, 0.32);
+  background: rgba(3, 16, 22, 0.9);
+  object-fit: cover;
+  object-position: center;
+  flex-shrink: 0;
+}
+
+.cover-art-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.album-cover {
+  width: 44px;
+  height: 44px;
+}
+
+.album-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.album-detail-cover {
+  width: 74px;
+  height: 74px;
 }
 
 .stat-list div {
@@ -409,12 +468,24 @@ button:disabled {
 
 .player-main {
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.player-cover {
+  width: 58px;
+  height: 58px;
+}
+
+.player-copy {
+  min-width: 0;
   display: grid;
   gap: 0.2rem;
 }
 
-.player-main p,
-.player-main strong {
+.player-copy p,
+.player-copy strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -583,6 +654,10 @@ button:disabled {
 
   .queue-list li {
     flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .album-detail-header {
     align-items: flex-start;
   }
 }

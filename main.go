@@ -48,6 +48,7 @@ func main() {
 	scannerDomain := scanner.NewService(sqliteDB, watchedRoots, paths.CoverCacheDir)
 	settingsService := NewSettingsService(watchedRoots, scannerDomain)
 	libraryService := NewLibraryService(browseRepo)
+	coverService := NewCoverService(paths.CoverCacheDir)
 	queueService := NewQueueService(queueDomain)
 	playerService := NewPlayerService(playerDomain)
 	scannerService := NewScannerService(scannerDomain)
@@ -58,6 +59,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(settingsService),
 			application.NewService(libraryService),
+			application.NewServiceWithOptions(coverService, application.ServiceOptions{Route: "/covers"}),
 			application.NewService(queueService),
 			application.NewService(playerService),
 			application.NewService(scannerService),

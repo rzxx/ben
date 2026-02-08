@@ -58,6 +58,7 @@ export type LibraryTrack = {
   trackNo?: number;
   durationMs?: number;
   path: string;
+  coverPath?: string;
 };
 
 export type ArtistDetail = {

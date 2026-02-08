@@ -33,15 +33,16 @@ type AlbumSummary struct {
 }
 
 type TrackSummary struct {
-	ID          int64  `json:"id"`
-	Title       string `json:"title"`
-	Artist      string `json:"artist"`
-	Album       string `json:"album"`
-	AlbumArtist string `json:"albumArtist"`
-	DiscNo      *int   `json:"discNo,omitempty"`
-	TrackNo     *int   `json:"trackNo,omitempty"`
-	DurationMS  *int   `json:"durationMs,omitempty"`
-	Path        string `json:"path"`
+	ID          int64   `json:"id"`
+	Title       string  `json:"title"`
+	Artist      string  `json:"artist"`
+	Album       string  `json:"album"`
+	AlbumArtist string  `json:"albumArtist"`
+	DiscNo      *int    `json:"discNo,omitempty"`
+	TrackNo     *int    `json:"trackNo,omitempty"`
+	DurationMS  *int    `json:"durationMs,omitempty"`
+	Path        string  `json:"path"`
+	CoverPath   *string `json:"coverPath,omitempty"`
 }
 
 type ArtistsPage struct {
@@ -306,9 +307,11 @@ func (r *BrowseRepository) ListTracks(ctx context.Context, search string, artist
 			t.disc_no,
 			t.track_no,
 			t.duration_ms,
-			f.path
+			f.path,
+			cover.cache_path
 		FROM tracks t
 		JOIN files f ON f.id = t.file_id
+		LEFT JOIN covers cover ON cover.source_file_id = t.file_id
 		WHERE %s
 		ORDER BY
 			LOWER(track_artist),
@@ -334,6 +337,7 @@ func (r *BrowseRepository) ListTracks(ctx context.Context, search string, artist
 		var discNo sql.NullInt64
 		var trackNo sql.NullInt64
 		var durationMS sql.NullInt64
+		var coverPath sql.NullString
 		if scanErr := rows.Scan(
 			&track.ID,
 			&track.Title,
@@ -344,12 +348,14 @@ func (r *BrowseRepository) ListTracks(ctx context.Context, search string, artist
 			&trackNo,
 			&durationMS,
 			&track.Path,
+			&coverPath,
 		); scanErr != nil {
 			return TracksPage{}, fmt.Errorf("scan track row: %w", scanErr)
 		}
 		track.DiscNo = intPointer(discNo)
 		track.TrackNo = intPointer(trackNo)
 		track.DurationMS = intPointer(durationMS)
+		track.CoverPath = stringPointer(coverPath)
 		tracks = append(tracks, track)
 	}
 
@@ -511,10 +517,12 @@ func (r *BrowseRepository) GetAlbumDetail(ctx context.Context, title string, alb
 			t.disc_no,
 			t.track_no,
 			t.duration_ms,
-			f.path
+			f.path,
+			cover.cache_path
 		FROM album_tracks at
 		JOIN tracks t ON t.id = at.track_id
 		JOIN files f ON f.id = t.file_id
+		LEFT JOIN covers cover ON cover.source_file_id = t.file_id
 		WHERE at.album_id = ?
 		  AND f.file_exists = 1
 		ORDER BY
@@ -535,6 +543,7 @@ func (r *BrowseRepository) GetAlbumDetail(ctx context.Context, title string, alb
 		var discNo sql.NullInt64
 		var trackNo sql.NullInt64
 		var durationMS sql.NullInt64
+		var coverPath sql.NullString
 		if scanErr := rows.Scan(
 			&track.ID,
 			&track.Title,
@@ -545,12 +554,14 @@ func (r *BrowseRepository) GetAlbumDetail(ctx context.Context, title string, alb
 			&trackNo,
 			&durationMS,
 			&track.Path,
+			&coverPath,
 		); scanErr != nil {
 			return AlbumDetail{}, fmt.Errorf("scan album track row for %q by %q: %w", albumTitle, artistName, scanErr)
 		}
 		track.DiscNo = intPointer(discNo)
 		track.TrackNo = intPointer(trackNo)
 		track.DurationMS = intPointer(durationMS)
+		track.CoverPath = stringPointer(coverPath)
 		tracks = append(tracks, track)
 	}
 

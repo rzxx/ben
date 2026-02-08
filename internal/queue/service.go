@@ -338,9 +338,11 @@ func (s *Service) lookupTracks(trackIDs []int64) ([]library.TrackSummary, error)
 			t.disc_no,
 			t.track_no,
 			t.duration_ms,
-			f.path
+			f.path,
+			cover.cache_path
 		FROM tracks t
 		JOIN files f ON f.id = t.file_id
+		LEFT JOIN covers cover ON cover.source_file_id = t.file_id
 		WHERE f.file_exists = 1
 		  AND t.id IN (%s)
 	`, strings.Join(placeholders, ","))
@@ -357,6 +359,7 @@ func (s *Service) lookupTracks(trackIDs []int64) ([]library.TrackSummary, error)
 		var discNo sql.NullInt64
 		var trackNo sql.NullInt64
 		var durationMS sql.NullInt64
+		var coverPath sql.NullString
 		if scanErr := rows.Scan(
 			&track.ID,
 			&track.Title,
@@ -367,12 +370,14 @@ func (s *Service) lookupTracks(trackIDs []int64) ([]library.TrackSummary, error)
 			&trackNo,
 			&durationMS,
 			&track.Path,
+			&coverPath,
 		); scanErr != nil {
 			return nil, fmt.Errorf("scan queue track row: %w", scanErr)
 		}
 		track.DiscNo = intPointer(discNo)
 		track.TrackNo = intPointer(trackNo)
 		track.DurationMS = intPointer(durationMS)
+		track.CoverPath = stringPointer(coverPath)
 		trackByID[track.ID] = track
 	}
 
@@ -482,10 +487,12 @@ func (s *Service) loadSnapshot() {
 			t.disc_no,
 			t.track_no,
 			t.duration_ms,
-			f.path
+			f.path,
+			cover.cache_path
 		FROM queue_entries qe
 		JOIN tracks t ON t.id = qe.track_id
 		JOIN files f ON f.id = t.file_id
+		LEFT JOIN covers cover ON cover.source_file_id = t.file_id
 		WHERE f.file_exists = 1
 		ORDER BY qe.position ASC, qe.id ASC
 	`)
@@ -500,6 +507,7 @@ func (s *Service) loadSnapshot() {
 		var discNo sql.NullInt64
 		var trackNo sql.NullInt64
 		var durationMS sql.NullInt64
+		var coverPath sql.NullString
 		if scanErr := rows.Scan(
 			&track.ID,
 			&track.Title,
@@ -510,12 +518,14 @@ func (s *Service) loadSnapshot() {
 			&trackNo,
 			&durationMS,
 			&track.Path,
+			&coverPath,
 		); scanErr != nil {
 			return
 		}
 		track.DiscNo = intPointer(discNo)
 		track.TrackNo = intPointer(trackNo)
 		track.DurationMS = intPointer(durationMS)
+		track.CoverPath = stringPointer(coverPath)
 		entries = append(entries, track)
 	}
 	if rowsErr := rows.Err(); rowsErr != nil {
@@ -682,4 +692,17 @@ func intPointer(value sql.NullInt64) *int {
 
 	intValue := int(value.Int64)
 	return &intValue
+}
+
+func stringPointer(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+
+	trimmed := strings.TrimSpace(value.String)
+	if trimmed == "" {
+		return nil
+	}
+
+	return &trimmed
 }

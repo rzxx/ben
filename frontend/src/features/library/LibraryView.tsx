@@ -8,6 +8,7 @@ import {
   PagedResult,
   SelectedAlbum,
 } from "../types";
+import { CoverArt } from "../../shared/components/CoverArt";
 
 type LibraryViewProps = {
   libraryQueryInput: string;
@@ -129,11 +130,20 @@ export function LibraryView(props: LibraryViewProps) {
                     }`}
                     onClick={() => props.onSelectAlbum(album.title, album.albumArtist)}
                   >
-                    <strong>{album.title}</strong>
-                    <span>
-                      {album.albumArtist}
-                      {album.year ? ` (${album.year})` : ""}
-                    </span>
+                    <div className="entity-media">
+                      <CoverArt
+                        coverPath={album.coverPath}
+                        alt={`${album.title} cover`}
+                        className="album-cover"
+                      />
+                      <div className="entity-copy">
+                        <strong>{album.title}</strong>
+                        <span>
+                          {album.albumArtist}
+                          {album.year ? ` (${album.year})` : ""}
+                        </span>
+                      </div>
+                    </div>
                   </button>
                 </li>
               ))}
@@ -188,12 +198,19 @@ export function LibraryView(props: LibraryViewProps) {
             <ul className="entity-list">
               {props.artistDetail.albums.map((album) => (
                 <li key={`${album.albumArtist}-${album.title}`}>
-                  <div className="entity-row">
-                    <strong>{album.title}</strong>
-                    <span>
-                      {album.albumArtist}
-                      {album.year ? ` (${album.year})` : ""} - {album.trackCount} tracks
-                    </span>
+                  <div className="entity-row entity-media-row">
+                    <CoverArt
+                      coverPath={album.coverPath}
+                      alt={`${album.title} cover`}
+                      className="album-cover"
+                    />
+                    <div className="entity-copy">
+                      <strong>{album.title}</strong>
+                      <span>
+                        {album.albumArtist}
+                        {album.year ? ` (${album.year})` : ""} - {album.trackCount} tracks
+                      </span>
+                    </div>
                   </div>
                 </li>
               ))}
@@ -208,10 +225,18 @@ export function LibraryView(props: LibraryViewProps) {
         <h2>Album Detail</h2>
         {props.albumDetail ? (
           <>
-            <p className="summary-row">
-              <strong>{props.albumDetail.title}</strong> - {props.albumDetail.albumArtist}
-              {props.albumDetail.year ? ` (${props.albumDetail.year})` : ""} - {props.albumDetail.trackCount} tracks
-            </p>
+            <div className="album-detail-header">
+              <CoverArt
+                coverPath={props.albumDetail.coverPath}
+                alt={`${props.albumDetail.title} cover`}
+                className="album-detail-cover"
+                loading="eager"
+              />
+              <p className="summary-row">
+                <strong>{props.albumDetail.title}</strong> - {props.albumDetail.albumArtist}
+                {props.albumDetail.year ? ` (${props.albumDetail.year})` : ""} - {props.albumDetail.trackCount} tracks
+              </p>
+            </div>
             <ul className="entity-list">
               {props.albumDetail.tracks.map((track) => (
                 <li key={track.id}>

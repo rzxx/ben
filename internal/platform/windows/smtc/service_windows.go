@@ -7,6 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"unsafe"
@@ -17,10 +20,12 @@ import (
 )
 
 const (
-	smtcClassName           = "Windows.Media.SystemMediaTransportControls"
-	timelineClassName       = "Windows.Media.SystemMediaTransportControlsTimelineProperties"
-	appMediaID              = "Ben"
-	timespanTickPerMS int64 = 10000
+	smtcClassName                  = "Windows.Media.SystemMediaTransportControls"
+	timelineClassName              = "Windows.Media.SystemMediaTransportControlsTimelineProperties"
+	uriClassName                   = "Windows.Foundation.Uri"
+	streamReferenceClassName       = "Windows.Storage.Streams.RandomAccessStreamReference"
+	appMediaID                     = "Ben"
+	timespanTickPerMS        int64 = 10000
 )
 
 type Service struct {
@@ -40,6 +45,8 @@ type runtimeState struct {
 	musicProps   *winrt.IMusicDisplayProperties
 	musicProps2  *winrt.IMusicDisplayProperties2
 	timeline     *winrt.ISystemMediaTransportControlsTimelineProperties
+	uriFactory   *winrt.IUriRuntimeClassFactory
+	streamRefs   *winrt.IRandomAccessStreamReferenceStatics
 	buttonToken  winrt.EventRegistrationToken
 	hookAttached bool
 	lastTrackID  int64
@@ -223,6 +230,9 @@ func newRuntimeState(playerService *player.Service, hwnd win32.HWND) (*runtimeSt
 		state.timeline = newTimelineProperties()
 	}
 
+	state.uriFactory = newURIFactory()
+	state.streamRefs = newRandomAccessStreamReferenceStatics()
+
 	state.buttonToken = state.controls.Add_ButtonPressed(state.onButtonPressed)
 	state.hookAttached = true
 
@@ -322,7 +332,37 @@ func (s *runtimeState) applyMetadata(state player.State) {
 		}
 	}
 
+	s.updater.Put_Thumbnail(s.resolveTrackThumbnail(track.CoverPath))
+
 	s.updater.Update()
+}
+
+func (s *runtimeState) resolveTrackThumbnail(coverPath *string) *winrt.IRandomAccessStreamReference {
+	if s.uriFactory == nil || s.streamRefs == nil || coverPath == nil {
+		return nil
+	}
+
+	trimmedPath := strings.TrimSpace(*coverPath)
+	if trimmedPath == "" {
+		return nil
+	}
+
+	info, err := os.Stat(trimmedPath)
+	if err != nil || info.IsDir() {
+		return nil
+	}
+
+	coverURI, err := fileURIFromPath(trimmedPath)
+	if err != nil {
+		return nil
+	}
+
+	uri := s.uriFactory.CreateUri(coverURI)
+	if uri == nil {
+		return nil
+	}
+
+	return s.streamRefs.CreateFromUri(uri)
 }
 
 func (s *runtimeState) applyTimeline(positionMS int, durationMS int) {
@@ -382,6 +422,48 @@ func newTimelineProperties() *winrt.ISystemMediaTransportControlsTimelinePropert
 	timeline := (*winrt.ISystemMediaTransportControlsTimelineProperties)(unsafe.Pointer(inspect))
 	com.AddToScope(timeline)
 	return timeline
+}
+
+func newURIFactory() *winrt.IUriRuntimeClassFactory {
+	hs := winrt.NewHStr(uriClassName)
+	defer hs.Dispose()
+
+	var uriFactory *winrt.IUriRuntimeClassFactory
+	hr := win32.RoGetActivationFactory(hs.Ptr, &winrt.IID_IUriRuntimeClassFactory, unsafe.Pointer(&uriFactory))
+	if win32.FAILED(hr) || uriFactory == nil {
+		return nil
+	}
+
+	com.AddToScope(uriFactory)
+	return uriFactory
+}
+
+func newRandomAccessStreamReferenceStatics() *winrt.IRandomAccessStreamReferenceStatics {
+	hs := winrt.NewHStr(streamReferenceClassName)
+	defer hs.Dispose()
+
+	var streamRefs *winrt.IRandomAccessStreamReferenceStatics
+	hr := win32.RoGetActivationFactory(hs.Ptr, &winrt.IID_IRandomAccessStreamReferenceStatics, unsafe.Pointer(&streamRefs))
+	if win32.FAILED(hr) || streamRefs == nil {
+		return nil
+	}
+
+	com.AddToScope(streamRefs)
+	return streamRefs
+}
+
+func fileURIFromPath(path string) (string, error) {
+	absolutePath, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+
+	normalizedPath := filepath.ToSlash(absolutePath)
+	if strings.HasPrefix(normalizedPath, "/") {
+		return (&url.URL{Scheme: "file", Path: normalizedPath}).String(), nil
+	}
+
+	return (&url.URL{Scheme: "file", Path: "/" + normalizedPath}).String(), nil
 }
 
 func mapPlaybackStatus(status string) winrt.MediaPlaybackStatus {

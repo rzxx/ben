@@ -1,4 +1,5 @@
 import { LibraryTrack, PlayerState, QueueState } from "../types";
+import { CoverArt } from "../../shared/components/CoverArt";
 
 type PlayerBarProps = {
   currentTrack?: LibraryTrack;
@@ -22,19 +23,27 @@ export function PlayerBar(props: PlayerBarProps) {
   return (
     <footer className="player-bar">
       <div className="player-main">
-        <p className="eyebrow">Player</p>
-        {props.currentTrack ? (
-          <>
-            <strong>
-              {props.currentTrack.title} - {props.currentTrack.artist}
-            </strong>
-            <p>
-              {props.currentTrack.album} • {props.playerState.status}
-            </p>
-          </>
-        ) : (
-          <strong>No track selected</strong>
-        )}
+        <CoverArt
+          coverPath={props.currentTrack?.coverPath}
+          alt={props.currentTrack ? `${props.currentTrack.album} cover` : "No cover"}
+          className="player-cover"
+          loading="eager"
+        />
+        <div className="player-copy">
+          <p className="eyebrow">Player</p>
+          {props.currentTrack ? (
+            <>
+              <strong>
+                {props.currentTrack.title} - {props.currentTrack.artist}
+              </strong>
+              <p>
+                {props.currentTrack.album} • {props.playerState.status}
+              </p>
+            </>
+          ) : (
+            <strong>No track selected</strong>
+          )}
+        </div>
       </div>
 
       <div className="player-controls">

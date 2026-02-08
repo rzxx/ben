@@ -262,6 +262,7 @@ export class TrackSummary {
     "trackNo"?: number | null;
     "durationMs"?: number | null;
     "path": string;
+    "coverPath"?: string | null;
 
     /** Creates a new TrackSummary instance. */
     constructor($$source: Partial<TrackSummary> = {}) {

@@ -672,6 +672,16 @@ func (s *Service) performScan(ctx context.Context, mode scanMode) (scanTotals, e
 	}
 	tx = nil
 
+	if cleanupErr := cleanupOrphanedCoverFiles(ctx, s.db, s.coverCacheDir); cleanupErr != nil {
+		s.emitProgress(Progress{
+			Phase:   "cleanup",
+			Message: fmt.Sprintf("cover cache cleanup warning: %v", cleanupErr),
+			Percent: 97,
+			Status:  "running",
+			At:      time.Now().UTC().Format(time.RFC3339),
+		})
+	}
+
 	return totals, nil
 }
 
@@ -759,6 +769,84 @@ func cleanupMissingCovers(ctx context.Context, tx *sql.Tx) error {
 		    OR source_file_id NOT IN (SELECT id FROM files)`,
 	); err != nil {
 		return fmt.Errorf("cleanup missing covers: %w", err)
+	}
+
+	return nil
+}
+
+func cleanupOrphanedCoverFiles(ctx context.Context, database *sql.DB, coverCacheDir string) error {
+	if database == nil {
+		return nil
+	}
+
+	trimmedDir := strings.TrimSpace(coverCacheDir)
+	if trimmedDir == "" {
+		return nil
+	}
+
+	cacheDir, err := filepath.Abs(filepath.Clean(trimmedDir))
+	if err != nil {
+		return fmt.Errorf("resolve cover cache dir: %w", err)
+	}
+
+	dirEntries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read cover cache dir: %w", err)
+	}
+
+	rows, err := database.QueryContext(
+		ctx,
+		"SELECT cache_path FROM covers WHERE cache_path IS NOT NULL AND TRIM(cache_path) <> ''",
+	)
+	if err != nil {
+		return fmt.Errorf("query referenced covers: %w", err)
+	}
+	defer rows.Close()
+
+	referenced := make(map[string]struct{})
+	for rows.Next() {
+		var cachePath sql.NullString
+		if scanErr := rows.Scan(&cachePath); scanErr != nil {
+			return fmt.Errorf("scan referenced cover path: %w", scanErr)
+		}
+
+		if !cachePath.Valid {
+			continue
+		}
+
+		resolvedPath, resolveErr := filepath.Abs(filepath.Clean(strings.TrimSpace(cachePath.String)))
+		if resolveErr != nil {
+			continue
+		}
+
+		referenced[resolvedPath] = struct{}{}
+	}
+
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return fmt.Errorf("iterate referenced cover paths: %w", rowsErr)
+	}
+
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
+			continue
+		}
+
+		candidatePath := filepath.Join(cacheDir, entry.Name())
+		resolvedCandidate, resolveErr := filepath.Abs(filepath.Clean(candidatePath))
+		if resolveErr != nil {
+			continue
+		}
+
+		if _, keep := referenced[resolvedCandidate]; keep {
+			continue
+		}
+
+		if removeErr := os.Remove(resolvedCandidate); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			return fmt.Errorf("remove orphaned cover %s: %w", resolvedCandidate, removeErr)
+		}
 	}
 
 	return nil
