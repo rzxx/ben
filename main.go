@@ -4,6 +4,7 @@ import (
 	"ben/internal/config"
 	"ben/internal/db"
 	"ben/internal/library"
+	"ben/internal/platform"
 	"ben/internal/player"
 	"ben/internal/queue"
 	"ben/internal/scanner"
@@ -42,7 +43,7 @@ func main() {
 	watchedRoots := library.NewWatchedRootRepository(sqliteDB)
 	browseRepo := library.NewBrowseRepository(sqliteDB)
 	queueDomain := queue.NewService(sqliteDB)
-	playerDomain := player.NewService(queueDomain)
+	playerDomain := player.NewService(sqliteDB, queueDomain)
 	defer playerDomain.Close()
 	scannerDomain := scanner.NewService(sqliteDB, watchedRoots, paths.CoverCacheDir)
 	settingsService := NewSettingsService(watchedRoots, scannerDomain)
@@ -69,6 +70,17 @@ func main() {
 		},
 	})
 
+	platformService := platform.NewService(app, playerDomain)
+	if err := platformService.Start(); err != nil {
+		log.Printf("platform integration disabled: %v", err)
+	}
+	defer func() {
+		if err := platformService.Stop(); err != nil {
+			log.Printf("platform integration shutdown failed: %v", err)
+		}
+	}()
+	platformService.HandlePlayerState(playerDomain.GetState())
+
 	scannerDomain.SetEmitter(func(eventName string, payload any) {
 		app.Event.Emit(eventName, payload)
 	})
@@ -77,6 +89,11 @@ func main() {
 	})
 	playerDomain.SetEmitter(func(eventName string, payload any) {
 		app.Event.Emit(eventName, payload)
+		if eventName == player.EventStateChanged {
+			if state, ok := payload.(player.State); ok {
+				platformService.HandlePlayerState(state)
+			}
+		}
 	})
 
 	if err := scannerDomain.StartWatching(); err != nil {

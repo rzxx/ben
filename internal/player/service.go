@@ -3,8 +3,11 @@ package player
 import (
 	"ben/internal/library"
 	"ben/internal/queue"
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -44,6 +47,7 @@ type State struct {
 
 type Service struct {
 	mu             sync.Mutex
+	db             *sql.DB
 	queue          *queue.Service
 	status         string
 	positionMS     int
@@ -59,8 +63,9 @@ type Service struct {
 	skipQueueSync  int
 }
 
-func NewService(queueService *queue.Service) *Service {
+func NewService(database *sql.DB, queueService *queue.Service) *Service {
 	service := &Service{
+		db:     database,
 		queue:  queueService,
 		status: StatusStopped,
 		volume: defaultVolume,
@@ -78,6 +83,8 @@ func NewService(queueService *queue.Service) *Service {
 	if queueService != nil {
 		queueService.SetOnChange(service.onQueueChanged)
 	}
+
+	service.loadPlaybackStateSnapshot()
 
 	return service
 }
@@ -465,6 +472,64 @@ func (s *Service) onBackendEOF() {
 	s.emitState(s.stateFromQueue(queueState))
 }
 
+func (s *Service) loadPlaybackStateSnapshot() {
+	if s.db == nil || s.queue == nil {
+		return
+	}
+
+	var (
+		statusValue sql.NullString
+		positionMS  sql.NullInt64
+		updatedAt   sql.NullString
+	)
+
+	err := s.db.QueryRowContext(
+		context.Background(),
+		"SELECT status, position_ms, updated_at FROM playback_state WHERE id = 1",
+	).Scan(&statusValue, &positionMS, &updatedAt)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return
+	}
+
+	queueState := s.queue.GetState()
+	loadedStatus := normalizePlayerStatus(statusValue.String)
+	if loadedStatus == StatusPlaying {
+		loadedStatus = StatusPaused
+	}
+
+	loadedPosition := 0
+	if positionMS.Valid && positionMS.Int64 > 0 {
+		loadedPosition = int(positionMS.Int64)
+	}
+
+	loadedUpdatedAt := time.Now().UTC()
+	if updatedAt.Valid {
+		if parsed, parseErr := time.Parse(time.RFC3339Nano, updatedAt.String); parseErr == nil {
+			loadedUpdatedAt = parsed.UTC()
+		} else if parsed, parseErr := time.Parse(time.RFC3339, updatedAt.String); parseErr == nil {
+			loadedUpdatedAt = parsed.UTC()
+		}
+	}
+
+	loadedDuration := trackDuration(queueState.CurrentTrack)
+	if loadedDuration != nil && loadedPosition > *loadedDuration {
+		loadedPosition = *loadedDuration
+	}
+
+	if queueState.CurrentTrack == nil {
+		loadedStatus = StatusStopped
+		loadedPosition = 0
+		loadedDuration = nil
+	}
+
+	s.mu.Lock()
+	s.status = loadedStatus
+	s.positionMS = loadedPosition
+	s.durationMS = loadedDuration
+	s.updatedAt = loadedUpdatedAt
+	s.mu.Unlock()
+}
+
 func (s *Service) requireBackend() (playbackBackend, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -658,6 +723,8 @@ func (s *Service) stateFromQueue(queueState queue.State) State {
 }
 
 func (s *Service) emitState(state State) {
+	s.persistPlaybackState(state)
+
 	s.mu.Lock()
 	emitter := s.emit
 	s.mu.Unlock()
@@ -665,6 +732,38 @@ func (s *Service) emitState(state State) {
 	if emitter != nil {
 		emitter(EventStateChanged, state)
 	}
+}
+
+func (s *Service) persistPlaybackState(state State) {
+	if s.db == nil {
+		return
+	}
+
+	updatedAt := strings.TrimSpace(state.UpdatedAt)
+	if updatedAt == "" {
+		updatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+
+	_, _ = s.db.ExecContext(
+		context.Background(),
+		`INSERT INTO playback_state(id, current_track_id, position_ms, status, repeat_mode, shuffle, updated_at)
+		 VALUES (
+		 	1,
+		 	COALESCE((SELECT current_track_id FROM playback_state WHERE id = 1), NULL),
+		 	?,
+		 	?,
+		 	COALESCE((SELECT repeat_mode FROM playback_state WHERE id = 1), 'off'),
+		 	COALESCE((SELECT shuffle FROM playback_state WHERE id = 1), 0),
+		 	?
+		 )
+		 ON CONFLICT(id) DO UPDATE SET
+		 	position_ms = excluded.position_ms,
+		 	status = excluded.status,
+		 	updated_at = excluded.updated_at`,
+		state.PositionMS,
+		state.Status,
+		updatedAt,
+	)
 }
 
 func (s *Service) beginQueueMutation() func() {
@@ -695,4 +794,15 @@ func trackDuration(track *library.TrackSummary) *int {
 
 	value := *track.DurationMS
 	return &value
+}
+
+func normalizePlayerStatus(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case StatusPlaying:
+		return StatusPlaying
+	case StatusPaused:
+		return StatusPaused
+	default:
+		return StatusStopped
+	}
 }

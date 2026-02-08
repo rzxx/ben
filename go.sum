@@ -127,6 +127,12 @@ github.com/wailsapp/wails/v3 v3.0.0-alpha.67 h1:cUpNk00Hvu9DMBI6bpF4xxwwzf3yT1n9
 github.com/wailsapp/wails/v3 v3.0.0-alpha.67/go.mod h1:zvgNL/mlFcX8aRGu6KOz9AHrMmTBD+4hJRQIONqF/Yw=
 github.com/xanzy/ssh-agent v0.3.3 h1:+/15pJfg/RsTxqYcX6fHqOXZwwMP+2VyYWJeWM2qQFM=
 github.com/xanzy/ssh-agent v0.3.3/go.mod h1:6dzNDKs0J9rVPHPhaGCukekBHKqfl+L3KghI1Bc68Uw=
+github.com/zzl/go-com v1.5.0 h1:ANiyOsvP1XfUugoZBIvCbvqh+Ns1DLSJ9lBF1zgHSak=
+github.com/zzl/go-com v1.5.0/go.mod h1:Q0gh9d2jtlY//GbUXVPD+dzc0te32p3cetGM6am2Ooo=
+github.com/zzl/go-win32api/v2 v2.1.0 h1:BwXsEl3iycRhG4lpe3JsnNACyQH/U7RTBhJwyCaIB/g=
+github.com/zzl/go-win32api/v2 v2.1.0/go.mod h1:doi6ewHPdh9tDmqe837Ro7IwqtB9yE+1fC8suK/Ssj0=
+github.com/zzl/go-winrtapi v1.0.0 h1:K6FHwQ/um5tXBf6EPwcUwOrMcnurTdVOcHCirhsZRfw=
+github.com/zzl/go-winrtapi v1.0.0/go.mod h1:+P4U4e/yP9QO4uDrcCJVYXnCrgVJSY/1zES5pBr2bAA=
 go.senan.xyz/taglib v0.11.1 h1:S3mO5e3HRRG0Ehw1jLUodYbAJK8TtqdOoNgqkC0D3uU=
 go.senan.xyz/taglib v0.11.1/go.mod h1:qyTl978MnGeZ/ny4d/t0ErLXxysA+39X4+SNSCk56Zs=
 golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d/go.mod h1:IxCIyHEi3zRg3s0A5j5BB6A9Jmi73HwBIUl50j+osU4=
