@@ -71,6 +71,8 @@ func NewService(database *sql.DB, queueService *queue.Service) *Service {
 		volume: defaultVolume,
 	}
 
+	service.loadPlaybackStateSnapshot()
+
 	backend, err := newPlaybackBackend()
 	if err != nil {
 		service.backendErr = err.Error()
@@ -83,8 +85,6 @@ func NewService(database *sql.DB, queueService *queue.Service) *Service {
 	if queueService != nil {
 		queueService.SetOnChange(service.onQueueChanged)
 	}
-
-	service.loadPlaybackStateSnapshot()
 
 	return service
 }
@@ -295,18 +295,26 @@ func (s *Service) Previous() (State, error) {
 }
 
 func (s *Service) Seek(positionMS int) (State, error) {
-	backend, err := s.requireBackend()
-	if err != nil {
-		return s.GetState(), err
-	}
-
 	if positionMS < 0 {
 		positionMS = 0
 	}
 
 	queueState := s.queue.GetState()
 	if queueState.CurrentTrack == nil {
-		return s.stateFromQueue(queueState), errors.New("no track selected")
+		return s.stateFromQueue(queueState), nil
+	}
+
+	s.mu.Lock()
+	status := s.status
+	s.mu.Unlock()
+
+	if status == StatusIdle {
+		return s.stateFromQueue(queueState), nil
+	}
+
+	backend, err := s.requireBackend()
+	if err != nil {
+		return s.GetState(), err
 	}
 
 	if duration := s.currentDuration(queueState.CurrentTrack); duration != nil && positionMS > *duration {
@@ -334,12 +342,7 @@ func (s *Service) SetVolume(volume int) (State, error) {
 		return s.GetState(), err
 	}
 
-	if volume < 0 {
-		volume = 0
-	}
-	if volume > 100 {
-		volume = 100
-	}
+	volume = clampVolume(volume)
 
 	if err := backend.SetVolume(volume); err != nil {
 		return s.GetState(), fmt.Errorf("set volume: %w", err)
@@ -444,13 +447,14 @@ func (s *Service) loadPlaybackStateSnapshot() {
 	var (
 		statusValue sql.NullString
 		positionMS  sql.NullInt64
+		volume      sql.NullInt64
 		updatedAt   sql.NullString
 	)
 
 	err := s.db.QueryRowContext(
 		context.Background(),
-		"SELECT status, position_ms, updated_at FROM playback_state WHERE id = 1",
-	).Scan(&statusValue, &positionMS, &updatedAt)
+		"SELECT status, position_ms, volume, updated_at FROM playback_state WHERE id = 1",
+	).Scan(&statusValue, &positionMS, &volume, &updatedAt)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return
 	}
@@ -464,6 +468,11 @@ func (s *Service) loadPlaybackStateSnapshot() {
 	loadedPosition := 0
 	if positionMS.Valid && positionMS.Int64 > 0 {
 		loadedPosition = int(positionMS.Int64)
+	}
+
+	loadedVolume := defaultVolume
+	if volume.Valid {
+		loadedVolume = clampVolume(int(volume.Int64))
 	}
 
 	loadedUpdatedAt := time.Now().UTC()
@@ -489,6 +498,7 @@ func (s *Service) loadPlaybackStateSnapshot() {
 	s.mu.Lock()
 	s.status = loadedStatus
 	s.positionMS = loadedPosition
+	s.volume = loadedVolume
 	s.durationMS = loadedDuration
 	s.updatedAt = loadedUpdatedAt
 	s.mu.Unlock()
@@ -746,7 +756,7 @@ func (s *Service) persistPlaybackState(state State) {
 
 	_, _ = s.db.ExecContext(
 		context.Background(),
-		`INSERT INTO playback_state(id, current_track_id, position_ms, status, repeat_mode, shuffle, updated_at)
+		`INSERT INTO playback_state(id, current_track_id, position_ms, status, repeat_mode, shuffle, volume, updated_at)
 		 VALUES (
 		 	1,
 		 	COALESCE((SELECT current_track_id FROM playback_state WHERE id = 1), NULL),
@@ -754,14 +764,17 @@ func (s *Service) persistPlaybackState(state State) {
 		 	?,
 		 	COALESCE((SELECT repeat_mode FROM playback_state WHERE id = 1), 'off'),
 		 	COALESCE((SELECT shuffle FROM playback_state WHERE id = 1), 0),
+		 	?,
 		 	?
 		 )
 		 ON CONFLICT(id) DO UPDATE SET
 		 	position_ms = excluded.position_ms,
 		 	status = excluded.status,
+		 	volume = excluded.volume,
 		 	updated_at = excluded.updated_at`,
 		state.PositionMS,
 		state.Status,
+		clampVolume(state.Volume),
 		updatedAt,
 	)
 }
@@ -785,6 +798,17 @@ func (s *Service) shouldSkipQueueSync() bool {
 	defer s.mu.Unlock()
 
 	return s.skipQueueSync > 0
+}
+
+func clampVolume(volume int) int {
+	if volume < 0 {
+		return 0
+	}
+	if volume > 100 {
+		return 100
+	}
+
+	return volume
 }
 
 func trackDuration(track *library.TrackSummary) *int {

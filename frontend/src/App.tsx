@@ -549,6 +549,10 @@ function AppContent() {
   };
 
   const onSeek = async (positionMS: number) => {
+    if (playerState.status === "idle" || !playerState.currentTrack) {
+      return;
+    }
+
     try {
       setErrorMessage(null);
       await Call.ByName(`${playerService}.Seek`, positionMS);
