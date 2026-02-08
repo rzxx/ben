@@ -135,6 +135,10 @@ export function SettingsView(props: SettingsViewProps) {
             <span>Skips</span>
             <strong>{props.statsOverview.skipCount}</strong>
           </div>
+          <div>
+            <span>Partials</span>
+            <strong>{props.statsOverview.partialCount}</strong>
+          </div>
         </div>
 
         <h3>Top Tracks</h3>
@@ -150,7 +154,7 @@ export function SettingsView(props: SettingsViewProps) {
                     {track.artist} - {track.album}
                   </span>
                   <span>
-                    {formatPlayedTime(track.playedMs)} - {track.completeCount} completes - {track.skipCount} skips
+                    {formatPlayedTime(track.playedMs)} - {track.completeCount} completes - {track.partialCount} partials - {track.skipCount} skips
                   </span>
                 </div>
               </li>

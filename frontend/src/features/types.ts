@@ -114,6 +114,7 @@ export type StatsTrack = {
   playedMs: number;
   completeCount: number;
   skipCount: number;
+  partialCount: number;
 };
 
 export type StatsArtist = {
@@ -127,6 +128,7 @@ export type StatsOverview = {
   tracksPlayed: number;
   completeCount: number;
   skipCount: number;
+  partialCount: number;
   topTracks: StatsTrack[];
   topArtists: StatsArtist[];
 };

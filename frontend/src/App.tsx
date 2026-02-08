@@ -74,6 +74,7 @@ function createEmptyStatsOverview(): StatsOverview {
     tracksPlayed: 0,
     completeCount: 0,
     skipCount: 0,
+    partialCount: 0,
     topTracks: [],
     topArtists: [],
   };

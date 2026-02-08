@@ -16,11 +16,9 @@ const EventComplete = "complete"
 
 const EventSkip = "skip"
 
+const EventPartial = "partial"
+
 const heartbeatInterval = 10 * time.Second
-
-const completionGraceMS = 2500
-
-const completionThresholdPercent = 95
 
 const maxDeltaMS = 30000
 
@@ -28,11 +26,36 @@ const defaultTopLimit = 5
 
 const maxTopLimit = 25
 
+const playedThresholdMS = 30000
+
+const skipThresholdMS = 45000
+
+const shortTrackBoundaryMS = 5 * 60 * 1000
+
+const mediumTrackBoundaryMS = 20 * 60 * 1000
+
+const shortTrackCompletePercent = 90
+
+const mediumTrackCompletePercent = 85
+
+const longTrackCompletePercent = 80
+
+const antiSeekCapMS = 180000
+
+const antiSeekPercent = 25
+
+const completeTailPercent = 3
+
+const completeTailMinMS = 8000
+
+const completeTailMaxMS = 90000
+
 type Overview struct {
 	TotalPlayedMS int          `json:"totalPlayedMs"`
 	TracksPlayed  int          `json:"tracksPlayed"`
 	CompleteCount int          `json:"completeCount"`
 	SkipCount     int          `json:"skipCount"`
+	PartialCount  int          `json:"partialCount"`
 	TopTracks     []TrackStat  `json:"topTracks"`
 	TopArtists    []ArtistStat `json:"topArtists"`
 }
@@ -46,6 +69,7 @@ type TrackStat struct {
 	PlayedMS      int     `json:"playedMs"`
 	CompleteCount int     `json:"completeCount"`
 	SkipCount     int     `json:"skipCount"`
+	PartialCount  int     `json:"partialCount"`
 }
 
 type ArtistStat struct {
@@ -63,6 +87,7 @@ type Service struct {
 	activePosition  int
 	active          bool
 	activePlayback  bool
+	activePlayedMS  int
 	pendingPlayedMS int
 	lastObservedAt  time.Time
 }
@@ -98,6 +123,7 @@ func (s *Service) HandlePlayerState(state player.State) {
 		if s.activePlayback {
 			deltaMS := elapsedMS(s.lastObservedAt, observedAt)
 			if deltaMS > 0 {
+				s.activePlayedMS += deltaMS
 				s.pendingPlayedMS += deltaMS
 				for s.pendingPlayedMS >= int(heartbeatInterval/time.Millisecond) {
 					s.pendingPlayedMS -= int(heartbeatInterval / time.Millisecond)
@@ -123,7 +149,7 @@ func (s *Service) HandlePlayerState(state player.State) {
 				s.pendingPlayedMS = 0
 			}
 
-			eventType := classifyTrackEnd(s.activePosition, s.activeDuration)
+			eventType := classifyTrackEnd(s.activePlayedMS, s.activePosition, s.activeDuration)
 			if eventType != "" {
 				events = append(events, playEvent{
 					trackID:   s.activeTrackID,
@@ -138,6 +164,7 @@ func (s *Service) HandlePlayerState(state player.State) {
 			s.activeTrackID = 0
 			s.activeDuration = 0
 			s.activePosition = 0
+			s.activePlayedMS = 0
 			s.pendingPlayedMS = 0
 		}
 	}
@@ -146,6 +173,7 @@ func (s *Service) HandlePlayerState(state player.State) {
 		if !s.active || s.activeTrackID != trackID {
 			s.active = true
 			s.activeTrackID = trackID
+			s.activePlayedMS = 0
 			s.pendingPlayedMS = 0
 		}
 
@@ -180,13 +208,15 @@ func (s *Service) GetOverview(limit int) (Overview, error) {
 			COALESCE(SUM(CASE WHEN event_type = ? THEN COALESCE(position_ms, 0) ELSE 0 END), 0) AS total_played_ms,
 			COUNT(DISTINCT CASE WHEN event_type = ? AND COALESCE(position_ms, 0) > 0 THEN track_id END) AS tracks_played,
 			COALESCE(SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END), 0) AS complete_count,
-			COALESCE(SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END), 0) AS skip_count
+			COALESCE(SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END), 0) AS skip_count,
+			COALESCE(SUM(CASE WHEN event_type = ? THEN 1 ELSE 0 END), 0) AS partial_count
 		FROM play_events
-	`, EventHeartbeat, EventHeartbeat, EventComplete, EventSkip).Scan(
+	`, EventHeartbeat, EventHeartbeat, EventComplete, EventSkip, EventPartial).Scan(
 		&overview.TotalPlayedMS,
 		&overview.TracksPlayed,
 		&overview.CompleteCount,
 		&overview.SkipCount,
+		&overview.PartialCount,
 	); err != nil {
 		return Overview{}, err
 	}
@@ -216,7 +246,8 @@ func (s *Service) readTopTracks(ctx context.Context, limit int) ([]TrackStat, er
 			cover.cache_path,
 			COALESCE(SUM(CASE WHEN pe.event_type = ? THEN COALESCE(pe.position_ms, 0) ELSE 0 END), 0) AS played_ms,
 			COALESCE(SUM(CASE WHEN pe.event_type = ? THEN 1 ELSE 0 END), 0) AS complete_count,
-			COALESCE(SUM(CASE WHEN pe.event_type = ? THEN 1 ELSE 0 END), 0) AS skip_count
+			COALESCE(SUM(CASE WHEN pe.event_type = ? THEN 1 ELSE 0 END), 0) AS skip_count,
+			COALESCE(SUM(CASE WHEN pe.event_type = ? THEN 1 ELSE 0 END), 0) AS partial_count
 		FROM play_events pe
 		JOIN tracks t ON t.id = pe.track_id
 		JOIN files f ON f.id = t.file_id
@@ -227,15 +258,18 @@ func (s *Service) readTopTracks(ctx context.Context, limit int) ([]TrackStat, er
 			COALESCE(SUM(CASE WHEN pe.event_type = ? THEN COALESCE(pe.position_ms, 0) ELSE 0 END), 0) > 0
 			OR COALESCE(SUM(CASE WHEN pe.event_type = ? THEN 1 ELSE 0 END), 0) > 0
 			OR COALESCE(SUM(CASE WHEN pe.event_type = ? THEN 1 ELSE 0 END), 0) > 0
+			OR COALESCE(SUM(CASE WHEN pe.event_type = ? THEN 1 ELSE 0 END), 0) > 0
 		ORDER BY played_ms DESC, complete_count DESC, skip_count ASC, LOWER(track_title)
 		LIMIT ?
 	`,
 		EventHeartbeat,
 		EventComplete,
 		EventSkip,
+		EventPartial,
 		EventHeartbeat,
 		EventComplete,
 		EventSkip,
+		EventPartial,
 		limit,
 	)
 	if err != nil {
@@ -256,6 +290,7 @@ func (s *Service) readTopTracks(ctx context.Context, limit int) ([]TrackStat, er
 			&item.PlayedMS,
 			&item.CompleteCount,
 			&item.SkipCount,
+			&item.PartialCount,
 		); scanErr != nil {
 			return nil, scanErr
 		}
@@ -359,22 +394,100 @@ func shouldFinalizeTrack(activeTrackID int64, currentTrackID int64, status strin
 	return false
 }
 
-func classifyTrackEnd(positionMS int, durationMS int) string {
-	if positionMS <= 0 {
-		return ""
+func classifyTrackEnd(effectivePlayedMS int, positionMS int, durationMS int) string {
+	if effectivePlayedMS < 0 {
+		effectivePlayedMS = 0
+	}
+	if positionMS < 0 {
+		positionMS = 0
 	}
 
-	if durationMS > 0 {
-		if positionMS >= durationMS-completionGraceMS {
-			return EventComplete
+	if effectivePlayedMS == 0 {
+		if positionMS == 0 {
+			return ""
 		}
-
-		if (positionMS * 100) >= (durationMS * completionThresholdPercent) {
-			return EventComplete
-		}
+		effectivePlayedMS = positionMS
 	}
 
-	return EventSkip
+	if effectivePlayedMS < playedThresholdMS {
+		return EventSkip
+	}
+
+	if durationMS <= 0 {
+		if effectivePlayedMS < skipThresholdMS {
+			return EventSkip
+		}
+		return EventPartial
+	}
+
+	completeFloor := minimumListenForComplete(durationMS)
+	completePercent := completePercentByDuration(durationMS)
+	remainingAllowance := remainingWindowMS(durationMS)
+
+	remaining := durationMS - effectivePlayedMS
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	completeByPercent := (effectivePlayedMS * 100) >= (durationMS * completePercent)
+	completeByTail := remaining <= remainingAllowance
+
+	if effectivePlayedMS >= completeFloor && (completeByPercent || completeByTail) {
+		return EventComplete
+	}
+
+	skipThreshold := minInt(skipThresholdMS, percentOf(durationMS, 20))
+	if effectivePlayedMS < skipThreshold {
+		return EventSkip
+	}
+
+	return EventPartial
+}
+
+func minimumListenForComplete(durationMS int) int {
+	return minInt(antiSeekCapMS, percentOf(durationMS, antiSeekPercent))
+}
+
+func completePercentByDuration(durationMS int) int {
+	switch {
+	case durationMS <= shortTrackBoundaryMS:
+		return shortTrackCompletePercent
+	case durationMS <= mediumTrackBoundaryMS:
+		return mediumTrackCompletePercent
+	default:
+		return longTrackCompletePercent
+	}
+}
+
+func remainingWindowMS(durationMS int) int {
+	return clampInt(percentOf(durationMS, completeTailPercent), completeTailMinMS, completeTailMaxMS)
+}
+
+func percentOf(value int, percent int) int {
+	if value <= 0 || percent <= 0 {
+		return 0
+	}
+
+	return (value * percent) / 100
+}
+
+func minInt(a int, b int) int {
+	if a <= b {
+		return a
+	}
+
+	return b
+}
+
+func clampInt(value int, minimum int, maximum int) int {
+	if value < minimum {
+		return minimum
+	}
+	if value > maximum {
+		return maximum
+	}
+
+	return value
 }
 
 func elapsedMS(start time.Time, end time.Time) int {
