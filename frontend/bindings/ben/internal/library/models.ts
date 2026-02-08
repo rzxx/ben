@@ -10,6 +10,7 @@ export class AlbumDetail {
     "albumArtist": string;
     "year"?: number | null;
     "trackCount": number;
+    "coverPath"?: string | null;
     "tracks": TrackSummary[];
     "page": PageInfo;
 
@@ -38,14 +39,14 @@ export class AlbumDetail {
      * Creates a new AlbumDetail instance from a string or object.
      */
     static createFrom($$source: any = {}): AlbumDetail {
-        const $$createField4_0 = $$createType1;
-        const $$createField5_0 = $$createType2;
+        const $$createField5_0 = $$createType1;
+        const $$createField6_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tracks" in $$parsedSource) {
-            $$parsedSource["tracks"] = $$createField4_0($$parsedSource["tracks"]);
+            $$parsedSource["tracks"] = $$createField5_0($$parsedSource["tracks"]);
         }
         if ("page" in $$parsedSource) {
-            $$parsedSource["page"] = $$createField5_0($$parsedSource["page"]);
+            $$parsedSource["page"] = $$createField6_0($$parsedSource["page"]);
         }
         return new AlbumDetail($$parsedSource as Partial<AlbumDetail>);
     }
@@ -56,6 +57,7 @@ export class AlbumSummary {
     "albumArtist": string;
     "year"?: number | null;
     "trackCount": number;
+    "coverPath"?: string | null;
 
     /** Creates a new AlbumSummary instance. */
     constructor($$source: Partial<AlbumSummary> = {}) {

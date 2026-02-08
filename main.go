@@ -44,7 +44,7 @@ func main() {
 	queueDomain := queue.NewService(sqliteDB)
 	playerDomain := player.NewService(queueDomain)
 	defer playerDomain.Close()
-	scannerDomain := scanner.NewService(sqliteDB, watchedRoots)
+	scannerDomain := scanner.NewService(sqliteDB, watchedRoots, paths.CoverCacheDir)
 	settingsService := NewSettingsService(watchedRoots, scannerDomain)
 	libraryService := NewLibraryService(browseRepo)
 	queueService := NewQueueService(queueDomain)

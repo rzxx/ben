@@ -25,10 +25,11 @@ type ArtistSummary struct {
 }
 
 type AlbumSummary struct {
-	Title       string `json:"title"`
-	AlbumArtist string `json:"albumArtist"`
-	Year        *int   `json:"year,omitempty"`
-	TrackCount  int    `json:"trackCount"`
+	Title       string  `json:"title"`
+	AlbumArtist string  `json:"albumArtist"`
+	Year        *int    `json:"year,omitempty"`
+	TrackCount  int     `json:"trackCount"`
+	CoverPath   *string `json:"coverPath,omitempty"`
 }
 
 type TrackSummary struct {
@@ -71,6 +72,7 @@ type AlbumDetail struct {
 	AlbumArtist string         `json:"albumArtist"`
 	Year        *int           `json:"year,omitempty"`
 	TrackCount  int            `json:"trackCount"`
+	CoverPath   *string        `json:"coverPath,omitempty"`
 	Tracks      []TrackSummary `json:"tracks"`
 	Page        PageInfo       `json:"page"`
 }
@@ -92,11 +94,11 @@ func NewBrowseRepository(database *sql.DB) *BrowseRepository {
 func (r *BrowseRepository) ListArtists(ctx context.Context, search string, limit int, offset int) (ArtistsPage, error) {
 	limit, offset = normalizePagination(limit, offset, defaultBrowseLimit)
 
-	whereClauses := []string{"f.file_exists = 1"}
-	args := make([]any, 0, 4)
+	whereClauses := []string{"1 = 1"}
+	args := make([]any, 0, 2)
 
 	if pattern := makeSearchPattern(search); pattern != "" {
-		whereClauses = append(whereClauses, "LOWER(COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist')) LIKE ?")
+		whereClauses = append(whereClauses, "LOWER(a.name) LIKE ?")
 		args = append(args, pattern)
 	}
 
@@ -104,13 +106,8 @@ func (r *BrowseRepository) ListArtists(ctx context.Context, search string, limit
 
 	countQuery := fmt.Sprintf(`
 		SELECT COUNT(1)
-		FROM (
-			SELECT COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist') AS artist_name
-			FROM tracks t
-			JOIN files f ON f.id = t.file_id
-			WHERE %s
-			GROUP BY artist_name
-		) grouped_artists
+		FROM artists a
+		WHERE %s
 	`, whereSQL)
 
 	var total int
@@ -120,14 +117,28 @@ func (r *BrowseRepository) ListArtists(ctx context.Context, search string, limit
 
 	listQuery := fmt.Sprintf(`
 		SELECT
-			COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist') AS artist_name,
-			COUNT(1) AS track_count,
-			COUNT(DISTINCT COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album')) AS album_count
-		FROM tracks t
-		JOIN files f ON f.id = t.file_id
+			a.name,
+			COALESCE(track_totals.track_count, 0) AS track_count,
+			COALESCE(album_totals.album_count, 0) AS album_count
+		FROM artists a
+		LEFT JOIN (
+			SELECT
+				COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist') AS artist_name,
+				COUNT(1) AS track_count
+			FROM tracks t
+			JOIN files f ON f.id = t.file_id
+			WHERE f.file_exists = 1
+			GROUP BY artist_name
+		) track_totals ON LOWER(track_totals.artist_name) = LOWER(a.name)
+		LEFT JOIN (
+			SELECT
+				COALESCE(NULLIF(TRIM(album_artist), ''), 'Unknown Artist') AS artist_name,
+				COUNT(1) AS album_count
+			FROM albums
+			GROUP BY artist_name
+		) album_totals ON LOWER(album_totals.artist_name) = LOWER(a.name)
 		WHERE %s
-		GROUP BY artist_name
-		ORDER BY LOWER(artist_name)
+		ORDER BY LOWER(COALESCE(NULLIF(TRIM(a.sort_name), ''), a.name)), LOWER(a.name)
 		LIMIT ?
 		OFFSET ?
 	`, whereSQL)
@@ -166,16 +177,16 @@ func (r *BrowseRepository) ListArtists(ctx context.Context, search string, limit
 func (r *BrowseRepository) ListAlbums(ctx context.Context, search string, artist string, limit int, offset int) (AlbumsPage, error) {
 	limit, offset = normalizePagination(limit, offset, defaultBrowseLimit)
 
-	whereClauses := []string{"f.file_exists = 1"}
+	whereClauses := []string{"1 = 1"}
 	args := make([]any, 0, 8)
 
 	if pattern := makeSearchPattern(search); pattern != "" {
-		whereClauses = append(whereClauses, `(LOWER(COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album')) LIKE ? OR LOWER(COALESCE(NULLIF(TRIM(t.album_artist), ''), COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist'))) LIKE ?)`)
+		whereClauses = append(whereClauses, `(LOWER(COALESCE(NULLIF(TRIM(a.title), ''), 'Unknown Album')) LIKE ? OR LOWER(COALESCE(NULLIF(TRIM(a.album_artist), ''), 'Unknown Artist')) LIKE ?)`)
 		args = append(args, pattern, pattern)
 	}
 
 	if artistFilter := strings.TrimSpace(artist); artistFilter != "" {
-		whereClauses = append(whereClauses, "LOWER(COALESCE(NULLIF(TRIM(t.album_artist), ''), COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist'))) = LOWER(?)")
+		whereClauses = append(whereClauses, "LOWER(COALESCE(NULLIF(TRIM(a.album_artist), ''), 'Unknown Artist')) = LOWER(?)")
 		args = append(args, artistFilter)
 	}
 
@@ -183,15 +194,8 @@ func (r *BrowseRepository) ListAlbums(ctx context.Context, search string, artist
 
 	countQuery := fmt.Sprintf(`
 		SELECT COUNT(1)
-		FROM (
-			SELECT
-				COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album') AS album_title,
-				COALESCE(NULLIF(TRIM(t.album_artist), ''), COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist')) AS album_artist_name
-			FROM tracks t
-			JOIN files f ON f.id = t.file_id
-			WHERE %s
-			GROUP BY album_title, album_artist_name
-		) grouped_albums
+		FROM albums a
+		WHERE %s
 	`, whereSQL)
 
 	var total int
@@ -201,15 +205,23 @@ func (r *BrowseRepository) ListAlbums(ctx context.Context, search string, artist
 
 	listQuery := fmt.Sprintf(`
 		SELECT
-			COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album') AS album_title,
-			COALESCE(NULLIF(TRIM(t.album_artist), ''), COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist')) AS album_artist_name,
-			MIN(NULLIF(t.year, 0)) AS first_year,
-			COUNT(1) AS track_count
-		FROM tracks t
-		JOIN files f ON f.id = t.file_id
+			COALESCE(NULLIF(TRIM(a.title), ''), 'Unknown Album') AS album_title,
+			COALESCE(NULLIF(TRIM(a.album_artist), ''), 'Unknown Artist') AS album_artist_name,
+			a.year,
+			COALESCE(track_totals.track_count, 0) AS track_count,
+			cover.cache_path
+		FROM albums a
+		LEFT JOIN (
+			SELECT at.album_id, COUNT(1) AS track_count
+			FROM album_tracks at
+			JOIN tracks t ON t.id = at.track_id
+			JOIN files f ON f.id = t.file_id
+			WHERE f.file_exists = 1
+			GROUP BY at.album_id
+		) track_totals ON track_totals.album_id = a.id
+		LEFT JOIN covers cover ON cover.id = a.cover_id
 		WHERE %s
-		GROUP BY album_title, album_artist_name
-		ORDER BY LOWER(album_artist_name), LOWER(album_title)
+		ORDER BY LOWER(COALESCE(NULLIF(TRIM(a.album_artist), ''), 'Unknown Artist')), LOWER(COALESCE(NULLIF(TRIM(a.title), ''), 'Unknown Album'))
 		LIMIT ?
 		OFFSET ?
 	`, whereSQL)
@@ -226,10 +238,12 @@ func (r *BrowseRepository) ListAlbums(ctx context.Context, search string, artist
 	for rows.Next() {
 		var album AlbumSummary
 		var year sql.NullInt64
-		if scanErr := rows.Scan(&album.Title, &album.AlbumArtist, &year, &album.TrackCount); scanErr != nil {
+		var coverPath sql.NullString
+		if scanErr := rows.Scan(&album.Title, &album.AlbumArtist, &year, &album.TrackCount, &coverPath); scanErr != nil {
 			return AlbumsPage{}, fmt.Errorf("scan album row: %w", scanErr)
 		}
 		album.Year = intPointer(year)
+		album.CoverPath = stringPointer(coverPath)
 		albums = append(albums, album)
 	}
 
@@ -364,12 +378,19 @@ func (r *BrowseRepository) GetArtistDetail(ctx context.Context, name string, lim
 	if err := r.db.QueryRowContext(ctx, `
 		SELECT
 			COUNT(1),
-			COUNT(DISTINCT COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album'))
+			COALESCE((
+				SELECT COUNT(DISTINCT at.album_id)
+				FROM album_tracks at
+				JOIN tracks t2 ON t2.id = at.track_id
+				JOIN files f2 ON f2.id = t2.file_id
+				WHERE f2.file_exists = 1
+				  AND LOWER(COALESCE(NULLIF(TRIM(t2.artist), ''), 'Unknown Artist')) = LOWER(?)
+			), 0)
 		FROM tracks t
 		JOIN files f ON f.id = t.file_id
 		WHERE f.file_exists = 1
 		  AND LOWER(COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist')) = LOWER(?)
-	`, artistName).Scan(&trackCount, &albumCount); err != nil {
+	`, artistName, artistName).Scan(&trackCount, &albumCount); err != nil {
 		return ArtistDetail{}, fmt.Errorf("get artist totals for %q: %w", artistName, err)
 	}
 
@@ -381,16 +402,20 @@ func (r *BrowseRepository) GetArtistDetail(ctx context.Context, name string, lim
 
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
-			COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album') AS album_title,
-			COALESCE(NULLIF(TRIM(t.album_artist), ''), COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist')) AS album_artist_name,
-			MIN(NULLIF(t.year, 0)) AS first_year,
-			COUNT(1) AS track_count
-		FROM tracks t
+			COALESCE(NULLIF(TRIM(a.title), ''), 'Unknown Album') AS album_title,
+			COALESCE(NULLIF(TRIM(a.album_artist), ''), 'Unknown Artist') AS album_artist_name,
+			a.year,
+			COUNT(1) AS track_count,
+			cover.cache_path
+		FROM albums a
+		JOIN album_tracks at ON at.album_id = a.id
+		JOIN tracks t ON t.id = at.track_id
 		JOIN files f ON f.id = t.file_id
+		LEFT JOIN covers cover ON cover.id = a.cover_id
 		WHERE f.file_exists = 1
 		  AND LOWER(COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist')) = LOWER(?)
-		GROUP BY album_title, album_artist_name
-		ORDER BY LOWER(album_title)
+		GROUP BY a.id, album_title, album_artist_name, a.year, cover.cache_path
+		ORDER BY LOWER(COALESCE(NULLIF(TRIM(a.title), ''), 'Unknown Album'))
 		LIMIT ?
 		OFFSET ?
 	`, artistName, limit, offset)
@@ -403,10 +428,12 @@ func (r *BrowseRepository) GetArtistDetail(ctx context.Context, name string, lim
 	for rows.Next() {
 		var album AlbumSummary
 		var year sql.NullInt64
-		if scanErr := rows.Scan(&album.Title, &album.AlbumArtist, &year, &album.TrackCount); scanErr != nil {
+		var coverPath sql.NullString
+		if scanErr := rows.Scan(&album.Title, &album.AlbumArtist, &year, &album.TrackCount, &coverPath); scanErr != nil {
 			return ArtistDetail{}, fmt.Errorf("scan artist album row for %q: %w", artistName, scanErr)
 		}
 		album.Year = intPointer(year)
+		album.CoverPath = stringPointer(coverPath)
 		albums = append(albums, album)
 	}
 
@@ -437,21 +464,32 @@ func (r *BrowseRepository) GetAlbumDetail(ctx context.Context, title string, alb
 		return AlbumDetail{}, errors.New("album artist is required")
 	}
 
+	var albumID int64
 	var detail AlbumDetail
 	var year sql.NullInt64
+	var coverPath sql.NullString
 	if err := r.db.QueryRowContext(ctx, `
 		SELECT
-			COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album') AS album_title,
-			COALESCE(NULLIF(TRIM(t.album_artist), ''), COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist')) AS album_artist_name,
-			MIN(NULLIF(t.year, 0)) AS first_year,
-			COUNT(1) AS track_count
-		FROM tracks t
-		JOIN files f ON f.id = t.file_id
-		WHERE f.file_exists = 1
-		  AND LOWER(COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album')) = LOWER(?)
-		  AND LOWER(COALESCE(NULLIF(TRIM(t.album_artist), ''), COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist'))) = LOWER(?)
-		GROUP BY album_title, album_artist_name
-	`, albumTitle, artistName).Scan(&detail.Title, &detail.AlbumArtist, &year, &detail.TrackCount); err != nil {
+			a.id,
+			COALESCE(NULLIF(TRIM(a.title), ''), 'Unknown Album') AS album_title,
+			COALESCE(NULLIF(TRIM(a.album_artist), ''), 'Unknown Artist') AS album_artist_name,
+			a.year,
+			COALESCE(track_totals.track_count, 0) AS track_count,
+			cover.cache_path
+		FROM albums a
+		LEFT JOIN (
+			SELECT at.album_id, COUNT(1) AS track_count
+			FROM album_tracks at
+			JOIN tracks t ON t.id = at.track_id
+			JOIN files f ON f.id = t.file_id
+			WHERE f.file_exists = 1
+			GROUP BY at.album_id
+		) track_totals ON track_totals.album_id = a.id
+		LEFT JOIN covers cover ON cover.id = a.cover_id
+		WHERE LOWER(COALESCE(NULLIF(TRIM(a.title), ''), 'Unknown Album')) = LOWER(?)
+		  AND LOWER(COALESCE(NULLIF(TRIM(a.album_artist), ''), 'Unknown Artist')) = LOWER(?)
+		LIMIT 1
+	`, albumTitle, artistName).Scan(&albumID, &detail.Title, &detail.AlbumArtist, &year, &detail.TrackCount, &coverPath); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return AlbumDetail{}, ErrAlbumNotFound
 		}
@@ -459,6 +497,7 @@ func (r *BrowseRepository) GetAlbumDetail(ctx context.Context, title string, alb
 	}
 
 	detail.Year = intPointer(year)
+	detail.CoverPath = stringPointer(coverPath)
 
 	limit, offset = normalizePagination(limit, offset, defaultDetailLimit)
 
@@ -473,18 +512,18 @@ func (r *BrowseRepository) GetAlbumDetail(ctx context.Context, title string, alb
 			t.track_no,
 			t.duration_ms,
 			f.path
-		FROM tracks t
+		FROM album_tracks at
+		JOIN tracks t ON t.id = at.track_id
 		JOIN files f ON f.id = t.file_id
-		WHERE f.file_exists = 1
-		  AND LOWER(COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album')) = LOWER(?)
-		  AND LOWER(COALESCE(NULLIF(TRIM(t.album_artist), ''), COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist'))) = LOWER(?)
+		WHERE at.album_id = ?
+		  AND f.file_exists = 1
 		ORDER BY
-			COALESCE(t.disc_no, 0),
-			COALESCE(t.track_no, 0),
+			COALESCE(at.disc_no, t.disc_no, 0),
+			COALESCE(at.track_no, t.track_no, 0),
 			LOWER(track_title)
 		LIMIT ?
 		OFFSET ?
-	`, albumTitle, artistName, limit, offset)
+	`, albumID, limit, offset)
 	if err != nil {
 		return AlbumDetail{}, fmt.Errorf("list album tracks for %q by %q: %w", albumTitle, artistName, err)
 	}
@@ -565,4 +604,17 @@ func intPointer(value sql.NullInt64) *int {
 
 	intValue := int(value.Int64)
 	return &intValue
+}
+
+func stringPointer(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+
+	trimmed := strings.TrimSpace(value.String)
+	if trimmed == "" {
+		return nil
+	}
+
+	return &trimmed
 }

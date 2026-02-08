@@ -1,104 +1,26 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Redirect, Route, Router, Switch, useLocation } from "wouter";
+import { memoryLocation } from "wouter/memory-location";
 import { Call, Events } from "@wailsio/runtime";
-
-type WatchedRoot = {
-  id: number;
-  path: string;
-  enabled: boolean;
-  createdAt: string;
-};
-
-type ScanStatus = {
-  running: boolean;
-  lastRunAt?: string;
-  lastMode?: string;
-  lastError?: string;
-  lastFilesSeen?: number;
-  lastIndexed?: number;
-  lastSkipped?: number;
-};
-
-type ScanProgress = {
-  phase: string;
-  message: string;
-  percent: number;
-  status: string;
-  at: string;
-};
-
-type PageInfo = {
-  limit: number;
-  offset: number;
-  total: number;
-};
-
-type PagedResult<T> = {
-  items: T[];
-  page: PageInfo;
-};
-
-type LibraryArtist = {
-  name: string;
-  trackCount: number;
-  albumCount: number;
-};
-
-type LibraryAlbum = {
-  title: string;
-  albumArtist: string;
-  year?: number;
-  trackCount: number;
-};
-
-type LibraryTrack = {
-  id: number;
-  title: string;
-  artist: string;
-  album: string;
-  albumArtist: string;
-  discNo?: number;
-  trackNo?: number;
-  durationMs?: number;
-  path: string;
-};
-
-type ArtistDetail = {
-  name: string;
-  trackCount: number;
-  albumCount: number;
-  albums: LibraryAlbum[];
-  page: PageInfo;
-};
-
-type AlbumDetail = {
-  title: string;
-  albumArtist: string;
-  year?: number;
-  trackCount: number;
-  tracks: LibraryTrack[];
-  page: PageInfo;
-};
-
-type QueueState = {
-  entries: LibraryTrack[];
-  currentIndex: number;
-  currentTrack?: LibraryTrack;
-  repeatMode: string;
-  shuffle: boolean;
-  total: number;
-  updatedAt: string;
-};
-
-type PlayerState = {
-  status: string;
-  positionMs: number;
-  volume: number;
-  currentTrack?: LibraryTrack;
-  currentIndex: number;
-  queueLength: number;
-  durationMs?: number;
-  updatedAt: string;
-};
+import { LibraryView } from "./features/library/LibraryView";
+import { PlayerBar } from "./features/player/PlayerBar";
+import { QueueView } from "./features/queue/QueueView";
+import { SettingsView } from "./features/settings/SettingsView";
+import {
+  AlbumDetail,
+  ArtistDetail,
+  LibraryAlbum,
+  LibraryArtist,
+  LibraryTrack,
+  PageInfo,
+  PagedResult,
+  PlayerState,
+  QueueState,
+  ScanProgress,
+  ScanStatus,
+  WatchedRoot,
+} from "./features/types";
+import { useLibraryUIStore } from "./shared/store/libraryUIStore";
 
 const settingsService = "main.SettingsService";
 const libraryService = "main.LibraryService";
@@ -112,6 +34,7 @@ const playerStateEvent = "player:state";
 
 const browsePageSize = 10;
 const detailPageSize = 14;
+const appMemoryLocation = memoryLocation({ path: "/library" });
 
 function createEmptyPage(limit: number, offset: number): PageInfo {
   return {
@@ -159,7 +82,24 @@ function normalizePagedResult<T>(
   return parsed;
 }
 
-function App() {
+function AppContent() {
+  const [location, navigate] = useLocation();
+
+  const libraryQueryInput = useLibraryUIStore((state) => state.libraryQueryInput);
+  const libraryQuery = useLibraryUIStore((state) => state.libraryQuery);
+  const artistOffset = useLibraryUIStore((state) => state.artistOffset);
+  const albumOffset = useLibraryUIStore((state) => state.albumOffset);
+  const trackOffset = useLibraryUIStore((state) => state.trackOffset);
+  const selectedArtist = useLibraryUIStore((state) => state.selectedArtist);
+  const selectedAlbum = useLibraryUIStore((state) => state.selectedAlbum);
+  const setLibraryQueryInput = useLibraryUIStore((state) => state.setLibraryQueryInput);
+  const submitLibrarySearch = useLibraryUIStore((state) => state.submitLibrarySearch);
+  const setArtistOffset = useLibraryUIStore((state) => state.setArtistOffset);
+  const setAlbumOffset = useLibraryUIStore((state) => state.setAlbumOffset);
+  const setTrackOffset = useLibraryUIStore((state) => state.setTrackOffset);
+  const selectArtist = useLibraryUIStore((state) => state.selectArtist);
+  const selectAlbum = useLibraryUIStore((state) => state.selectAlbum);
+
   const [watchedRoots, setWatchedRoots] = useState<WatchedRoot[]>([]);
   const [newRootPath, setNewRootPath] = useState("");
   const [scanStatus, setScanStatus] = useState<ScanStatus>({ running: false });
@@ -168,15 +108,6 @@ function App() {
   const [playerState, setPlayerState] = useState<PlayerState>(createEmptyPlayerState());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [transportBusy, setTransportBusy] = useState(false);
-  const [activeView, setActiveView] = useState<"library" | "queue" | "settings">(
-    "library",
-  );
-
-  const [libraryQueryInput, setLibraryQueryInput] = useState("");
-  const [libraryQuery, setLibraryQuery] = useState("");
-  const [artistOffset, setArtistOffset] = useState(0);
-  const [albumOffset, setAlbumOffset] = useState(0);
-  const [trackOffset, setTrackOffset] = useState(0);
 
   const [artistsPage, setArtistsPage] = useState<PagedResult<LibraryArtist>>({
     items: [],
@@ -191,11 +122,6 @@ function App() {
     page: createEmptyPage(browsePageSize, 0),
   });
 
-  const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
-  const [selectedAlbum, setSelectedAlbum] = useState<{
-    title: string;
-    albumArtist: string;
-  } | null>(null);
   const [artistDetail, setArtistDetail] = useState<ArtistDetail | null>(null);
   const [albumDetail, setAlbumDetail] = useState<AlbumDetail | null>(null);
 
@@ -438,14 +364,23 @@ function App() {
 
   const onSubmitLibrarySearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setLibraryQuery(libraryQueryInput.trim());
-    setArtistOffset(0);
-    setAlbumOffset(0);
-    setTrackOffset(0);
-    setSelectedArtist(null);
-    setSelectedAlbum(null);
+    submitLibrarySearch();
     setArtistDetail(null);
     setAlbumDetail(null);
+  };
+
+  const onSelectArtist = (name: string) => {
+    setArtistDetail(null);
+    setAlbumDetail(null);
+    selectArtist(name);
+  };
+
+  const onSelectAlbum = (title: string, albumArtist: string) => {
+    setAlbumDetail(null);
+    selectAlbum({
+      title,
+      albumArtist,
+    });
   };
 
   const onSetQueue = async (trackIDs: number[], autoplay: boolean) => {
@@ -648,501 +583,136 @@ function App() {
 
       <nav className="main-nav" aria-label="Main sections">
         <button
-          className={activeView === "library" ? "active" : ""}
-          onClick={() => setActiveView("library")}
+          className={location.startsWith("/library") ? "active" : ""}
+          onClick={() => navigate("/library")}
         >
           Library
         </button>
         <button
-          className={activeView === "queue" ? "active" : ""}
-          onClick={() => setActiveView("queue")}
+          className={location.startsWith("/queue") ? "active" : ""}
+          onClick={() => navigate("/queue")}
         >
           Queue
         </button>
         <button
-          className={activeView === "settings" ? "active" : ""}
-          onClick={() => setActiveView("settings")}
+          className={location.startsWith("/settings") ? "active" : ""}
+          onClick={() => navigate("/settings")}
         >
           Settings
         </button>
       </nav>
 
       <main className="panel-grid">
-        {activeView === "library" ? (
-          <>
-            <section className="panel">
-              <h2>Library Browser</h2>
-              <p>Paginated browse API wired from the Go backend.</p>
+        <Switch>
+          <Route path="/">
+            <Redirect to="/library" replace />
+          </Route>
 
-              <form className="search-form" onSubmit={onSubmitLibrarySearch}>
-                <input
-                  value={libraryQueryInput}
-                  onChange={(event) => setLibraryQueryInput(event.target.value)}
-                  placeholder="Search title, artist, or album"
-                  autoComplete="off"
-                />
-                <button type="submit">Search</button>
-              </form>
+          <Route path="/library">
+            <LibraryView
+              libraryQueryInput={libraryQueryInput}
+              onLibraryQueryInputChange={setLibraryQueryInput}
+              onSubmitLibrarySearch={onSubmitLibrarySearch}
+              artistsPage={artistsPage}
+              albumsPage={albumsPage}
+              tracksPage={tracksPage}
+              selectedArtist={selectedArtist}
+              selectedAlbum={selectedAlbum}
+              artistDetail={artistDetail}
+              albumDetail={albumDetail}
+              artistCanGoBack={artistCanGoBack}
+              artistCanGoNext={artistCanGoNext}
+              albumCanGoBack={albumCanGoBack}
+              albumCanGoNext={albumCanGoNext}
+              trackCanGoBack={trackCanGoBack}
+              trackCanGoNext={trackCanGoNext}
+              visibleTrackIDs={visibleTrackIDs}
+              onSelectArtist={onSelectArtist}
+              onSelectAlbum={onSelectAlbum}
+              onArtistPrev={() => setArtistOffset(artistOffset - browsePageSize)}
+              onArtistNext={() => setArtistOffset(artistOffset + browsePageSize)}
+              onAlbumPrev={() => setAlbumOffset(albumOffset - browsePageSize)}
+              onAlbumNext={() => setAlbumOffset(albumOffset + browsePageSize)}
+              onTrackPrev={() => setTrackOffset(trackOffset - browsePageSize)}
+              onTrackNext={() => setTrackOffset(trackOffset + browsePageSize)}
+              onSetQueue={onSetQueue}
+              onAppendTrack={onAppendTrack}
+              onPlayTrackNow={onPlayTrackNow}
+            />
+          </Route>
 
-              <div className="stat-list">
-                <div>
-                  <span>Artists Matched</span>
-                  <strong>{artistsPage.page.total}</strong>
-                </div>
-                <div>
-                  <span>Albums Matched</span>
-                  <strong>{albumsPage.page.total}</strong>
-                </div>
-                <div>
-                  <span>Tracks Matched</span>
-                  <strong>{tracksPage.page.total}</strong>
-                </div>
-              </div>
+          <Route path="/settings">
+            <SettingsView
+              lastProgress={lastProgress}
+              scanStatus={scanStatus}
+              watchedRoots={watchedRoots}
+              newRootPath={newRootPath}
+              errorMessage={errorMessage}
+              queueState={queueState}
+              playerState={playerState}
+              onNewRootPathChange={setNewRootPath}
+              onAddWatchedRoot={onAddWatchedRoot}
+              onToggleWatchedRoot={onToggleWatchedRoot}
+              onRemoveWatchedRoot={onRemoveWatchedRoot}
+            />
+          </Route>
 
-              <div className="action-row">
-                <button onClick={() => void onSetQueue(visibleTrackIDs, false)} disabled={!visibleTrackIDs.length}>
-                  Replace Queue
-                </button>
-                <button onClick={() => void onSetQueue(visibleTrackIDs, true)} disabled={!visibleTrackIDs.length}>
-                  Play Visible Tracks
-                </button>
-              </div>
+          <Route path="/queue">
+            <QueueView
+              queueState={queueState}
+              playerState={playerState}
+              transportBusy={transportBusy}
+              hasCurrentTrack={hasCurrentTrack}
+              playPauseLabel={playPauseLabel}
+              onPreviousTrack={onPreviousTrack}
+              onTogglePlayback={onTogglePlayback}
+              onNextTrack={onNextTrack}
+              onClearQueue={onClearQueue}
+              onSetRepeatMode={onSetRepeatMode}
+              onToggleShuffle={onToggleShuffle}
+              onSelectQueueIndex={onSelectQueueIndex}
+              onRemoveQueueTrack={onRemoveQueueTrack}
+            />
+          </Route>
 
-              <div className="library-groups">
-                <div className="library-group">
-                  <h3>Artists</h3>
-                  <ul className="entity-list">
-                    {artistsPage.items.map((artist) => (
-                      <li key={artist.name}>
-                        <button
-                          className={`entity-button ${selectedArtist === artist.name ? "selected" : ""}`}
-                          onClick={() => {
-                            setArtistDetail(null);
-                            setAlbumDetail(null);
-                            setSelectedArtist(artist.name);
-                            setSelectedAlbum(null);
-                          }}
-                        >
-                          <strong>{artist.name}</strong>
-                          <span>
-                            {artist.albumCount} albums - {artist.trackCount} tracks
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="pager">
-                    <button
-                      disabled={!artistCanGoBack}
-                      onClick={() => setArtistOffset((value) => Math.max(0, value - browsePageSize))}
-                    >
-                      Prev
-                    </button>
-                    <button
-                      disabled={!artistCanGoNext}
-                      onClick={() => setArtistOffset((value) => value + browsePageSize)}
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-
-                <div className="library-group">
-                  <h3>Albums</h3>
-                  <ul className="entity-list">
-                    {albumsPage.items.map((album) => (
-                      <li key={`${album.albumArtist}-${album.title}`}>
-                        <button
-                          className={`entity-button ${
-                            selectedAlbum?.title === album.title &&
-                            selectedAlbum?.albumArtist === album.albumArtist
-                              ? "selected"
-                              : ""
-                          }`}
-                          onClick={() => {
-                            setAlbumDetail(null);
-                            setSelectedAlbum({
-                              title: album.title,
-                              albumArtist: album.albumArtist,
-                            });
-                          }}
-                        >
-                          <strong>{album.title}</strong>
-                          <span>
-                            {album.albumArtist}
-                            {album.year ? ` (${album.year})` : ""}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="pager">
-                    <button
-                      disabled={!albumCanGoBack}
-                      onClick={() => setAlbumOffset((value) => Math.max(0, value - browsePageSize))}
-                    >
-                      Prev
-                    </button>
-                    <button
-                      disabled={!albumCanGoNext}
-                      onClick={() => setAlbumOffset((value) => value + browsePageSize)}
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-
-                <div className="library-group">
-                  <h3>Tracks</h3>
-                  <ul className="entity-list">
-                    {tracksPage.items.map((track) => (
-                      <li key={track.id}>
-                        <div className="entity-row">
-                          <strong>{track.title}</strong>
-                          <span>
-                            {track.artist} - {track.album}
-                          </span>
-                          <div className="inline-actions">
-                            <button onClick={() => void onAppendTrack(track.id)}>Queue</button>
-                            <button onClick={() => void onPlayTrackNow(track.id)}>Play</button>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="pager">
-                    <button
-                      disabled={!trackCanGoBack}
-                      onClick={() => setTrackOffset((value) => Math.max(0, value - browsePageSize))}
-                    >
-                      Prev
-                    </button>
-                    <button
-                      disabled={!trackCanGoNext}
-                      onClick={() => setTrackOffset((value) => value + browsePageSize)}
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              </div>
+          <Route path="*">
+            <section className="panel queue-panel">
+              <h2>Not Found</h2>
+              <p>Choose Library, Queue, or Settings.</p>
             </section>
-
-            <section className="panel">
-              <h2>Artist Detail</h2>
-              {artistDetail ? (
-                <>
-                  <p className="summary-row">
-                    <strong>{artistDetail.name}</strong> - {artistDetail.albumCount} albums - {artistDetail.trackCount} tracks
-                  </p>
-                  <ul className="entity-list">
-                    {artistDetail.albums.map((album) => (
-                      <li key={`${album.albumArtist}-${album.title}`}>
-                        <div className="entity-row">
-                          <strong>{album.title}</strong>
-                          <span>
-                            {album.albumArtist}
-                            {album.year ? ` (${album.year})` : ""} - {album.trackCount} tracks
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : (
-                <p>Select an artist to load album details.</p>
-              )}
-            </section>
-
-            <section className="panel">
-              <h2>Album Detail</h2>
-              {albumDetail ? (
-                <>
-                  <p className="summary-row">
-                    <strong>{albumDetail.title}</strong> - {albumDetail.albumArtist}
-                    {albumDetail.year ? ` (${albumDetail.year})` : ""} - {albumDetail.trackCount} tracks
-                  </p>
-                  <ul className="entity-list">
-                    {albumDetail.tracks.map((track) => (
-                      <li key={track.id}>
-                        <div className="entity-row">
-                          <strong>
-                            {track.discNo ? `${track.discNo}-` : ""}
-                            {track.trackNo ? `${track.trackNo}. ` : ""}
-                            {track.title}
-                          </strong>
-                          <span>{track.artist}</span>
-                          <div className="inline-actions">
-                            <button onClick={() => void onAppendTrack(track.id)}>Queue</button>
-                            <button onClick={() => void onPlayTrackNow(track.id)}>Play</button>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : (
-                <p>Select an album to load full track order.</p>
-              )}
-            </section>
-          </>
-        ) : null}
-
-        {activeView === "settings" ? (
-          <>
-            <section className="panel">
-              <h2>Scanner Progress</h2>
-              <p>
-                Full and incremental scans walk folders, upsert changes, and
-                reconcile stale track rows.
-              </p>
-              {lastProgress ? (
-                <div className="progress-card">
-                  <div className="progress-top">
-                    <span>{lastProgress.phase}</span>
-                    <span>{lastProgress.percent}%</span>
-                  </div>
-                  <p>{lastProgress.message}</p>
-                  <div className="progress-track">
-                    <div style={{ width: `${lastProgress.percent}%` }} />
-                  </div>
-                </div>
-              ) : (
-                <p>No progress events yet. Start a full scan to verify wiring.</p>
-              )}
-              {scanStatus.lastRunAt ? (
-                <p>Last run: {new Date(scanStatus.lastRunAt).toLocaleString()}</p>
-              ) : null}
-              {scanStatus.lastMode ? <p>Mode: {scanStatus.lastMode}</p> : null}
-              {scanStatus.lastRunAt ? (
-                <div className="scan-totals">
-                  <span>Seen: {scanStatus.lastFilesSeen ?? 0}</span>
-                  <span>Indexed: {scanStatus.lastIndexed ?? 0}</span>
-                  <span>Skipped: {scanStatus.lastSkipped ?? 0}</span>
-                </div>
-              ) : null}
-              {scanStatus.lastError ? (
-                <p className="error">{scanStatus.lastError}</p>
-              ) : null}
-            </section>
-
-            <section className="panel settings-panel">
-              <h2>Watched Folders</h2>
-              <form onSubmit={onAddWatchedRoot} className="add-form">
-                <input
-                  type="text"
-                  value={newRootPath}
-                  onChange={(event) => setNewRootPath(event.target.value)}
-                  placeholder="C:\\Music"
-                  autoComplete="off"
-                />
-                <button type="submit">Add</button>
-              </form>
-
-              {errorMessage ? <p className="error">{errorMessage}</p> : null}
-
-              <ul className="root-list">
-                {watchedRoots.map((root) => (
-                  <li key={root.id}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={root.enabled}
-                        onChange={() => {
-                          void onToggleWatchedRoot(root);
-                        }}
-                      />
-                      <span>{root.path}</span>
-                    </label>
-                    <button
-                      onClick={() => {
-                        void onRemoveWatchedRoot(root.id);
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            <section className="panel">
-              <h2>Runtime State</h2>
-              <p>Queue and player state now come from backend events.</p>
-              <div className="stat-list">
-                <div>
-                  <span>Queue Length</span>
-                  <strong>{queueState.total}</strong>
-                </div>
-                <div>
-                  <span>Player Status</span>
-                  <strong>{playerState.status}</strong>
-                </div>
-                <div>
-                  <span>Volume</span>
-                  <strong>{playerState.volume}%</strong>
-                </div>
-              </div>
-            </section>
-          </>
-        ) : null}
-
-        {activeView === "queue" ? (
-          <section className="panel queue-panel">
-            <div className="queue-header">
-              <div>
-                <h2>Queue</h2>
-                <p>{queueState.total} track(s) in queue.</p>
-              </div>
-              <div className="queue-actions">
-                <button onClick={onPreviousTrack} disabled={!hasCurrentTrack || transportBusy}>
-                  Prev
-                </button>
-                <button onClick={onTogglePlayback} disabled={queueState.total === 0 || transportBusy}>
-                  {playPauseLabel}
-                </button>
-                <button onClick={onNextTrack} disabled={!hasCurrentTrack || transportBusy}>
-                  Next
-                </button>
-                <button onClick={onClearQueue} disabled={queueState.total === 0}>
-                  Clear
-                </button>
-              </div>
-            </div>
-
-            <div className="queue-mode-row">
-              <div className="repeat-controls" role="group" aria-label="Repeat mode">
-                <button
-                  className={queueState.repeatMode === "off" ? "mode-button active" : "mode-button"}
-                  onClick={() => {
-                    void onSetRepeatMode("off");
-                  }}
-                >
-                  Repeat Off
-                </button>
-                <button
-                  className={queueState.repeatMode === "all" ? "mode-button active" : "mode-button"}
-                  onClick={() => {
-                    void onSetRepeatMode("all");
-                  }}
-                >
-                  Repeat All
-                </button>
-                <button
-                  className={queueState.repeatMode === "one" ? "mode-button active" : "mode-button"}
-                  onClick={() => {
-                    void onSetRepeatMode("one");
-                  }}
-                >
-                  Repeat One
-                </button>
-              </div>
-              <button
-                className={queueState.shuffle ? "mode-button active" : "mode-button"}
-                onClick={() => {
-                  void onToggleShuffle();
-                }}
-              >
-                Shuffle {queueState.shuffle ? "On" : "Off"}
-              </button>
-            </div>
-
-            {queueState.entries.length === 0 ? (
-              <p>Add tracks from Library to build your queue.</p>
-            ) : (
-              <ul className="queue-list">
-                {queueState.entries.map((track, index) => (
-                  <li key={`${track.id}-${index}`} className={index === queueState.currentIndex ? "active" : ""}>
-                    <button
-                      className="queue-select"
-                      onClick={() => {
-                        void onSelectQueueIndex(index);
-                      }}
-                    >
-                      <strong>{track.title}</strong>
-                      <span>
-                        {track.artist} - {track.album}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        void onRemoveQueueTrack(index);
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        ) : null}
+          </Route>
+        </Switch>
       </main>
 
-      <footer className="player-bar">
-        <div className="player-main">
-          <p className="eyebrow">Player</p>
-          {currentTrack ? (
-            <>
-              <strong>
-                {currentTrack.title} - {currentTrack.artist}
-              </strong>
-              <p>
-                {currentTrack.album} • {playerState.status}
-              </p>
-            </>
-          ) : (
-            <strong>No track selected</strong>
-          )}
-        </div>
-
-        <div className="player-controls">
-          <div className="transport-placeholder">
-            <button onClick={onPreviousTrack} disabled={!hasCurrentTrack || transportBusy}>
-              Prev
-            </button>
-            <button onClick={onTogglePlayback} disabled={queueState.total === 0 || transportBusy}>
-              {playPauseLabel}
-            </button>
-            <button onClick={onStopPlayback} disabled={!hasCurrentTrack || transportBusy}>
-              Stop
-            </button>
-            <button onClick={onNextTrack} disabled={!hasCurrentTrack || transportBusy}>
-              Next
-            </button>
-          </div>
-
-          <div className="seek-wrap">
-            <span>{formatDuration(playerState.positionMs)}</span>
-            <input
-              type="range"
-              min={0}
-              max={seekMax}
-              value={seekValue}
-              onChange={(event) => {
-                void onSeek(Number(event.target.value));
-              }}
-              disabled={!hasCurrentTrack}
-            />
-            <span>{formatDuration(playerState.durationMs)}</span>
-          </div>
-
-          <div className="volume-wrap">
-            <span>Vol</span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={playerState.volume}
-              onChange={(event) => {
-                void onSetVolume(Number(event.target.value));
-              }}
-            />
-            <span>{playerState.volume}%</span>
-          </div>
-        </div>
-      </footer>
+      <PlayerBar
+        currentTrack={currentTrack}
+        playerState={playerState}
+        queueState={queueState}
+        transportBusy={transportBusy}
+        hasCurrentTrack={hasCurrentTrack}
+        playPauseLabel={playPauseLabel}
+        seekMax={seekMax}
+        seekValue={seekValue}
+        onPreviousTrack={onPreviousTrack}
+        onTogglePlayback={onTogglePlayback}
+        onStopPlayback={onStopPlayback}
+        onNextTrack={onNextTrack}
+        onSeek={onSeek}
+        onSetVolume={onSetVolume}
+        formatDuration={formatDuration}
+      />
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Router
+      hook={appMemoryLocation.hook}
+      searchHook={appMemoryLocation.searchHook}
+    >
+      <AppContent />
+    </Router>
   );
 }
 

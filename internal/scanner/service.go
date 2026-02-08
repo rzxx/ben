@@ -2,11 +2,15 @@ package scanner
 
 import (
 	"ben/internal/library"
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -18,6 +22,8 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"go.senan.xyz/taglib"
+	_ "image/jpeg"
+	_ "image/png"
 )
 
 const EventProgress = "scanner:progress"
@@ -86,6 +92,7 @@ type Service struct {
 	emit          Emitter
 	db            *sql.DB
 	roots         *library.WatchedRootRepository
+	coverCacheDir string
 	watcher       *fsnotify.Watcher
 	watching      bool
 	watchStop     chan struct{}
@@ -100,12 +107,13 @@ type scanTotals struct {
 	skipped   int
 }
 
-func NewService(database *sql.DB, roots *library.WatchedRootRepository) *Service {
+func NewService(database *sql.DB, roots *library.WatchedRootRepository, coverCacheDir string) *Service {
 	return &Service{
-		db:           database,
-		roots:        roots,
-		rootsChanged: make(chan struct{}, 1),
-		watchedDirs:  make(map[string]struct{}),
+		db:            database,
+		roots:         roots,
+		coverCacheDir: coverCacheDir,
+		rootsChanged:  make(chan struct{}, 1),
+		watchedDirs:   make(map[string]struct{}),
 	}
 }
 
@@ -610,7 +618,7 @@ func (s *Service) performScan(ctx context.Context, mode scanMode) (scanTotals, e
 			At:      time.Now().UTC().Format(time.RFC3339),
 		})
 
-		rootTotals, scanErr := scanRoot(ctx, tx, root, mode)
+		rootTotals, scanErr := scanRoot(ctx, tx, root, mode, s.coverCacheDir)
 		totals.filesSeen += rootTotals.filesSeen
 		totals.indexed += rootTotals.indexed
 		totals.skipped += rootTotals.skipped
@@ -641,6 +649,22 @@ func (s *Service) performScan(ctx context.Context, mode scanMode) (scanTotals, e
 		if err := cleanupMissingTracks(ctx, tx, enabledRoots); err != nil {
 			return scanTotals{}, err
 		}
+	}
+
+	if err := cleanupMissingCovers(ctx, tx); err != nil {
+		return scanTotals{}, err
+	}
+
+	s.emitProgress(Progress{
+		Phase:   "derive",
+		Message: "Refreshing artists, albums, and album track mappings",
+		Percent: 96,
+		Status:  "running",
+		At:      time.Now().UTC().Format(time.RFC3339),
+	})
+
+	if err := rebuildDerivedLibrary(ctx, tx); err != nil {
+		return scanTotals{}, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -726,7 +750,282 @@ func cleanupMissingTracks(ctx context.Context, tx *sql.Tx, roots []library.Watch
 	return nil
 }
 
-func scanRoot(ctx context.Context, tx *sql.Tx, root library.WatchedRoot, mode scanMode) (scanTotals, error) {
+func cleanupMissingCovers(ctx context.Context, tx *sql.Tx) error {
+	if _, err := tx.ExecContext(
+		ctx,
+		`DELETE FROM covers
+		 WHERE source_file_id IS NULL
+		    OR source_file_id IN (SELECT id FROM files WHERE file_exists = 0)
+		    OR source_file_id NOT IN (SELECT id FROM files)`,
+	); err != nil {
+		return fmt.Errorf("cleanup missing covers: %w", err)
+	}
+
+	return nil
+}
+
+func rebuildDerivedLibrary(ctx context.Context, tx *sql.Tx) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM album_tracks"); err != nil {
+		return fmt.Errorf("clear album_tracks: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM albums"); err != nil {
+		return fmt.Errorf("clear albums: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM artists"); err != nil {
+		return fmt.Errorf("clear artists: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO artists(name, sort_name)
+		SELECT artist_name, LOWER(artist_name)
+		FROM (
+			SELECT DISTINCT COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist') AS artist_name
+			FROM tracks t
+			JOIN files f ON f.id = t.file_id
+			WHERE f.file_exists = 1
+		) artist_rows
+		ORDER BY LOWER(artist_name)
+	`); err != nil {
+		return fmt.Errorf("rebuild artists: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		WITH track_rows AS (
+			SELECT
+				t.id AS track_id,
+				t.file_id AS file_id,
+				COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album') AS album_title,
+				COALESCE(NULLIF(TRIM(t.album_artist), ''), COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist')) AS album_artist_name,
+				t.year AS year,
+				t.disc_no AS disc_no,
+				t.track_no AS track_no
+			FROM tracks t
+			JOIN files f ON f.id = t.file_id
+			WHERE f.file_exists = 1
+		)
+		INSERT INTO albums(title, album_artist, year, cover_id, sort_key)
+		SELECT
+			tr.album_title,
+			tr.album_artist_name,
+			MIN(NULLIF(tr.year, 0)) AS first_year,
+			(
+				SELECT c.id
+				FROM track_rows tr2
+				JOIN covers c ON c.source_file_id = tr2.file_id
+				WHERE tr2.album_title = tr.album_title
+				  AND tr2.album_artist_name = tr.album_artist_name
+				ORDER BY COALESCE(tr2.disc_no, 0), COALESCE(tr2.track_no, 0), tr2.track_id
+				LIMIT 1
+			) AS cover_id,
+			LOWER(tr.album_artist_name || ' ' || tr.album_title) AS sort_key
+		FROM track_rows tr
+		GROUP BY tr.album_title, tr.album_artist_name
+		ORDER BY LOWER(tr.album_artist_name), LOWER(tr.album_title)
+	`); err != nil {
+		return fmt.Errorf("rebuild albums: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		WITH track_rows AS (
+			SELECT
+				t.id AS track_id,
+				COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album') AS album_title,
+				COALESCE(NULLIF(TRIM(t.album_artist), ''), COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist')) AS album_artist_name,
+				t.disc_no AS disc_no,
+				t.track_no AS track_no
+			FROM tracks t
+			JOIN files f ON f.id = t.file_id
+			WHERE f.file_exists = 1
+		)
+		INSERT INTO album_tracks(album_id, track_id, disc_no, track_no)
+		SELECT
+			a.id,
+			tr.track_id,
+			tr.disc_no,
+			tr.track_no
+		FROM track_rows tr
+		JOIN albums a
+		  ON a.title = tr.album_title
+		 AND a.album_artist = tr.album_artist_name
+		ORDER BY a.id, COALESCE(tr.disc_no, 0), COALESCE(tr.track_no, 0), tr.track_id
+	`); err != nil {
+		return fmt.Errorf("rebuild album_tracks: %w", err)
+	}
+
+	return nil
+}
+
+func syncCoverForFile(ctx context.Context, tx *sql.Tx, fileID int64, fullPath string, coverCacheDir string, force bool) error {
+	if strings.TrimSpace(coverCacheDir) == "" {
+		return nil
+	}
+
+	var (
+		existingID   int64
+		existingHash sql.NullString
+		existingPath sql.NullString
+	)
+
+	existingFound := true
+	err := tx.QueryRowContext(
+		ctx,
+		"SELECT id, hash, cache_path FROM covers WHERE source_file_id = ?",
+		fileID,
+	).Scan(&existingID, &existingHash, &existingPath)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			existingFound = false
+		} else {
+			return fmt.Errorf("get cover row for file %d: %w", fileID, err)
+		}
+	}
+
+	if existingFound && !force {
+		return nil
+	}
+
+	properties, propertiesErr := taglib.ReadProperties(fullPath)
+	if propertiesErr != nil || len(properties.Images) == 0 {
+		if existingFound {
+			if _, deleteErr := tx.ExecContext(ctx, "DELETE FROM covers WHERE id = ?", existingID); deleteErr != nil {
+				return fmt.Errorf("delete cover row for file %d: %w", fileID, deleteErr)
+			}
+		}
+		return nil
+	}
+
+	imageData, imageErr := taglib.ReadImage(fullPath)
+	if imageErr != nil || len(imageData) == 0 {
+		if existingFound {
+			if _, deleteErr := tx.ExecContext(ctx, "DELETE FROM covers WHERE id = ?", existingID); deleteErr != nil {
+				return fmt.Errorf("delete cover row for file %d: %w", fileID, deleteErr)
+			}
+		}
+		return nil
+	}
+
+	hashBytes := sha256.Sum256(imageData)
+	hash := hex.EncodeToString(hashBytes[:])
+
+	format, width, height := decodeCoverImage(imageData)
+	mimeType := strings.TrimSpace(properties.Images[0].MIMEType)
+	if mimeType == "" {
+		mimeType = mimeTypeFromImageFormat(format)
+	}
+
+	extension := extensionForCover(mimeType, format)
+	if extension == "" {
+		extension = ".img"
+	}
+
+	cachePath := filepath.Join(coverCacheDir, hash+extension)
+	if existingFound && existingHash.Valid && existingHash.String == hash && strings.TrimSpace(existingPath.String) != "" {
+		cachePath = strings.TrimSpace(existingPath.String)
+	}
+
+	if err := os.MkdirAll(coverCacheDir, 0o755); err != nil {
+		return fmt.Errorf("create cover cache dir: %w", err)
+	}
+
+	if statErr := ensureCoverFile(cachePath, imageData); statErr != nil {
+		return nil
+	}
+
+	if existingFound {
+		if _, updateErr := tx.ExecContext(
+			ctx,
+			"UPDATE covers SET mime = ?, width = ?, height = ?, cache_path = ?, hash = ? WHERE id = ?",
+			nullableString(mimeType),
+			nullablePositiveInt(width),
+			nullablePositiveInt(height),
+			cachePath,
+			hash,
+			existingID,
+		); updateErr != nil {
+			return fmt.Errorf("update cover row for file %d: %w", fileID, updateErr)
+		}
+
+		return nil
+	}
+
+	if _, insertErr := tx.ExecContext(
+		ctx,
+		"INSERT INTO covers(source_file_id, mime, width, height, cache_path, hash) VALUES (?, ?, ?, ?, ?, ?)",
+		fileID,
+		nullableString(mimeType),
+		nullablePositiveInt(width),
+		nullablePositiveInt(height),
+		cachePath,
+		hash,
+	); insertErr != nil {
+		return fmt.Errorf("insert cover row for file %d: %w", fileID, insertErr)
+	}
+
+	return nil
+}
+
+func decodeCoverImage(imageData []byte) (string, int, int) {
+	config, format, err := image.DecodeConfig(bytes.NewReader(imageData))
+	if err != nil {
+		return "", 0, 0
+	}
+
+	return strings.ToLower(strings.TrimSpace(format)), config.Width, config.Height
+}
+
+func ensureCoverFile(path string, contents []byte) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+
+	if err := os.WriteFile(path, contents, 0o644); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func mimeTypeFromImageFormat(format string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "jpeg", "jpg":
+		return "image/jpeg"
+	case "png":
+		return "image/png"
+	default:
+		return ""
+	}
+}
+
+func extensionForCover(mimeType string, format string) string {
+	normalizedMime := strings.ToLower(strings.TrimSpace(mimeType))
+	switch normalizedMime {
+	case "image/jpeg", "image/jpg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	}
+
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "jpeg", "jpg":
+		return ".jpg"
+	case "png":
+		return ".png"
+	default:
+		return ""
+	}
+}
+
+func nullablePositiveInt(value int) any {
+	if value <= 0 {
+		return nil
+	}
+
+	return value
+}
+
+func scanRoot(ctx context.Context, tx *sql.Tx, root library.WatchedRoot, mode scanMode, coverCacheDir string) (scanTotals, error) {
 	rootTotals := scanTotals{}
 	scannedAt := time.Now().UTC().Format(time.RFC3339)
 
@@ -758,7 +1057,7 @@ func scanRoot(ctx context.Context, tx *sql.Tx, root library.WatchedRoot, mode sc
 		}
 
 		rootTotals.filesSeen++
-		indexed, upsertErr := upsertFileAndTrack(ctx, tx, root.ID, root.Path, path, info, scannedAt, mode)
+		indexed, upsertErr := upsertFileAndTrack(ctx, tx, root.ID, root.Path, path, info, scannedAt, mode, coverCacheDir)
 		if upsertErr != nil {
 			return upsertErr
 		}
@@ -791,6 +1090,7 @@ func upsertFileAndTrack(
 	info fs.FileInfo,
 	scannedAt string,
 	mode scanMode,
+	coverCacheDir string,
 ) (bool, error) {
 	cleanPath := filepath.Clean(path)
 
@@ -876,6 +1176,10 @@ func upsertFileAndTrack(
 	}
 
 	if !metadataNeedsUpdate {
+		if err := syncCoverForFile(ctx, tx, fileID, cleanPath, coverCacheDir, false); err != nil {
+			return false, err
+		}
+
 		return false, nil
 	}
 
@@ -944,6 +1248,10 @@ func upsertFileAndTrack(
 		time.Now().UTC().Format(time.RFC3339),
 	); upsertErr != nil {
 		return false, fmt.Errorf("upsert track %s: %w", cleanPath, upsertErr)
+	}
+
+	if err := syncCoverForFile(ctx, tx, fileID, cleanPath, coverCacheDir, true); err != nil {
+		return false, err
 	}
 
 	return true, nil
