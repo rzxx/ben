@@ -124,6 +124,8 @@ function AppContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [transportBusy, setTransportBusy] = useState(false);
   const statsRefreshKeyRef = useRef("");
+  const seekRequestInFlightRef = useRef(false);
+  const pendingSeekMSRef = useRef<number | null>(null);
 
   const [artistsPage, setArtistsPage] = useState<PagedResult<LibraryArtist>>({
     items: [],
@@ -549,15 +551,34 @@ function AppContent() {
   };
 
   const onSeek = async (positionMS: number) => {
-    if (playerState.status === "idle" || !playerState.currentTrack) {
+    if (!playerState.currentTrack) {
       return;
     }
 
+    pendingSeekMSRef.current = positionMS;
+    if (seekRequestInFlightRef.current) {
+      return;
+    }
+
+    seekRequestInFlightRef.current = true;
+
     try {
-      setErrorMessage(null);
-      await Call.ByName(`${playerService}.Seek`, positionMS);
-    } catch (error) {
-      setErrorMessage(parseError(error));
+      while (pendingSeekMSRef.current !== null) {
+        const nextSeekMS = pendingSeekMSRef.current;
+        pendingSeekMSRef.current = null;
+        if (nextSeekMS === null) {
+          continue;
+        }
+
+        try {
+          setErrorMessage(null);
+          await Call.ByName(`${playerService}.Seek`, nextSeekMS);
+        } catch (error) {
+          setErrorMessage(parseError(error));
+        }
+      }
+    } finally {
+      seekRequestInFlightRef.current = false;
     }
   };
 

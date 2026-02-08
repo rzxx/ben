@@ -24,6 +24,10 @@ const defaultVolume = 80
 
 const tickerInterval = 500 * time.Millisecond
 
+const resumeSeekAttempts = 8
+
+const resumeSeekDelay = 75 * time.Millisecond
+
 const mpvPositionProperty = "time-pos"
 
 const mpvDurationProperty = "duration"
@@ -134,6 +138,14 @@ func (s *Service) Play() (State, error) {
 		queueState = updatedQueueState
 	}
 
+	resumePositionMS := 0
+	s.mu.Lock()
+	trackAlreadyLoaded := s.hasCurrent && queueState.CurrentTrack != nil && s.currentTrackID == queueState.CurrentTrack.ID
+	if !trackAlreadyLoaded && s.positionMS > 0 {
+		resumePositionMS = s.positionMS
+	}
+	s.mu.Unlock()
+
 	if err := s.loadTrack(backend, queueState.CurrentTrack, false); err != nil {
 		return s.GetState(), err
 	}
@@ -142,13 +154,25 @@ func (s *Service) Play() (State, error) {
 		return s.GetState(), fmt.Errorf("start playback: %w", err)
 	}
 
+	if duration := s.currentDuration(queueState.CurrentTrack); duration != nil && resumePositionMS > *duration {
+		resumePositionMS = *duration
+	}
+
+	resumed := false
+	if resumePositionMS > 0 {
+		seekErr := s.applySeekWithRetry(backend, resumePositionMS)
+		resumed = seekErr == nil
+	}
+
 	s.mu.Lock()
 	s.status = StatusPlaying
 	s.updatedAt = time.Now().UTC()
 	s.ensureTickerLocked()
 	s.mu.Unlock()
 
-	s.refreshPlaybackPosition(backend)
+	if !resumed {
+		s.refreshPlaybackPosition(backend)
+	}
 	state := s.stateFromQueue(queueState)
 	s.emitState(state)
 	return state, nil
@@ -306,31 +330,44 @@ func (s *Service) Seek(positionMS int) (State, error) {
 
 	s.mu.Lock()
 	status := s.status
+	trackAlreadyLoaded := s.hasCurrent && s.currentTrackID == queueState.CurrentTrack.ID
 	s.mu.Unlock()
-
-	if status == StatusIdle {
-		return s.stateFromQueue(queueState), nil
-	}
 
 	backend, err := s.requireBackend()
 	if err != nil {
 		return s.GetState(), err
 	}
 
+	if !trackAlreadyLoaded {
+		if err := s.loadTrack(backend, queueState.CurrentTrack, false); err != nil {
+			return s.GetState(), err
+		}
+	}
+
 	if duration := s.currentDuration(queueState.CurrentTrack); duration != nil && positionMS > *duration {
 		positionMS = *duration
 	}
 
-	if err := backend.Seek(positionMS); err != nil {
+	if status == StatusIdle {
+		_ = s.applySeekWithRetry(backend, positionMS)
+
+		s.mu.Lock()
+		s.positionMS = positionMS
+		s.updatedAt = time.Now().UTC()
+		s.mu.Unlock()
+
+		state := s.stateFromQueue(queueState)
+		s.emitState(state)
+		return state, nil
+	}
+
+	if err := s.applySeekWithRetry(backend, positionMS); err != nil {
 		return s.GetState(), fmt.Errorf("seek playback: %w", err)
 	}
 
-	s.mu.Lock()
-	s.positionMS = positionMS
-	s.updatedAt = time.Now().UTC()
-	s.mu.Unlock()
-
-	s.refreshPlaybackPosition(backend)
+	if status == StatusPlaying {
+		s.refreshPlaybackPosition(backend)
+	}
 	state := s.stateFromQueue(queueState)
 	s.emitState(state)
 	return state, nil
@@ -445,16 +482,17 @@ func (s *Service) loadPlaybackStateSnapshot() {
 	}
 
 	var (
-		statusValue sql.NullString
-		positionMS  sql.NullInt64
-		volume      sql.NullInt64
-		updatedAt   sql.NullString
+		currentTrackID sql.NullInt64
+		statusValue    sql.NullString
+		positionMS     sql.NullInt64
+		volume         sql.NullInt64
+		updatedAt      sql.NullString
 	)
 
 	err := s.db.QueryRowContext(
 		context.Background(),
-		"SELECT status, position_ms, volume, updated_at FROM playback_state WHERE id = 1",
-	).Scan(&statusValue, &positionMS, &volume, &updatedAt)
+		"SELECT current_track_id, status, position_ms, volume, updated_at FROM playback_state WHERE id = 1",
+	).Scan(&currentTrackID, &statusValue, &positionMS, &volume, &updatedAt)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return
 	}
@@ -466,7 +504,7 @@ func (s *Service) loadPlaybackStateSnapshot() {
 	}
 
 	loadedPosition := 0
-	if positionMS.Valid && positionMS.Int64 > 0 {
+	if positionMS.Valid && positionMS.Int64 > 0 && queueState.CurrentTrack != nil && currentTrackID.Valid && currentTrackID.Int64 == queueState.CurrentTrack.ID {
 		loadedPosition = int(positionMS.Int64)
 	}
 
@@ -565,6 +603,33 @@ func (s *Service) refreshPlaybackPosition(backend playbackBackend) {
 		s.durationMS = durationMS
 	}
 	s.updatedAt = time.Now().UTC()
+}
+
+func (s *Service) applySeekWithRetry(backend playbackBackend, targetPositionMS int) error {
+	if targetPositionMS < 0 {
+		targetPositionMS = 0
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < resumeSeekAttempts; attempt++ {
+		if err := backend.Seek(targetPositionMS); err != nil {
+			lastErr = err
+			time.Sleep(resumeSeekDelay)
+			continue
+		}
+
+		s.mu.Lock()
+		s.positionMS = targetPositionMS
+		s.updatedAt = time.Now().UTC()
+		s.mu.Unlock()
+		return nil
+	}
+
+	if lastErr == nil {
+		lastErr = errors.New("seek did not apply")
+	}
+
+	return lastErr
 }
 
 func (s *Service) transitionToIdle(queueState queue.State, backend playbackBackend, resetPosition bool) State {

@@ -68,7 +68,7 @@ export function PlayerBar(props: PlayerBarProps) {
             onChange={(event) => {
               void props.onSeek(Number(event.target.value));
             }}
-            disabled={!props.hasCurrentTrack || props.playerState.status === "idle"}
+            disabled={!props.hasCurrentTrack}
           />
           <span>{props.formatDuration(props.playerState.durationMs)}</span>
         </div>
