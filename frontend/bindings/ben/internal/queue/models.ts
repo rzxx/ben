@@ -13,6 +13,8 @@ export class State {
     "entries": library$0.TrackSummary[];
     "currentIndex": number;
     "currentTrack"?: library$0.TrackSummary | null;
+    "repeatMode": string;
+    "shuffle": boolean;
     "total": number;
     "updatedAt": string;
 
@@ -23,6 +25,12 @@ export class State {
         }
         if (!("currentIndex" in $$source)) {
             this["currentIndex"] = 0;
+        }
+        if (!("repeatMode" in $$source)) {
+            this["repeatMode"] = "";
+        }
+        if (!("shuffle" in $$source)) {
+            this["shuffle"] = false;
         }
         if (!("total" in $$source)) {
             this["total"] = 0;

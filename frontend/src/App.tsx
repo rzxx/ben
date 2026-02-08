@@ -83,6 +83,8 @@ type QueueState = {
   entries: LibraryTrack[];
   currentIndex: number;
   currentTrack?: LibraryTrack;
+  repeatMode: string;
+  shuffle: boolean;
   total: number;
   updatedAt: string;
 };
@@ -123,6 +125,8 @@ function createEmptyQueueState(): QueueState {
   return {
     entries: [],
     currentIndex: -1,
+    repeatMode: "off",
+    shuffle: false,
     total: 0,
     updatedAt: "",
   };
@@ -163,6 +167,7 @@ function App() {
   const [queueState, setQueueState] = useState<QueueState>(createEmptyQueueState());
   const [playerState, setPlayerState] = useState<PlayerState>(createEmptyPlayerState());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [transportBusy, setTransportBusy] = useState(false);
   const [activeView, setActiveView] = useState<"library" | "queue" | "settings">(
     "library",
   );
@@ -502,39 +507,85 @@ function App() {
     }
   };
 
-  const onTogglePlayback = async () => {
+  const onSetRepeatMode = async (mode: "off" | "all" | "one") => {
     try {
+      setErrorMessage(null);
+      await Call.ByName(`${queueService}.SetRepeatMode`, mode);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onToggleShuffle = async () => {
+    try {
+      setErrorMessage(null);
+      await Call.ByName(`${queueService}.SetShuffle`, !queueState.shuffle);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onTogglePlayback = async () => {
+    if (transportBusy) {
+      return;
+    }
+
+    try {
+      setTransportBusy(true);
       setErrorMessage(null);
       await Call.ByName(`${playerService}.TogglePlayback`);
     } catch (error) {
       setErrorMessage(parseError(error));
+    } finally {
+      setTransportBusy(false);
     }
   };
 
   const onStopPlayback = async () => {
+    if (transportBusy) {
+      return;
+    }
+
     try {
+      setTransportBusy(true);
       setErrorMessage(null);
       await Call.ByName(`${playerService}.Stop`);
     } catch (error) {
       setErrorMessage(parseError(error));
+    } finally {
+      setTransportBusy(false);
     }
   };
 
   const onNextTrack = async () => {
+    if (transportBusy) {
+      return;
+    }
+
     try {
+      setTransportBusy(true);
       setErrorMessage(null);
       await Call.ByName(`${playerService}.Next`);
     } catch (error) {
       setErrorMessage(parseError(error));
+    } finally {
+      setTransportBusy(false);
     }
   };
 
   const onPreviousTrack = async () => {
+    if (transportBusy) {
+      return;
+    }
+
     try {
+      setTransportBusy(true);
       setErrorMessage(null);
       await Call.ByName(`${playerService}.Previous`);
     } catch (error) {
       setErrorMessage(parseError(error));
+    } finally {
+      setTransportBusy(false);
     }
   };
 
@@ -944,19 +995,56 @@ function App() {
                 <p>{queueState.total} track(s) in queue.</p>
               </div>
               <div className="queue-actions">
-                <button onClick={onPreviousTrack} disabled={!hasCurrentTrack}>
+                <button onClick={onPreviousTrack} disabled={!hasCurrentTrack || transportBusy}>
                   Prev
                 </button>
-                <button onClick={onTogglePlayback} disabled={queueState.total === 0}>
+                <button onClick={onTogglePlayback} disabled={queueState.total === 0 || transportBusy}>
                   {playPauseLabel}
                 </button>
-                <button onClick={onNextTrack} disabled={!hasCurrentTrack}>
+                <button onClick={onNextTrack} disabled={!hasCurrentTrack || transportBusy}>
                   Next
                 </button>
                 <button onClick={onClearQueue} disabled={queueState.total === 0}>
                   Clear
                 </button>
               </div>
+            </div>
+
+            <div className="queue-mode-row">
+              <div className="repeat-controls" role="group" aria-label="Repeat mode">
+                <button
+                  className={queueState.repeatMode === "off" ? "mode-button active" : "mode-button"}
+                  onClick={() => {
+                    void onSetRepeatMode("off");
+                  }}
+                >
+                  Repeat Off
+                </button>
+                <button
+                  className={queueState.repeatMode === "all" ? "mode-button active" : "mode-button"}
+                  onClick={() => {
+                    void onSetRepeatMode("all");
+                  }}
+                >
+                  Repeat All
+                </button>
+                <button
+                  className={queueState.repeatMode === "one" ? "mode-button active" : "mode-button"}
+                  onClick={() => {
+                    void onSetRepeatMode("one");
+                  }}
+                >
+                  Repeat One
+                </button>
+              </div>
+              <button
+                className={queueState.shuffle ? "mode-button active" : "mode-button"}
+                onClick={() => {
+                  void onToggleShuffle();
+                }}
+              >
+                Shuffle {queueState.shuffle ? "On" : "Off"}
+              </button>
             </div>
 
             {queueState.entries.length === 0 ? (
@@ -1010,16 +1098,16 @@ function App() {
 
         <div className="player-controls">
           <div className="transport-placeholder">
-            <button onClick={onPreviousTrack} disabled={!hasCurrentTrack}>
+            <button onClick={onPreviousTrack} disabled={!hasCurrentTrack || transportBusy}>
               Prev
             </button>
-            <button onClick={onTogglePlayback} disabled={queueState.total === 0}>
+            <button onClick={onTogglePlayback} disabled={queueState.total === 0 || transportBusy}>
               {playPauseLabel}
             </button>
-            <button onClick={onStopPlayback} disabled={!hasCurrentTrack}>
+            <button onClick={onStopPlayback} disabled={!hasCurrentTrack || transportBusy}>
               Stop
             </button>
-            <button onClick={onNextTrack} disabled={!hasCurrentTrack}>
+            <button onClick={onNextTrack} disabled={!hasCurrentTrack || transportBusy}>
               Next
             </button>
           </div>

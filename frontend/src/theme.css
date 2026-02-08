@@ -462,6 +462,30 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.queue-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.repeat-controls {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.mode-button {
+  border-color: rgba(133, 182, 179, 0.35);
+  background: rgba(8, 29, 38, 0.74);
+}
+
+.mode-button.active {
+  border-color: rgba(116, 212, 190, 0.65);
+  background: rgba(116, 212, 190, 0.2);
+}
+
 .queue-list {
   margin: 0;
   padding: 0;

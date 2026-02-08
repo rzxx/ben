@@ -56,6 +56,7 @@ type Service struct {
 	currentTrackID int64
 	backend        playbackBackend
 	backendErr     string
+	skipQueueSync  int
 }
 
 func NewService(queueService *queue.Service) *Service {
@@ -117,10 +118,13 @@ func (s *Service) Play() (State, error) {
 		return s.stateFromQueue(queueState), errors.New("queue is empty")
 	}
 	if queueState.CurrentTrack == nil {
-		if _, err := s.queue.SetCurrentIndex(0); err != nil {
+		restore := s.beginQueueMutation()
+		updatedQueueState, err := s.queue.SetCurrentIndex(0)
+		restore()
+		if err != nil {
 			return s.GetState(), err
 		}
-		queueState = s.queue.GetState()
+		queueState = updatedQueueState
 	}
 
 	if err := s.loadTrack(backend, queueState.CurrentTrack, false); err != nil {
@@ -207,7 +211,9 @@ func (s *Service) Next() (State, error) {
 	wasPaused := s.status == StatusPaused
 	s.mu.Unlock()
 
+	restore := s.beginQueueMutation()
 	queueState, moved := s.queue.Next()
+	restore()
 	if !moved {
 		return s.Stop()
 	}
@@ -262,7 +268,9 @@ func (s *Service) Previous() (State, error) {
 		return s.Seek(0)
 	}
 
+	restore := s.beginQueueMutation()
 	queueState, moved := s.queue.Previous()
+	restore()
 	if !moved {
 		return s.Seek(0)
 	}
@@ -363,6 +371,10 @@ func (s *Service) SetVolume(volume int) (State, error) {
 }
 
 func (s *Service) onQueueChanged(queueState queue.State) {
+	if s.shouldSkipQueueSync() {
+		return
+	}
+
 	if queueState.CurrentTrack == nil {
 		if backend := s.tryBackend(); backend != nil {
 			_ = backend.Stop()
@@ -427,7 +439,9 @@ func (s *Service) onBackendEOF() {
 	}
 	s.mu.Unlock()
 
-	queueState, moved := s.queue.Next()
+	restore := s.beginQueueMutation()
+	queueState, moved := s.queue.AdvanceAutoplay()
+	restore()
 	if !moved {
 		_, _ = s.Stop()
 		return
@@ -651,6 +665,27 @@ func (s *Service) emitState(state State) {
 	if emitter != nil {
 		emitter(EventStateChanged, state)
 	}
+}
+
+func (s *Service) beginQueueMutation() func() {
+	s.mu.Lock()
+	s.skipQueueSync++
+	s.mu.Unlock()
+
+	return func() {
+		s.mu.Lock()
+		if s.skipQueueSync > 0 {
+			s.skipQueueSync--
+		}
+		s.mu.Unlock()
+	}
+}
+
+func (s *Service) shouldSkipQueueSync() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.skipQueueSync > 0
 }
 
 func trackDuration(track *library.TrackSummary) *int {

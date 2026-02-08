@@ -45,5 +45,17 @@ export function SetQueue(trackIDs: number[], startIndex: number): $CancellablePr
     });
 }
 
+export function SetRepeatMode(mode: string): $CancellablePromise<queue$0.State> {
+    return $Call.ByID(316342998, mode).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
+export function SetShuffle(enabled: boolean): $CancellablePromise<queue$0.State> {
+    return $Call.ByID(3989515663, enabled).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
 // Private type creation functions
 const $$createType0 = queue$0.State.createFrom;

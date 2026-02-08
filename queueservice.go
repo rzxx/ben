@@ -33,3 +33,11 @@ func (s *QueueService) SetCurrentIndex(index int) (queue.State, error) {
 func (s *QueueService) Clear() queue.State {
 	return s.queue.Clear()
 }
+
+func (s *QueueService) SetRepeatMode(mode string) (queue.State, error) {
+	return s.queue.SetRepeatMode(mode)
+}
+
+func (s *QueueService) SetShuffle(enabled bool) queue.State {
+	return s.queue.SetShuffle(enabled)
+}
