@@ -35,9 +35,9 @@ export function PlayerBar(props: PlayerBarProps) {
   const RepeatIcon = props.queueState.repeatMode === "one" ? Repeat1 : Repeat;
 
   return (
-    <footer className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-950/95 px-3 py-3 backdrop-blur sm:px-4">
-      <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-3 lg:grid-cols-[280px_1fr_220px] lg:items-center">
-        <div className="flex min-w-0 items-center gap-3">
+    <footer className="fixed inset-x-3 bottom-1 z-40 rounded-2xl border border-zinc-800 bg-zinc-950/95 px-3 py-3 shadow-xl backdrop-blur sm:inset-x-4 sm:px-4 lg:inset-x-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+        <div className="flex min-w-0 items-center gap-3 lg:w-72 lg:shrink-0">
           <CoverArt
             coverPath={props.currentTrack?.coverPath}
             alt={
@@ -60,7 +60,7 @@ export function PlayerBar(props: PlayerBarProps) {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex items-center justify-center gap-2">
             <button
               type="button"
@@ -140,7 +140,7 @@ export function PlayerBar(props: PlayerBarProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 lg:w-56 lg:shrink-0">
           <Volume2 size={16} className="text-zinc-400" />
           <SingleValueSlider
             ariaLabel="Volume"

@@ -1,3 +1,4 @@
+import { ListMusic, Rows4 } from "lucide-react";
 import { PlayerState, QueueState } from "../types";
 import { QueueView } from "../queue/QueueView";
 
@@ -14,45 +15,49 @@ type RightSidebarProps = {
 
 export function RightSidebar(props: RightSidebarProps) {
   return (
-    <aside className="flex h-full min-h-0 flex-col rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-      <div className="mb-3 flex gap-2">
+    <aside className="flex h-full min-h-0 w-80 shrink-0 flex-col border-l border-zinc-800 bg-zinc-950 pt-4">
+      <div className="flex gap-2 px-3">
         <button
           type="button"
           onClick={() => props.onTabChange("queue")}
-          className={`rounded-md px-3 py-1.5 text-sm ${
+          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
             props.tab === "queue"
               ? "bg-zinc-100 text-zinc-900"
               : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
           }`}
         >
+          <ListMusic size={14} />
           Queue
         </button>
         <button
           type="button"
           onClick={() => props.onTabChange("details")}
-          className={`rounded-md px-3 py-1.5 text-sm ${
+          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
             props.tab === "details"
               ? "bg-zinc-100 text-zinc-900"
               : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
           }`}
         >
+          <Rows4 size={14} />
           Track Details
         </button>
       </div>
 
-      {props.tab === "queue" ? (
-        <QueueView
-          queueState={props.queueState}
-          onSelectQueueIndex={props.onSelectQueueIndex}
-          onRemoveQueueTrack={props.onRemoveQueueTrack}
-          onClearQueue={props.onClearQueue}
-        />
-      ) : (
-        <TrackDetailsPanel
-          playerState={props.playerState}
-          formatDuration={props.formatDuration}
-        />
-      )}
+      <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-3 pb-36">
+        {props.tab === "queue" ? (
+          <QueueView
+            queueState={props.queueState}
+            onSelectQueueIndex={props.onSelectQueueIndex}
+            onRemoveQueueTrack={props.onRemoveQueueTrack}
+            onClearQueue={props.onClearQueue}
+          />
+        ) : (
+          <TrackDetailsPanel
+            playerState={props.playerState}
+            formatDuration={props.formatDuration}
+          />
+        )}
+      </div>
     </aside>
   );
 }

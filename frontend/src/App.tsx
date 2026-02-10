@@ -650,8 +650,8 @@ function AppContent() {
   );
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="grid min-h-screen grid-cols-1 gap-4 p-4 pb-44 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
+    <div className="h-dvh overflow-hidden bg-zinc-950 text-zinc-100">
+      <div className="flex h-full min-h-0">
         <LeftSidebar
           location={location}
           onNavigate={navigate}
@@ -660,104 +660,108 @@ function AppContent() {
           onRunFullScan={onRunFullScan}
         />
 
-        <main className="min-h-0 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
-          {errorMessage ? (
-            <p className="mb-3 rounded-md border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-300">
-              {errorMessage}
-            </p>
-          ) : null}
-
-          <Switch>
-            <Route path="/">
-              <Redirect to="/albums" replace />
-            </Route>
-
-            <Route path="/albums">
-              {selectedAlbum ? (
-                <AlbumDetailView
-                  albumDetail={albumDetail}
-                  onBack={() => setSelectedAlbum(null)}
-                  onPlayAlbum={onPlayAlbum}
-                  onPlayTrackFromAlbum={onPlayTrackFromAlbum}
-                  formatDuration={formatDuration}
-                />
-              ) : (
-                <AlbumsGridView
-                  albums={sortedAlbums}
-                  onSelectAlbum={(album) => {
-                    setSelectedAlbum({
-                      title: album.title,
-                      albumArtist: album.albumArtist,
-                    });
-                  }}
-                />
-              )}
-            </Route>
-
-            <Route path="/artists">
-              {selectedArtist ? (
-                <ArtistDetailView
-                  artistDetail={artistDetail}
-                  topTracks={artistTopTracks}
-                  onBack={() => setSelectedArtist(null)}
-                  onPlayArtist={onPlayArtistTracks}
-                  onPlayTopTrack={onPlayArtistTopTrack}
-                  onSelectAlbum={(album) => {
-                    setSelectedAlbum({
-                      title: album.title,
-                      albumArtist: album.albumArtist,
-                    });
-                    navigate("/albums");
-                  }}
-                  formatPlayedTime={formatPlayedTime}
-                />
-              ) : (
-                <ArtistsGridView
-                  artists={sortedArtists}
-                  onSelectArtist={(artistName) => {
-                    setSelectedArtist(artistName);
-                  }}
-                />
-              )}
-            </Route>
-
-            <Route path="/tracks">
-              <TracksListView
-                tracks={tracksPage.items}
-                onPlayTrack={onPlayTrackNow}
-                onQueueTrack={onAppendTrack}
-                formatDuration={formatDuration}
-              />
-            </Route>
-
-            <Route path="/settings">
-              <SettingsView
-                lastProgress={lastProgress}
-                scanStatus={scanStatus}
-                watchedRoots={watchedRoots}
-                newRootPath={newRootPath}
-                errorMessage={errorMessage}
-                queueState={queueState}
-                playerState={playerState}
-                statsOverview={statsOverview}
-                onNewRootPathChange={setNewRootPath}
-                onAddWatchedRoot={onAddWatchedRoot}
-                onToggleWatchedRoot={onToggleWatchedRoot}
-                onRemoveWatchedRoot={onRemoveWatchedRoot}
-              />
-            </Route>
-
-            <Route path="*">
-              <section>
-                <h1 className="text-xl font-semibold text-zinc-100">
-                  Not Found
-                </h1>
-                <p className="text-sm text-zinc-400">
-                  Choose Albums, Artists, Tracks, or Settings.
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-36 pt-4 lg:px-6">
+            <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-3">
+              {errorMessage ? (
+                <p className="rounded-md border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-300">
+                  {errorMessage}
                 </p>
-              </section>
-            </Route>
-          </Switch>
+              ) : null}
+
+              <Switch>
+                <Route path="/">
+                  <Redirect to="/albums" replace />
+                </Route>
+
+                <Route path="/albums">
+                  {selectedAlbum ? (
+                    <AlbumDetailView
+                      albumDetail={albumDetail}
+                      onBack={() => setSelectedAlbum(null)}
+                      onPlayAlbum={onPlayAlbum}
+                      onPlayTrackFromAlbum={onPlayTrackFromAlbum}
+                      formatDuration={formatDuration}
+                    />
+                  ) : (
+                    <AlbumsGridView
+                      albums={sortedAlbums}
+                      onSelectAlbum={(album) => {
+                        setSelectedAlbum({
+                          title: album.title,
+                          albumArtist: album.albumArtist,
+                        });
+                      }}
+                    />
+                  )}
+                </Route>
+
+                <Route path="/artists">
+                  {selectedArtist ? (
+                    <ArtistDetailView
+                      artistDetail={artistDetail}
+                      topTracks={artistTopTracks}
+                      onBack={() => setSelectedArtist(null)}
+                      onPlayArtist={onPlayArtistTracks}
+                      onPlayTopTrack={onPlayArtistTopTrack}
+                      onSelectAlbum={(album) => {
+                        setSelectedAlbum({
+                          title: album.title,
+                          albumArtist: album.albumArtist,
+                        });
+                        navigate("/albums");
+                      }}
+                      formatPlayedTime={formatPlayedTime}
+                    />
+                  ) : (
+                    <ArtistsGridView
+                      artists={sortedArtists}
+                      onSelectArtist={(artistName) => {
+                        setSelectedArtist(artistName);
+                      }}
+                    />
+                  )}
+                </Route>
+
+                <Route path="/tracks">
+                  <TracksListView
+                    tracks={tracksPage.items}
+                    onPlayTrack={onPlayTrackNow}
+                    onQueueTrack={onAppendTrack}
+                    formatDuration={formatDuration}
+                  />
+                </Route>
+
+                <Route path="/settings">
+                  <SettingsView
+                    lastProgress={lastProgress}
+                    scanStatus={scanStatus}
+                    watchedRoots={watchedRoots}
+                    newRootPath={newRootPath}
+                    errorMessage={errorMessage}
+                    queueState={queueState}
+                    playerState={playerState}
+                    statsOverview={statsOverview}
+                    onNewRootPathChange={setNewRootPath}
+                    onAddWatchedRoot={onAddWatchedRoot}
+                    onToggleWatchedRoot={onToggleWatchedRoot}
+                    onRemoveWatchedRoot={onRemoveWatchedRoot}
+                  />
+                </Route>
+
+                <Route path="*">
+                  <section>
+                    <h1 className="text-xl font-semibold text-zinc-100">
+                      Not Found
+                    </h1>
+                    <p className="text-sm text-zinc-400">
+                      Choose Albums, Artists, Tracks, or Settings.
+                    </p>
+                  </section>
+                </Route>
+              </Switch>
+            </div>
+          </div>
         </main>
 
         <RightSidebar

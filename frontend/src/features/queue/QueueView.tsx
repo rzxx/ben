@@ -9,7 +9,7 @@ type QueueViewProps = {
 
 export function QueueView(props: QueueViewProps) {
   return (
-    <section className="flex h-full flex-col gap-3">
+    <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-zinc-100">Queue</h2>
@@ -30,7 +30,7 @@ export function QueueView(props: QueueViewProps) {
       {props.queueState.entries.length === 0 ? (
         <p className="text-sm text-zinc-400">Queue is empty.</p>
       ) : (
-        <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
+        <ul className="flex flex-col gap-2 pr-1">
           {props.queueState.entries.map((track, index) => (
             <li
               key={`${track.id}-${index}`}
