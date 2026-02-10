@@ -1,4 +1,4 @@
-import { Play } from "lucide-react";
+import { ArrowLeft, Play } from "lucide-react";
 import { CoverArt } from "../../shared/components/CoverArt";
 import { AlbumDetail } from "../types";
 
@@ -26,8 +26,9 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
       <button
         type="button"
         onClick={props.onBack}
-        className="w-fit rounded-md bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700"
+        className="inline-flex w-fit items-center gap-2 rounded-md px-1 py-1 text-sm text-zinc-400 transition-colors hover:text-zinc-200"
       >
+        <ArrowLeft size={14} />
         Back to albums
       </button>
 
@@ -82,7 +83,7 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
                   track.id,
                 )
               }
-              className="rounded bg-zinc-800 p-2 text-zinc-200 hover:bg-zinc-700"
+              className="rounded p-2 text-zinc-500 transition-colors hover:text-zinc-200"
               aria-label={`Play ${track.title}`}
             >
               <Play size={14} />

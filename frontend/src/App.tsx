@@ -9,6 +9,7 @@ import {
 import { Redirect, Route, Router, Switch, useLocation } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { Call, Events } from "@wailsio/runtime";
+import { ScrollArea } from "@base-ui/react/scroll-area";
 import { LeftSidebar } from "./features/layout/LeftSidebar";
 import { RightSidebar } from "./features/layout/RightSidebar";
 import { AlbumDetailView } from "./features/library/AlbumDetailView";
@@ -661,107 +662,114 @@ function AppContent() {
         />
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-36 pt-4 lg:px-6">
-            <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-3">
-              {errorMessage ? (
-                <p className="rounded-md border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-300">
-                  {errorMessage}
-                </p>
-              ) : null}
-
-              <Switch>
-                <Route path="/">
-                  <Redirect to="/albums" replace />
-                </Route>
-
-                <Route path="/albums">
-                  {selectedAlbum ? (
-                    <AlbumDetailView
-                      albumDetail={albumDetail}
-                      onBack={() => setSelectedAlbum(null)}
-                      onPlayAlbum={onPlayAlbum}
-                      onPlayTrackFromAlbum={onPlayTrackFromAlbum}
-                      formatDuration={formatDuration}
-                    />
-                  ) : (
-                    <AlbumsGridView
-                      albums={sortedAlbums}
-                      onSelectAlbum={(album) => {
-                        setSelectedAlbum({
-                          title: album.title,
-                          albumArtist: album.albumArtist,
-                        });
-                      }}
-                    />
-                  )}
-                </Route>
-
-                <Route path="/artists">
-                  {selectedArtist ? (
-                    <ArtistDetailView
-                      artistDetail={artistDetail}
-                      topTracks={artistTopTracks}
-                      onBack={() => setSelectedArtist(null)}
-                      onPlayArtist={onPlayArtistTracks}
-                      onPlayTopTrack={onPlayArtistTopTrack}
-                      onSelectAlbum={(album) => {
-                        setSelectedAlbum({
-                          title: album.title,
-                          albumArtist: album.albumArtist,
-                        });
-                        navigate("/albums");
-                      }}
-                      formatPlayedTime={formatPlayedTime}
-                    />
-                  ) : (
-                    <ArtistsGridView
-                      artists={sortedArtists}
-                      onSelectArtist={(artistName) => {
-                        setSelectedArtist(artistName);
-                      }}
-                    />
-                  )}
-                </Route>
-
-                <Route path="/tracks">
-                  <TracksListView
-                    tracks={tracksPage.items}
-                    onPlayTrack={onPlayTrackNow}
-                    onQueueTrack={onAppendTrack}
-                    formatDuration={formatDuration}
-                  />
-                </Route>
-
-                <Route path="/settings">
-                  <SettingsView
-                    lastProgress={lastProgress}
-                    scanStatus={scanStatus}
-                    watchedRoots={watchedRoots}
-                    newRootPath={newRootPath}
-                    errorMessage={errorMessage}
-                    queueState={queueState}
-                    playerState={playerState}
-                    statsOverview={statsOverview}
-                    onNewRootPathChange={setNewRootPath}
-                    onAddWatchedRoot={onAddWatchedRoot}
-                    onToggleWatchedRoot={onToggleWatchedRoot}
-                    onRemoveWatchedRoot={onRemoveWatchedRoot}
-                  />
-                </Route>
-
-                <Route path="*">
-                  <section>
-                    <h1 className="text-xl font-semibold text-zinc-100">
-                      Not Found
-                    </h1>
-                    <p className="text-sm text-zinc-400">
-                      Choose Albums, Artists, Tracks, or Settings.
+          <ScrollArea.Root className="min-h-0 flex-1">
+            <ScrollArea.Viewport className="h-full">
+              <ScrollArea.Content className="min-w-full px-4 pb-36 pt-4 lg:px-6">
+                <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-3">
+                  {errorMessage ? (
+                    <p className="rounded-md border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-300">
+                      {errorMessage}
                     </p>
-                  </section>
-                </Route>
-              </Switch>
-            </div>
-          </div>
+                  ) : null}
+
+                  <Switch>
+                    <Route path="/">
+                      <Redirect to="/albums" replace />
+                    </Route>
+
+                    <Route path="/albums">
+                      {selectedAlbum ? (
+                        <AlbumDetailView
+                          albumDetail={albumDetail}
+                          onBack={() => setSelectedAlbum(null)}
+                          onPlayAlbum={onPlayAlbum}
+                          onPlayTrackFromAlbum={onPlayTrackFromAlbum}
+                          formatDuration={formatDuration}
+                        />
+                      ) : (
+                        <AlbumsGridView
+                          albums={sortedAlbums}
+                          onSelectAlbum={(album) => {
+                            setSelectedAlbum({
+                              title: album.title,
+                              albumArtist: album.albumArtist,
+                            });
+                          }}
+                        />
+                      )}
+                    </Route>
+
+                    <Route path="/artists">
+                      {selectedArtist ? (
+                        <ArtistDetailView
+                          artistDetail={artistDetail}
+                          topTracks={artistTopTracks}
+                          onBack={() => setSelectedArtist(null)}
+                          onPlayArtist={onPlayArtistTracks}
+                          onPlayTopTrack={onPlayArtistTopTrack}
+                          onSelectAlbum={(album) => {
+                            setSelectedAlbum({
+                              title: album.title,
+                              albumArtist: album.albumArtist,
+                            });
+                            navigate("/albums");
+                          }}
+                          formatPlayedTime={formatPlayedTime}
+                        />
+                      ) : (
+                        <ArtistsGridView
+                          artists={sortedArtists}
+                          onSelectArtist={(artistName) => {
+                            setSelectedArtist(artistName);
+                          }}
+                        />
+                      )}
+                    </Route>
+
+                    <Route path="/tracks">
+                      <TracksListView
+                        tracks={tracksPage.items}
+                        onPlayTrack={onPlayTrackNow}
+                        onQueueTrack={onAppendTrack}
+                        formatDuration={formatDuration}
+                      />
+                    </Route>
+
+                    <Route path="/settings">
+                      <SettingsView
+                        lastProgress={lastProgress}
+                        scanStatus={scanStatus}
+                        watchedRoots={watchedRoots}
+                        newRootPath={newRootPath}
+                        errorMessage={errorMessage}
+                        queueState={queueState}
+                        playerState={playerState}
+                        statsOverview={statsOverview}
+                        onNewRootPathChange={setNewRootPath}
+                        onAddWatchedRoot={onAddWatchedRoot}
+                        onToggleWatchedRoot={onToggleWatchedRoot}
+                        onRemoveWatchedRoot={onRemoveWatchedRoot}
+                      />
+                    </Route>
+
+                    <Route path="*">
+                      <section>
+                        <h1 className="text-xl font-semibold text-zinc-100">
+                          Not Found
+                        </h1>
+                        <p className="text-sm text-zinc-400">
+                          Choose Albums, Artists, Tracks, or Settings.
+                        </p>
+                      </section>
+                    </Route>
+                  </Switch>
+                </div>
+              </ScrollArea.Content>
+            </ScrollArea.Viewport>
+            <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-zinc-800/80 opacity-0 transition-opacity duration-150 data-[hovering]:pointer-events-auto data-[hovering]:opacity-100 data-[scrolling]:pointer-events-auto data-[scrolling]:opacity-100 data-[scrolling]:duration-0">
+              <ScrollArea.Thumb className="w-full rounded bg-zinc-500" />
+            </ScrollArea.Scrollbar>
+          </ScrollArea.Root>
         </main>
 
         <RightSidebar

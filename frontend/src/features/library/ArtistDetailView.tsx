@@ -1,4 +1,4 @@
-import { Play } from "lucide-react";
+import { ArrowLeft, Play } from "lucide-react";
 import { CoverArt } from "../../shared/components/CoverArt";
 import { ArtistDetail, ArtistTopTrack, LibraryAlbum } from "../types";
 
@@ -24,8 +24,9 @@ export function ArtistDetailView(props: ArtistDetailViewProps) {
       <button
         type="button"
         onClick={props.onBack}
-        className="w-fit rounded-md bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700"
+        className="inline-flex w-fit items-center gap-2 rounded-md px-1 py-1 text-sm text-zinc-400 transition-colors hover:text-zinc-200"
       >
+        <ArrowLeft size={14} />
         Back to artists
       </button>
 
@@ -77,7 +78,7 @@ export function ArtistDetailView(props: ArtistDetailViewProps) {
                   onClick={() =>
                     void props.onPlayTopTrack(artist.name, track.trackId)
                   }
-                  className="rounded bg-zinc-800 p-2 text-zinc-200 hover:bg-zinc-700"
+                  className="rounded p-2 text-zinc-500 transition-colors hover:text-zinc-200"
                   aria-label={`Play ${track.title}`}
                 >
                   <Play size={14} />

@@ -1,4 +1,11 @@
-import { Disc3, FolderSearch, Library, Music2, Settings2, Users } from "lucide-react";
+import {
+  Disc3,
+  FolderSearch,
+  Library,
+  Music2,
+  Settings2,
+  Users,
+} from "lucide-react";
 
 type LeftSidebarProps = {
   location: string;
@@ -17,10 +24,9 @@ const navItems = [
 
 export function LeftSidebar(props: LeftSidebarProps) {
   return (
-    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 px-4 pb-36 pt-4">
+    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 px-4 pt-4 pb-36">
       <div className="border-b border-zinc-800 pb-4">
         <p className="text-xl font-semibold tracking-wide text-zinc-100">ben</p>
-        <p className="mt-1 text-xs text-zinc-500">Local music player</p>
       </div>
 
       <nav

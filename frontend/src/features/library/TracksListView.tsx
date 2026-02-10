@@ -33,7 +33,7 @@ export function TracksListView(props: TracksListViewProps) {
               <button
                 type="button"
                 onClick={() => void props.onQueueTrack(track.id)}
-                className="rounded bg-zinc-800 p-2 text-zinc-200 hover:bg-zinc-700"
+                className="rounded p-2 text-zinc-500 transition-colors hover:text-zinc-200"
                 aria-label={`Queue ${track.title}`}
               >
                 <Plus size={14} />
@@ -41,7 +41,7 @@ export function TracksListView(props: TracksListViewProps) {
               <button
                 type="button"
                 onClick={() => void props.onPlayTrack(track.id)}
-                className="rounded bg-zinc-800 p-2 text-zinc-200 hover:bg-zinc-700"
+                className="rounded p-2 text-zinc-500 transition-colors hover:text-zinc-200"
                 aria-label={`Play ${track.title}`}
               >
                 <Play size={14} />

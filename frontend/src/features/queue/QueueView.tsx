@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { QueueState } from "../types";
 
 type QueueViewProps = {
@@ -59,9 +60,10 @@ export function QueueView(props: QueueViewProps) {
                 onClick={() => {
                   void props.onRemoveQueueTrack(index);
                 }}
-                className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700"
+                className="rounded p-1 text-zinc-500 transition-colors hover:text-zinc-200"
+                aria-label="Remove track from queue"
               >
-                Remove
+                <X size={14} />
               </button>
             </li>
           ))}

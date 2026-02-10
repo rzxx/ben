@@ -35,7 +35,7 @@ export function PlayerBar(props: PlayerBarProps) {
   const RepeatIcon = props.queueState.repeatMode === "one" ? Repeat1 : Repeat;
 
   return (
-    <footer className="fixed inset-x-3 bottom-1 z-40 rounded-2xl border border-zinc-800 bg-zinc-950/95 px-3 py-3 shadow-xl backdrop-blur sm:inset-x-4 sm:px-4 lg:inset-x-6">
+    <footer className="fixed inset-x-8 bottom-4 z-40 rounded-2xl border border-zinc-800 bg-zinc-950/25 px-8 py-4 shadow-xl backdrop-blur-lg">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
         <div className="flex min-w-0 items-center gap-3 lg:w-72 lg:shrink-0">
           <CoverArt
@@ -65,10 +65,10 @@ export function PlayerBar(props: PlayerBarProps) {
             <button
               type="button"
               onClick={() => void props.onToggleShuffle()}
-              className={`rounded p-2 ${
+              className={`rounded p-2 transition-colors ${
                 props.queueState.shuffle
-                  ? "bg-zinc-100 text-zinc-900"
-                  : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                  ? "text-zinc-100"
+                  : "text-zinc-500 hover:text-zinc-200"
               }`}
               aria-label="Toggle shuffle"
             >
@@ -79,7 +79,7 @@ export function PlayerBar(props: PlayerBarProps) {
               type="button"
               onClick={() => void props.onPreviousTrack()}
               disabled={!props.hasCurrentTrack || props.transportBusy}
-              className="rounded bg-zinc-800 p-2 text-zinc-200 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded p-2 text-zinc-200 transition-colors hover:text-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-600"
               aria-label="Previous track"
             >
               <SkipBack size={16} />
@@ -99,7 +99,7 @@ export function PlayerBar(props: PlayerBarProps) {
               type="button"
               onClick={() => void props.onNextTrack()}
               disabled={!props.hasCurrentTrack || props.transportBusy}
-              className="rounded bg-zinc-800 p-2 text-zinc-200 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded p-2 text-zinc-200 transition-colors hover:text-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-600"
               aria-label="Next track"
             >
               <SkipForward size={16} />
@@ -108,10 +108,10 @@ export function PlayerBar(props: PlayerBarProps) {
             <button
               type="button"
               onClick={() => void props.onCycleRepeat()}
-              className={`rounded p-2 ${
+              className={`rounded p-2 transition-colors ${
                 props.queueState.repeatMode === "off"
-                  ? "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                  : "bg-zinc-100 text-zinc-900"
+                  ? "text-zinc-500 hover:text-zinc-200"
+                  : "text-zinc-100"
               }`}
               aria-label="Cycle repeat mode"
             >
