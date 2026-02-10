@@ -7,6 +7,7 @@ export {
     AlbumsPage,
     ArtistDetail,
     ArtistSummary,
+    ArtistTopTrack,
     ArtistsPage,
     PageInfo,
     TrackSummary,

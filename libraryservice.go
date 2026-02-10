@@ -32,3 +32,23 @@ func (s *LibraryService) GetArtistDetail(name string, limit int, offset int) (li
 func (s *LibraryService) GetAlbumDetail(title string, albumArtist string, limit int, offset int) (library.AlbumDetail, error) {
 	return s.browse.GetAlbumDetail(context.Background(), title, albumArtist, limit, offset)
 }
+
+func (s *LibraryService) GetAlbumQueueTrackIDs(title string, albumArtist string) ([]int64, error) {
+	return s.browse.GetAlbumQueueTrackIDs(context.Background(), title, albumArtist)
+}
+
+func (s *LibraryService) GetAlbumQueueTrackIDsFromTrack(title string, albumArtist string, trackID int64) ([]int64, error) {
+	return s.browse.GetAlbumQueueTrackIDsFromTrack(context.Background(), title, albumArtist, trackID)
+}
+
+func (s *LibraryService) GetArtistQueueTrackIDs(name string) ([]int64, error) {
+	return s.browse.GetArtistQueueTrackIDs(context.Background(), name)
+}
+
+func (s *LibraryService) GetArtistTopTracks(name string, limit int) ([]library.ArtistTopTrack, error) {
+	return s.browse.GetArtistTopTracks(context.Background(), name, limit)
+}
+
+func (s *LibraryService) GetArtistQueueTrackIDsFromTopTrack(name string, trackID int64) ([]int64, error) {
+	return s.browse.GetArtistQueueTrackIDsFromTopTrack(context.Background(), name, trackID)
+}

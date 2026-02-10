@@ -25,55 +25,101 @@ type SettingsViewProps = {
 
 export function SettingsView(props: SettingsViewProps) {
   return (
-    <>
-      <section className="panel">
-        <h2>Scanner Progress</h2>
-        <p>Full and incremental scans walk folders, upsert changes, and reconcile stale track rows.</p>
+    <section className="flex flex-col gap-5">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+        <h1 className="text-xl font-semibold text-zinc-100">Settings</h1>
+        <p className="mt-1 text-sm text-zinc-400">
+          Scanner, watched folders, and runtime stats.
+        </p>
+      </div>
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+        <h2 className="text-sm font-semibold text-zinc-100">
+          Scanner Progress
+        </h2>
         {props.lastProgress ? (
-          <div className="progress-card">
-            <div className="progress-top">
-              <span>{props.lastProgress.phase}</span>
+          <div className="mt-3 flex flex-col gap-2">
+            <div className="flex items-center justify-between text-xs text-zinc-400">
+              <span className="capitalize">{props.lastProgress.phase}</span>
               <span>{props.lastProgress.percent}%</span>
             </div>
-            <p>{props.lastProgress.message}</p>
-            <div className="progress-track">
-              <div style={{ width: `${props.lastProgress.percent}%` }} />
+            <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
+              <div
+                className="h-full bg-zinc-200"
+                style={{
+                  width: `${Math.max(0, Math.min(100, props.lastProgress.percent))}%`,
+                }}
+              />
             </div>
+            <p className="text-xs text-zinc-400">
+              {props.lastProgress.message}
+            </p>
           </div>
         ) : (
-          <p>No progress events yet. Start a full scan to verify wiring.</p>
+          <p className="mt-2 text-sm text-zinc-400">No progress events yet.</p>
         )}
-        {props.scanStatus.lastRunAt ? <p>Last run: {new Date(props.scanStatus.lastRunAt).toLocaleString()}</p> : null}
-        {props.scanStatus.lastMode ? <p>Mode: {props.scanStatus.lastMode}</p> : null}
-        {props.scanStatus.lastRunAt ? (
-          <div className="scan-totals">
-            <span>Seen: {props.scanStatus.lastFilesSeen ?? 0}</span>
-            <span>Indexed: {props.scanStatus.lastIndexed ?? 0}</span>
-            <span>Skipped: {props.scanStatus.lastSkipped ?? 0}</span>
-          </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-zinc-300 sm:grid-cols-2 lg:grid-cols-4">
+          <Metric
+            label="Running"
+            value={props.scanStatus.running ? "Yes" : "No"}
+          />
+          <Metric
+            label="Last run"
+            value={
+              props.scanStatus.lastRunAt
+                ? new Date(props.scanStatus.lastRunAt).toLocaleString()
+                : "-"
+            }
+          />
+          <Metric
+            label="Seen"
+            value={`${props.scanStatus.lastFilesSeen ?? 0}`}
+          />
+          <Metric
+            label="Indexed"
+            value={`${props.scanStatus.lastIndexed ?? 0}`}
+          />
+        </div>
+        {props.scanStatus.lastError ? (
+          <p className="mt-2 text-sm text-red-400">
+            {props.scanStatus.lastError}
+          </p>
         ) : null}
-        {props.scanStatus.lastError ? <p className="error">{props.scanStatus.lastError}</p> : null}
       </section>
 
-      <section className="panel settings-panel">
-        <h2>Watched Folders</h2>
-        <form onSubmit={(event) => void props.onAddWatchedRoot(event)} className="add-form">
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+        <h2 className="text-sm font-semibold text-zinc-100">Watched Folders</h2>
+        <form
+          className="mt-3 flex flex-col gap-2 sm:flex-row"
+          onSubmit={(event) => void props.onAddWatchedRoot(event)}
+        >
           <input
             type="text"
             value={props.newRootPath}
             onChange={(event) => props.onNewRootPathChange(event.target.value)}
             placeholder="C:\\Music"
-            autoComplete="off"
+            className="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-zinc-500"
           />
-          <button type="submit">Add</button>
+          <button
+            type="submit"
+            className="rounded-md bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-200"
+          >
+            Add
+          </button>
         </form>
 
-        {props.errorMessage ? <p className="error">{props.errorMessage}</p> : null}
+        {props.errorMessage ? (
+          <p className="mt-2 text-sm text-red-400">{props.errorMessage}</p>
+        ) : null}
 
-        <ul className="root-list">
+        <ul className="mt-3 flex flex-col gap-2">
           {props.watchedRoots.map((root) => (
-            <li key={root.id}>
-              <label>
+            <li
+              key={root.id}
+              className="flex flex-col gap-2 rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <label className="flex min-w-0 items-center gap-2 text-sm text-zinc-300">
                 <input
                   type="checkbox"
                   checked={root.enabled}
@@ -81,12 +127,14 @@ export function SettingsView(props: SettingsViewProps) {
                     void props.onToggleWatchedRoot(root);
                   }}
                 />
-                <span>{root.path}</span>
+                <span className="truncate">{root.path}</span>
               </label>
               <button
+                type="button"
                 onClick={() => {
                   void props.onRemoveWatchedRoot(root.id);
                 }}
+                className="w-fit rounded-md bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-700"
               >
                 Remove
               </button>
@@ -95,92 +143,42 @@ export function SettingsView(props: SettingsViewProps) {
         </ul>
       </section>
 
-      <section className="panel">
-        <h2>Runtime State</h2>
-        <p>Queue and player state now come from backend events.</p>
-        <div className="stat-list">
-          <div>
-            <span>Queue Length</span>
-            <strong>{props.queueState.total}</strong>
-          </div>
-          <div>
-            <span>Player Status</span>
-            <strong>{props.playerState.status}</strong>
-          </div>
-          <div>
-            <span>Volume</span>
-            <strong>{props.playerState.volume}%</strong>
-          </div>
-        </div>
+      <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <MetricCard label="Queue Length" value={`${props.queueState.total}`} />
+        <MetricCard label="Player Status" value={props.playerState.status} />
+        <MetricCard
+          label="Total Played"
+          value={formatPlayedTime(props.statsOverview.totalPlayedMs)}
+        />
       </section>
+    </section>
+  );
+}
 
-      <section className="panel">
-        <h2>Listening Stats</h2>
-        <p>Stats are tracked from player heartbeat, skip, and completion events.</p>
+type MetricProps = {
+  label: string;
+  value: string;
+};
 
-        <div className="stat-list">
-          <div>
-            <span>Total Played</span>
-            <strong>{formatPlayedTime(props.statsOverview.totalPlayedMs)}</strong>
-          </div>
-          <div>
-            <span>Tracks Played</span>
-            <strong>{props.statsOverview.tracksPlayed}</strong>
-          </div>
-          <div>
-            <span>Completions</span>
-            <strong>{props.statsOverview.completeCount}</strong>
-          </div>
-          <div>
-            <span>Skips</span>
-            <strong>{props.statsOverview.skipCount}</strong>
-          </div>
-          <div>
-            <span>Partials</span>
-            <strong>{props.statsOverview.partialCount}</strong>
-          </div>
-        </div>
+function Metric(props: MetricProps) {
+  return (
+    <div className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-2">
+      <p className="text-xs tracking-wide text-zinc-500 uppercase">
+        {props.label}
+      </p>
+      <p className="truncate text-sm text-zinc-200">{props.value}</p>
+    </div>
+  );
+}
 
-        <h3>Top Tracks</h3>
-        {props.statsOverview.topTracks.length === 0 ? (
-          <p>No listening history yet.</p>
-        ) : (
-          <ul className="entity-list">
-            {props.statsOverview.topTracks.map((track) => (
-              <li key={track.trackId}>
-                <div className="entity-row">
-                  <strong>{track.title}</strong>
-                  <span>
-                    {track.artist} - {track.album}
-                  </span>
-                  <span>
-                    {formatPlayedTime(track.playedMs)} - {track.completeCount} completes - {track.partialCount} partials - {track.skipCount} skips
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <h3>Top Artists</h3>
-        {props.statsOverview.topArtists.length === 0 ? (
-          <p>No artist stats yet.</p>
-        ) : (
-          <ul className="entity-list">
-            {props.statsOverview.topArtists.map((artist) => (
-              <li key={artist.name}>
-                <div className="entity-row">
-                  <strong>{artist.name}</strong>
-                  <span>
-                    {formatPlayedTime(artist.playedMs)} across {artist.trackCount} tracks
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </>
+function MetricCard(props: MetricProps) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+      <p className="text-xs tracking-wide text-zinc-500 uppercase">
+        {props.label}
+      </p>
+      <p className="mt-1 text-lg font-semibold text-zinc-100">{props.value}</p>
+    </div>
   );
 }
 

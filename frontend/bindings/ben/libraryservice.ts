@@ -15,33 +15,66 @@ export function GetAlbumDetail(title: string, albumArtist: string, limit: number
     });
 }
 
+export function GetAlbumQueueTrackIDs(title: string, albumArtist: string): $CancellablePromise<number[]> {
+    return $Call.ByID(820671183, title, albumArtist).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+export function GetAlbumQueueTrackIDsFromTrack(title: string, albumArtist: string, trackID: number): $CancellablePromise<number[]> {
+    return $Call.ByID(3640806114, title, albumArtist, trackID).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 export function GetArtistDetail(name: string, limit: number, offset: number): $CancellablePromise<library$0.ArtistDetail> {
     return $Call.ByID(64858316, name, limit, offset).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
+export function GetArtistQueueTrackIDs(name: string): $CancellablePromise<number[]> {
+    return $Call.ByID(2179541947, name).then(($result: any) => {
         return $$createType1($result);
+    });
+}
+
+export function GetArtistQueueTrackIDsFromTopTrack(name: string, trackID: number): $CancellablePromise<number[]> {
+    return $Call.ByID(4009857317, name, trackID).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+export function GetArtistTopTracks(name: string, limit: number): $CancellablePromise<library$0.ArtistTopTrack[]> {
+    return $Call.ByID(146736552, name, limit).then(($result: any) => {
+        return $$createType4($result);
     });
 }
 
 export function ListAlbums(search: string, artist: string, limit: number, offset: number): $CancellablePromise<library$0.AlbumsPage> {
     return $Call.ByID(1263870718, search, artist, limit, offset).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType5($result);
     });
 }
 
 export function ListArtists(search: string, limit: number, offset: number): $CancellablePromise<library$0.ArtistsPage> {
     return $Call.ByID(1280729162, search, limit, offset).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType6($result);
     });
 }
 
 export function ListTracks(search: string, artist: string, album: string, limit: number, offset: number): $CancellablePromise<library$0.TracksPage> {
     return $Call.ByID(1495798414, search, artist, album, limit, offset).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType7($result);
     });
 }
 
 // Private type creation functions
 const $$createType0 = library$0.AlbumDetail.createFrom;
-const $$createType1 = library$0.ArtistDetail.createFrom;
-const $$createType2 = library$0.AlbumsPage.createFrom;
-const $$createType3 = library$0.ArtistsPage.createFrom;
-const $$createType4 = library$0.TracksPage.createFrom;
+const $$createType1 = $Create.Array($Create.Any);
+const $$createType2 = library$0.ArtistDetail.createFrom;
+const $$createType3 = library$0.ArtistTopTrack.createFrom;
+const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = library$0.AlbumsPage.createFrom;
+const $$createType6 = library$0.ArtistsPage.createFrom;
+const $$createType7 = library$0.TracksPage.createFrom;

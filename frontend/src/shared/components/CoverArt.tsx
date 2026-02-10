@@ -14,10 +14,18 @@ export function CoverArt(props: CoverArtProps) {
   const source = coverPathToURL(props.coverPath);
   const canRenderImage = !!source && source !== failedSource;
 
-  const className = props.className ? `cover-art ${props.className}` : "cover-art";
+  const className = props.className
+    ? `shrink-0 bg-zinc-800 object-cover object-center ${props.className}`
+    : "h-12 w-12 shrink-0 rounded-md bg-zinc-800 object-cover object-center";
 
   if (!canRenderImage) {
-    return <div className={`${className} cover-art-placeholder`}>No Cover</div>;
+    return (
+      <div
+        className={`${className} flex items-center justify-center text-[10px] tracking-wide text-zinc-500 uppercase`}
+      >
+        No Cover
+      </div>
+    );
   }
 
   return (

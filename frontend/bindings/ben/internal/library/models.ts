@@ -190,6 +190,67 @@ export class ArtistSummary {
     }
 }
 
+export class ArtistTopTrack {
+    "trackId": number;
+    "title": string;
+    "artist": string;
+    "album": string;
+    "albumArtist": string;
+    "discNo"?: number | null;
+    "trackNo"?: number | null;
+    "durationMs"?: number | null;
+    "path": string;
+    "coverPath"?: string | null;
+    "playedMs": number;
+    "completeCount": number;
+    "skipCount": number;
+    "partialCount": number;
+
+    /** Creates a new ArtistTopTrack instance. */
+    constructor($$source: Partial<ArtistTopTrack> = {}) {
+        if (!("trackId" in $$source)) {
+            this["trackId"] = 0;
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("artist" in $$source)) {
+            this["artist"] = "";
+        }
+        if (!("album" in $$source)) {
+            this["album"] = "";
+        }
+        if (!("albumArtist" in $$source)) {
+            this["albumArtist"] = "";
+        }
+        if (!("path" in $$source)) {
+            this["path"] = "";
+        }
+        if (!("playedMs" in $$source)) {
+            this["playedMs"] = 0;
+        }
+        if (!("completeCount" in $$source)) {
+            this["completeCount"] = 0;
+        }
+        if (!("skipCount" in $$source)) {
+            this["skipCount"] = 0;
+        }
+        if (!("partialCount" in $$source)) {
+            this["partialCount"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ArtistTopTrack instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ArtistTopTrack {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ArtistTopTrack($$parsedSource as Partial<ArtistTopTrack>);
+    }
+}
+
 export class ArtistsPage {
     "items": ArtistSummary[];
     "page": PageInfo;

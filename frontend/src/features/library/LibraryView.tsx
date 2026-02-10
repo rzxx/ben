@@ -51,7 +51,9 @@ export function LibraryView(props: LibraryViewProps) {
         <form className="search-form" onSubmit={props.onSubmitLibrarySearch}>
           <input
             value={props.libraryQueryInput}
-            onChange={(event) => props.onLibraryQueryInputChange(event.target.value)}
+            onChange={(event) =>
+              props.onLibraryQueryInputChange(event.target.value)
+            }
             placeholder="Search title, artist, or album"
             autoComplete="off"
           />
@@ -107,10 +109,16 @@ export function LibraryView(props: LibraryViewProps) {
               ))}
             </ul>
             <div className="pager">
-              <button disabled={!props.artistCanGoBack} onClick={props.onArtistPrev}>
+              <button
+                disabled={!props.artistCanGoBack}
+                onClick={props.onArtistPrev}
+              >
                 Prev
               </button>
-              <button disabled={!props.artistCanGoNext} onClick={props.onArtistNext}>
+              <button
+                disabled={!props.artistCanGoNext}
+                onClick={props.onArtistNext}
+              >
                 Next
               </button>
             </div>
@@ -128,7 +136,9 @@ export function LibraryView(props: LibraryViewProps) {
                         ? "selected"
                         : ""
                     }`}
-                    onClick={() => props.onSelectAlbum(album.title, album.albumArtist)}
+                    onClick={() =>
+                      props.onSelectAlbum(album.title, album.albumArtist)
+                    }
                   >
                     <div className="entity-media">
                       <CoverArt
@@ -149,10 +159,16 @@ export function LibraryView(props: LibraryViewProps) {
               ))}
             </ul>
             <div className="pager">
-              <button disabled={!props.albumCanGoBack} onClick={props.onAlbumPrev}>
+              <button
+                disabled={!props.albumCanGoBack}
+                onClick={props.onAlbumPrev}
+              >
                 Prev
               </button>
-              <button disabled={!props.albumCanGoNext} onClick={props.onAlbumNext}>
+              <button
+                disabled={!props.albumCanGoNext}
+                onClick={props.onAlbumNext}
+              >
                 Next
               </button>
             </div>
@@ -169,18 +185,32 @@ export function LibraryView(props: LibraryViewProps) {
                       {track.artist} - {track.album}
                     </span>
                     <div className="inline-actions">
-                      <button onClick={() => void props.onAppendTrack(track.id)}>Queue</button>
-                      <button onClick={() => void props.onPlayTrackNow(track.id)}>Play</button>
+                      <button
+                        onClick={() => void props.onAppendTrack(track.id)}
+                      >
+                        Queue
+                      </button>
+                      <button
+                        onClick={() => void props.onPlayTrackNow(track.id)}
+                      >
+                        Play
+                      </button>
                     </div>
                   </div>
                 </li>
               ))}
             </ul>
             <div className="pager">
-              <button disabled={!props.trackCanGoBack} onClick={props.onTrackPrev}>
+              <button
+                disabled={!props.trackCanGoBack}
+                onClick={props.onTrackPrev}
+              >
                 Prev
               </button>
-              <button disabled={!props.trackCanGoNext} onClick={props.onTrackNext}>
+              <button
+                disabled={!props.trackCanGoNext}
+                onClick={props.onTrackNext}
+              >
                 Next
               </button>
             </div>
@@ -193,7 +223,9 @@ export function LibraryView(props: LibraryViewProps) {
         {props.artistDetail ? (
           <>
             <p className="summary-row">
-              <strong>{props.artistDetail.name}</strong> - {props.artistDetail.albumCount} albums - {props.artistDetail.trackCount} tracks
+              <strong>{props.artistDetail.name}</strong> -{" "}
+              {props.artistDetail.albumCount} albums -{" "}
+              {props.artistDetail.trackCount} tracks
             </p>
             <ul className="entity-list">
               {props.artistDetail.albums.map((album) => (
@@ -208,7 +240,8 @@ export function LibraryView(props: LibraryViewProps) {
                       <strong>{album.title}</strong>
                       <span>
                         {album.albumArtist}
-                        {album.year ? ` (${album.year})` : ""} - {album.trackCount} tracks
+                        {album.year ? ` (${album.year})` : ""} -{" "}
+                        {album.trackCount} tracks
                       </span>
                     </div>
                   </div>
@@ -233,8 +266,11 @@ export function LibraryView(props: LibraryViewProps) {
                 loading="eager"
               />
               <p className="summary-row">
-                <strong>{props.albumDetail.title}</strong> - {props.albumDetail.albumArtist}
-                {props.albumDetail.year ? ` (${props.albumDetail.year})` : ""} - {props.albumDetail.trackCount} tracks
+                <strong>{props.albumDetail.title}</strong> -{" "}
+                {props.albumDetail.albumArtist}
+                {props.albumDetail.year
+                  ? ` (${props.albumDetail.year})`
+                  : ""} - {props.albumDetail.trackCount} tracks
               </p>
             </div>
             <ul className="entity-list">
@@ -248,8 +284,16 @@ export function LibraryView(props: LibraryViewProps) {
                     </strong>
                     <span>{track.artist}</span>
                     <div className="inline-actions">
-                      <button onClick={() => void props.onAppendTrack(track.id)}>Queue</button>
-                      <button onClick={() => void props.onPlayTrackNow(track.id)}>Play</button>
+                      <button
+                        onClick={() => void props.onAppendTrack(track.id)}
+                      >
+                        Queue
+                      </button>
+                      <button
+                        onClick={() => void props.onPlayTrackNow(track.id)}
+                      >
+                        Play
+                      </button>
                     </div>
                   </div>
                 </li>

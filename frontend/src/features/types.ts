@@ -69,6 +69,23 @@ export type ArtistDetail = {
   page: PageInfo;
 };
 
+export type ArtistTopTrack = {
+  trackId: number;
+  title: string;
+  artist: string;
+  album: string;
+  albumArtist: string;
+  discNo?: number;
+  trackNo?: number;
+  durationMs?: number;
+  path: string;
+  coverPath?: string;
+  playedMs: number;
+  completeCount: number;
+  skipCount: number;
+  partialCount: number;
+};
+
 export type AlbumDetail = {
   title: string;
   albumArtist: string;

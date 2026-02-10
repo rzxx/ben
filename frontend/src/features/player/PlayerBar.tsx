@@ -1,5 +1,16 @@
-import { LibraryTrack, PlayerState, QueueState } from "../types";
+import { Slider } from "@base-ui/react/slider";
+import {
+  Pause,
+  Play,
+  Repeat,
+  Repeat1,
+  Shuffle,
+  SkipBack,
+  SkipForward,
+  Volume2,
+} from "lucide-react";
 import { CoverArt } from "../../shared/components/CoverArt";
+import { LibraryTrack, PlayerState, QueueState } from "../types";
 
 type PlayerBarProps = {
   currentTrack?: LibraryTrack;
@@ -7,86 +18,195 @@ type PlayerBarProps = {
   queueState: QueueState;
   transportBusy: boolean;
   hasCurrentTrack: boolean;
-  playPauseLabel: string;
   seekMax: number;
   seekValue: number;
   onPreviousTrack: () => Promise<void>;
   onTogglePlayback: () => Promise<void>;
   onNextTrack: () => Promise<void>;
+  onToggleShuffle: () => Promise<void>;
+  onCycleRepeat: () => Promise<void>;
   onSeek: (positionMS: number) => Promise<void>;
   onSetVolume: (volume: number) => Promise<void>;
   formatDuration: (durationMS?: number) => string;
 };
 
 export function PlayerBar(props: PlayerBarProps) {
+  const isPlaying = props.playerState.status === "playing";
+  const RepeatIcon = props.queueState.repeatMode === "one" ? Repeat1 : Repeat;
+
   return (
-    <footer className="player-bar">
-      <div className="player-main">
-        <CoverArt
-          coverPath={props.currentTrack?.coverPath}
-          alt={props.currentTrack ? `${props.currentTrack.album} cover` : "No cover"}
-          className="player-cover"
-          loading="eager"
-        />
-        <div className="player-copy">
-          <p className="eyebrow">Player</p>
-          {props.currentTrack ? (
-            <>
-              <strong>
-                {props.currentTrack.title} - {props.currentTrack.artist}
-              </strong>
-              <p>
-                {props.currentTrack.album} • {props.playerState.status}
-              </p>
-            </>
-          ) : (
-            <strong>No track selected</strong>
-          )}
-        </div>
-      </div>
-
-      <div className="player-controls">
-        <div className="transport-placeholder">
-          <button onClick={() => void props.onPreviousTrack()} disabled={!props.hasCurrentTrack || props.transportBusy}>
-            Prev
-          </button>
-          <button onClick={() => void props.onTogglePlayback()} disabled={props.queueState.total === 0 || props.transportBusy}>
-            {props.playPauseLabel}
-          </button>
-          <button onClick={() => void props.onNextTrack()} disabled={!props.hasCurrentTrack || props.transportBusy}>
-            Next
-          </button>
-        </div>
-
-        <div className="seek-wrap">
-          <span>{props.formatDuration(props.playerState.positionMs)}</span>
-          <input
-            type="range"
-            min={0}
-            max={props.seekMax}
-            value={props.seekValue}
-            onChange={(event) => {
-              void props.onSeek(Number(event.target.value));
-            }}
-            disabled={!props.hasCurrentTrack}
+    <footer className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-950/95 px-3 py-3 backdrop-blur sm:px-4">
+      <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-3 lg:grid-cols-[280px_1fr_220px] lg:items-center">
+        <div className="flex min-w-0 items-center gap-3">
+          <CoverArt
+            coverPath={props.currentTrack?.coverPath}
+            alt={
+              props.currentTrack
+                ? `${props.currentTrack.album} cover`
+                : "No cover"
+            }
+            className="h-12 w-12 rounded-md"
+            loading="eager"
           />
-          <span>{props.formatDuration(props.playerState.durationMs)}</span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-zinc-100">
+              {props.currentTrack?.title ?? "No track selected"}
+            </p>
+            <p className="truncate text-xs text-zinc-400">
+              {props.currentTrack
+                ? props.currentTrack.artist
+                : "Select a track to start playback"}
+            </p>
+          </div>
         </div>
 
-        <div className="volume-wrap">
-          <span>Vol</span>
-          <input
-            type="range"
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => void props.onToggleShuffle()}
+              className={`rounded p-2 ${
+                props.queueState.shuffle
+                  ? "bg-zinc-100 text-zinc-900"
+                  : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+              }`}
+              aria-label="Toggle shuffle"
+            >
+              <Shuffle size={16} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void props.onPreviousTrack()}
+              disabled={!props.hasCurrentTrack || props.transportBusy}
+              className="rounded bg-zinc-800 p-2 text-zinc-200 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Previous track"
+            >
+              <SkipBack size={16} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void props.onTogglePlayback()}
+              disabled={props.queueState.total === 0 || props.transportBusy}
+              className="rounded-full bg-zinc-100 p-3 text-zinc-900 hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label={isPlaying ? "Pause" : "Play"}
+            >
+              {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void props.onNextTrack()}
+              disabled={!props.hasCurrentTrack || props.transportBusy}
+              className="rounded bg-zinc-800 p-2 text-zinc-200 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Next track"
+            >
+              <SkipForward size={16} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void props.onCycleRepeat()}
+              className={`rounded p-2 ${
+                props.queueState.repeatMode === "off"
+                  ? "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                  : "bg-zinc-100 text-zinc-900"
+              }`}
+              aria-label="Cycle repeat mode"
+            >
+              <RepeatIcon size={16} />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="w-10 shrink-0 text-right text-xs text-zinc-500">
+              {props.formatDuration(props.playerState.positionMs)}
+            </span>
+            <SingleValueSlider
+              ariaLabel="Track position"
+              min={0}
+              max={props.seekMax}
+              step={1}
+              value={props.seekValue}
+              disabled={!props.hasCurrentTrack}
+              onValueChange={(nextValue) => {
+                void props.onSeek(nextValue);
+              }}
+            />
+            <span className="w-10 shrink-0 text-xs text-zinc-500">
+              {props.formatDuration(props.playerState.durationMs)}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Volume2 size={16} className="text-zinc-400" />
+          <SingleValueSlider
+            ariaLabel="Volume"
             min={0}
             max={100}
+            step={1}
             value={props.playerState.volume}
-            onChange={(event) => {
-              void props.onSetVolume(Number(event.target.value));
+            onValueChange={(nextValue) => {
+              void props.onSetVolume(nextValue);
             }}
           />
-          <span>{props.playerState.volume}%</span>
+          <span className="w-9 text-xs text-zinc-500">
+            {props.playerState.volume}%
+          </span>
         </div>
       </div>
     </footer>
   );
+}
+
+type SingleValueSliderProps = {
+  ariaLabel: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  disabled?: boolean;
+  onValueChange: (nextValue: number) => void;
+};
+
+function SingleValueSlider(props: SingleValueSliderProps) {
+  return (
+    <Slider.Root
+      min={props.min}
+      max={props.max}
+      step={props.step}
+      value={clamp(props.value, props.min, props.max)}
+      disabled={props.disabled}
+      onValueChange={(value) => {
+        const nextValue = Array.isArray(value)
+          ? (value[0] ?? props.min)
+          : value;
+        props.onValueChange(nextValue);
+      }}
+      className="flex w-full min-w-0 items-center"
+    >
+      <Slider.Control className="flex h-4 w-full items-center">
+        <Slider.Track className="relative h-1.5 w-full rounded-full bg-zinc-800">
+          <Slider.Indicator className="absolute h-full rounded-full bg-zinc-200" />
+          <Slider.Thumb
+            aria-label={props.ariaLabel}
+            className="block h-3.5 w-3.5 rounded-full border border-zinc-500 bg-zinc-100 shadow"
+          />
+        </Slider.Track>
+      </Slider.Control>
+    </Slider.Root>
+  );
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  if (value < minimum) {
+    return minimum;
+  }
+  if (value > maximum) {
+    return maximum;
+  }
+
+  return value;
 }

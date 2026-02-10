@@ -1,14 +1,27 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Redirect, Route, Router, Switch, useLocation } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { Call, Events } from "@wailsio/runtime";
-import { LibraryView } from "./features/library/LibraryView";
+import { LeftSidebar } from "./features/layout/LeftSidebar";
+import { RightSidebar } from "./features/layout/RightSidebar";
+import { AlbumDetailView } from "./features/library/AlbumDetailView";
+import { AlbumsGridView } from "./features/library/AlbumsGridView";
+import { ArtistDetailView } from "./features/library/ArtistDetailView";
+import { ArtistsGridView } from "./features/library/ArtistsGridView";
+import { TracksListView } from "./features/library/TracksListView";
 import { PlayerBar } from "./features/player/PlayerBar";
-import { QueueView } from "./features/queue/QueueView";
 import { SettingsView } from "./features/settings/SettingsView";
 import {
   AlbumDetail,
   ArtistDetail,
+  ArtistTopTrack,
   LibraryAlbum,
   LibraryArtist,
   LibraryTrack,
@@ -18,10 +31,10 @@ import {
   QueueState,
   ScanProgress,
   ScanStatus,
+  SelectedAlbum,
   StatsOverview,
   WatchedRoot,
 } from "./features/types";
-import { useLibraryUIStore } from "./shared/store/libraryUIStore";
 
 const settingsService = "main.SettingsService";
 const libraryService = "main.LibraryService";
@@ -34,9 +47,9 @@ const scanProgressEvent = "scanner:progress";
 const queueStateEvent = "queue:state";
 const playerStateEvent = "player:state";
 
-const browsePageSize = 10;
-const detailPageSize = 14;
-const appMemoryLocation = memoryLocation({ path: "/library" });
+const browseLimit = 200;
+const detailLimit = 200;
+const appMemoryLocation = memoryLocation({ path: "/albums" });
 
 function createEmptyPage(limit: number, offset: number): PageInfo {
   return {
@@ -83,13 +96,12 @@ function createEmptyStatsOverview(): StatsOverview {
 function normalizePagedResult<T>(
   value: unknown,
   limit: number,
-  offset: number,
 ): PagedResult<T> {
   const parsed = value as PagedResult<T> | null;
   if (!parsed || !Array.isArray(parsed.items) || !parsed.page) {
     return {
       items: [],
-      page: createEmptyPage(limit, offset),
+      page: createEmptyPage(limit, 0),
     };
   }
 
@@ -99,49 +111,49 @@ function normalizePagedResult<T>(
 function AppContent() {
   const [location, navigate] = useLocation();
 
-  const libraryQueryInput = useLibraryUIStore((state) => state.libraryQueryInput);
-  const libraryQuery = useLibraryUIStore((state) => state.libraryQuery);
-  const artistOffset = useLibraryUIStore((state) => state.artistOffset);
-  const albumOffset = useLibraryUIStore((state) => state.albumOffset);
-  const trackOffset = useLibraryUIStore((state) => state.trackOffset);
-  const selectedArtist = useLibraryUIStore((state) => state.selectedArtist);
-  const selectedAlbum = useLibraryUIStore((state) => state.selectedAlbum);
-  const setLibraryQueryInput = useLibraryUIStore((state) => state.setLibraryQueryInput);
-  const submitLibrarySearch = useLibraryUIStore((state) => state.submitLibrarySearch);
-  const setArtistOffset = useLibraryUIStore((state) => state.setArtistOffset);
-  const setAlbumOffset = useLibraryUIStore((state) => state.setAlbumOffset);
-  const setTrackOffset = useLibraryUIStore((state) => state.setTrackOffset);
-  const selectArtist = useLibraryUIStore((state) => state.selectArtist);
-  const selectAlbum = useLibraryUIStore((state) => state.selectAlbum);
-
   const [watchedRoots, setWatchedRoots] = useState<WatchedRoot[]>([]);
   const [newRootPath, setNewRootPath] = useState("");
   const [scanStatus, setScanStatus] = useState<ScanStatus>({ running: false });
   const [lastProgress, setLastProgress] = useState<ScanProgress | null>(null);
-  const [queueState, setQueueState] = useState<QueueState>(createEmptyQueueState());
-  const [playerState, setPlayerState] = useState<PlayerState>(createEmptyPlayerState());
-  const [statsOverview, setStatsOverview] = useState<StatsOverview>(createEmptyStatsOverview());
+  const [queueState, setQueueState] = useState<QueueState>(
+    createEmptyQueueState(),
+  );
+  const [playerState, setPlayerState] = useState<PlayerState>(
+    createEmptyPlayerState(),
+  );
+  const [statsOverview, setStatsOverview] = useState<StatsOverview>(
+    createEmptyStatsOverview(),
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [transportBusy, setTransportBusy] = useState(false);
-  const statsRefreshKeyRef = useRef("");
-  const seekRequestInFlightRef = useRef(false);
-  const pendingSeekMSRef = useRef<number | null>(null);
 
   const [artistsPage, setArtistsPage] = useState<PagedResult<LibraryArtist>>({
     items: [],
-    page: createEmptyPage(browsePageSize, 0),
+    page: createEmptyPage(browseLimit, 0),
   });
   const [albumsPage, setAlbumsPage] = useState<PagedResult<LibraryAlbum>>({
     items: [],
-    page: createEmptyPage(browsePageSize, 0),
+    page: createEmptyPage(browseLimit, 0),
   });
   const [tracksPage, setTracksPage] = useState<PagedResult<LibraryTrack>>({
     items: [],
-    page: createEmptyPage(browsePageSize, 0),
+    page: createEmptyPage(browseLimit, 0),
   });
 
-  const [artistDetail, setArtistDetail] = useState<ArtistDetail | null>(null);
+  const [selectedAlbum, setSelectedAlbum] = useState<SelectedAlbum | null>(
+    null,
+  );
+  const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
   const [albumDetail, setAlbumDetail] = useState<AlbumDetail | null>(null);
+  const [artistDetail, setArtistDetail] = useState<ArtistDetail | null>(null);
+  const [artistTopTracks, setArtistTopTracks] = useState<ArtistTopTrack[]>([]);
+  const [rightSidebarTab, setRightSidebarTab] = useState<"queue" | "details">(
+    "queue",
+  );
+
+  const statsRefreshKeyRef = useRef("");
+  const seekRequestInFlightRef = useRef(false);
+  const pendingSeekMSRef = useRef<number | null>(null);
 
   const loadWatchedRoots = useCallback(async () => {
     const roots = await Call.ByName(`${settingsService}.ListWatchedRoots`);
@@ -170,54 +182,41 @@ function AppContent() {
 
   const loadLibraryData = useCallback(async () => {
     const [artistRows, albumRows, trackRows] = await Promise.all([
-      Call.ByName(
-        `${libraryService}.ListArtists`,
-        libraryQuery,
-        browsePageSize,
-        artistOffset,
-      ),
-      Call.ByName(
-        `${libraryService}.ListAlbums`,
-        libraryQuery,
-        "",
-        browsePageSize,
-        albumOffset,
-      ),
-      Call.ByName(
-        `${libraryService}.ListTracks`,
-        libraryQuery,
-        "",
-        "",
-        browsePageSize,
-        trackOffset,
-      ),
+      Call.ByName(`${libraryService}.ListArtists`, "", browseLimit, 0),
+      Call.ByName(`${libraryService}.ListAlbums`, "", "", browseLimit, 0),
+      Call.ByName(`${libraryService}.ListTracks`, "", "", "", browseLimit, 0),
     ]);
 
-    setArtistsPage(normalizePagedResult<LibraryArtist>(artistRows, browsePageSize, artistOffset));
-    setAlbumsPage(normalizePagedResult<LibraryAlbum>(albumRows, browsePageSize, albumOffset));
-    setTracksPage(normalizePagedResult<LibraryTrack>(trackRows, browsePageSize, trackOffset));
-  }, [albumOffset, artistOffset, libraryQuery, trackOffset]);
-
-  const loadArtistDetail = useCallback(async (name: string) => {
-    const detail = await Call.ByName(
-      `${libraryService}.GetArtistDetail`,
-      name,
-      detailPageSize,
-      0,
+    setArtistsPage(
+      normalizePagedResult<LibraryArtist>(artistRows, browseLimit),
     );
+    setAlbumsPage(normalizePagedResult<LibraryAlbum>(albumRows, browseLimit));
+    setTracksPage(normalizePagedResult<LibraryTrack>(trackRows, browseLimit));
+  }, []);
+
+  const loadArtistData = useCallback(async (name: string) => {
+    const [detail, topTracks] = await Promise.all([
+      Call.ByName(`${libraryService}.GetArtistDetail`, name, detailLimit, 0),
+      Call.ByName(`${libraryService}.GetArtistTopTracks`, name, 5),
+    ]);
+
     setArtistDetail((detail ?? null) as ArtistDetail | null);
+    setArtistTopTracks((topTracks ?? []) as ArtistTopTrack[]);
   }, []);
 
-  const loadAlbumDetail = useCallback(async (title: string, albumArtist: string) => {
-    const detail = await Call.ByName(
-      `${libraryService}.GetAlbumDetail`,
-      title,
-      albumArtist,
-      detailPageSize,
-      0,
-    );
-    setAlbumDetail((detail ?? null) as AlbumDetail | null);
-  }, []);
+  const loadAlbumDetail = useCallback(
+    async (title: string, albumArtist: string) => {
+      const detail = await Call.ByName(
+        `${libraryService}.GetAlbumDetail`,
+        title,
+        albumArtist,
+        detailLimit,
+        0,
+      );
+      setAlbumDetail((detail ?? null) as AlbumDetail | null);
+    },
+    [],
+  );
 
   useEffect(() => {
     const initialize = async () => {
@@ -228,6 +227,7 @@ function AppContent() {
           loadQueueState(),
           loadPlayerState(),
           loadStatsOverview(),
+          loadLibraryData(),
         ]);
       } catch (error) {
         setErrorMessage(parseError(error));
@@ -241,14 +241,6 @@ function AppContent() {
 
       if (progress.status === "completed") {
         void loadLibraryData();
-
-        if (selectedArtist) {
-          void loadArtistDetail(selectedArtist);
-        }
-
-        if (selectedAlbum) {
-          void loadAlbumDetail(selectedAlbum.title, selectedAlbum.albumArtist);
-        }
       }
     });
 
@@ -275,60 +267,36 @@ function AppContent() {
       unsubscribePlayer();
     };
   }, [
-    loadAlbumDetail,
-    loadArtistDetail,
     loadLibraryData,
     loadPlayerState,
-    loadStatsOverview,
     loadQueueState,
     loadScanStatus,
+    loadStatsOverview,
     loadWatchedRoots,
-    selectedAlbum,
-    selectedArtist,
   ]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      void loadStatsOverview();
-    }, 12000);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [loadStatsOverview]);
-
-  useEffect(() => {
-    const runLoad = async () => {
-      try {
-        setErrorMessage(null);
-        await loadLibraryData();
-      } catch (error) {
-        setErrorMessage(parseError(error));
-      }
-    };
-
-    void runLoad();
-  }, [loadLibraryData]);
-
-  useEffect(() => {
     if (!selectedArtist) {
+      setArtistDetail(null);
+      setArtistTopTracks([]);
       return;
     }
 
     const runLoad = async () => {
       try {
         setErrorMessage(null);
-        await loadArtistDetail(selectedArtist);
+        await loadArtistData(selectedArtist);
       } catch (error) {
         setErrorMessage(parseError(error));
       }
     };
 
     void runLoad();
-  }, [loadArtistDetail, selectedArtist]);
+  }, [loadArtistData, selectedArtist]);
 
   useEffect(() => {
     if (!selectedAlbum) {
+      setAlbumDetail(null);
       return;
     }
 
@@ -344,6 +312,16 @@ function AppContent() {
     void runLoad();
   }, [loadAlbumDetail, selectedAlbum]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void loadStatsOverview();
+    }, 12000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [loadStatsOverview]);
+
   const onAddWatchedRoot = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!newRootPath.trim()) {
@@ -352,7 +330,10 @@ function AppContent() {
 
     try {
       setErrorMessage(null);
-      await Call.ByName(`${settingsService}.AddWatchedRoot`, newRootPath.trim());
+      await Call.ByName(
+        `${settingsService}.AddWatchedRoot`,
+        newRootPath.trim(),
+      );
       setNewRootPath("");
       await loadWatchedRoots();
     } catch (error) {
@@ -402,27 +383,6 @@ function AppContent() {
     } catch (error) {
       setErrorMessage(parseError(error));
     }
-  };
-
-  const onSubmitLibrarySearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    submitLibrarySearch();
-    setArtistDetail(null);
-    setAlbumDetail(null);
-  };
-
-  const onSelectArtist = (name: string) => {
-    setArtistDetail(null);
-    setAlbumDetail(null);
-    selectArtist(name);
-  };
-
-  const onSelectAlbum = (title: string, albumArtist: string) => {
-    setAlbumDetail(null);
-    selectAlbum({
-      title,
-      albumArtist,
-    });
   };
 
   const onSetQueue = async (trackIDs: number[], autoplay: boolean) => {
@@ -491,6 +451,16 @@ function AppContent() {
     } catch (error) {
       setErrorMessage(parseError(error));
     }
+  };
+
+  const onCycleRepeat = async () => {
+    const nextMode =
+      queueState.repeatMode === "off"
+        ? "all"
+        : queueState.repeatMode === "all"
+          ? "one"
+          : "off";
+    await onSetRepeatMode(nextMode);
   };
 
   const onToggleShuffle = async () => {
@@ -591,148 +561,202 @@ function AppContent() {
     }
   };
 
-  const artistCanGoBack = artistOffset > 0;
-  const artistCanGoNext = artistOffset + artistsPage.page.limit < artistsPage.page.total;
-  const albumCanGoBack = albumOffset > 0;
-  const albumCanGoNext = albumOffset + albumsPage.page.limit < albumsPage.page.total;
-  const trackCanGoBack = trackOffset > 0;
-  const trackCanGoNext = trackOffset + tracksPage.page.limit < tracksPage.page.total;
+  const onPlayAlbum = async (title: string, albumArtist: string) => {
+    try {
+      setErrorMessage(null);
+      const trackIDs = (await Call.ByName(
+        `${libraryService}.GetAlbumQueueTrackIDs`,
+        title,
+        albumArtist,
+      )) as number[];
+      await onSetQueue(trackIDs ?? [], true);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onPlayTrackFromAlbum = async (
+    title: string,
+    albumArtist: string,
+    trackID: number,
+  ) => {
+    try {
+      setErrorMessage(null);
+      const trackIDs = (await Call.ByName(
+        `${libraryService}.GetAlbumQueueTrackIDsFromTrack`,
+        title,
+        albumArtist,
+        trackID,
+      )) as number[];
+      await onSetQueue(trackIDs ?? [], true);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onPlayArtistTracks = async (artistName: string) => {
+    try {
+      setErrorMessage(null);
+      const trackIDs = (await Call.ByName(
+        `${libraryService}.GetArtistQueueTrackIDs`,
+        artistName,
+      )) as number[];
+      await onSetQueue(trackIDs ?? [], true);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
+
+  const onPlayArtistTopTrack = async (artistName: string, trackID: number) => {
+    try {
+      setErrorMessage(null);
+      const trackIDs = (await Call.ByName(
+        `${libraryService}.GetArtistQueueTrackIDsFromTopTrack`,
+        artistName,
+        trackID,
+      )) as number[];
+      await onSetQueue(trackIDs ?? [], true);
+    } catch (error) {
+      setErrorMessage(parseError(error));
+    }
+  };
 
   const currentTrack = playerState.currentTrack;
   const hasCurrentTrack = !!currentTrack;
   const seekMax = Math.max(playerState.durationMs ?? 0, 1);
   const seekValue = Math.min(playerState.positionMs, seekMax);
-  const playPauseLabel = playerState.status === "playing" ? "Pause" : "Play";
 
-  const visibleTrackIDs = useMemo(
-    () => tracksPage.items.map((track) => track.id),
-    [tracksPage.items],
+  const sortedAlbums = useMemo(
+    () => [...albumsPage.items].sort((a, b) => a.title.localeCompare(b.title)),
+    [albumsPage.items],
+  );
+  const sortedArtists = useMemo(
+    () => [...artistsPage.items].sort((a, b) => a.name.localeCompare(b.name)),
+    [artistsPage.items],
   );
 
   return (
-    <div className="app-shell">
-      <header className="top-bar">
-        <div>
-          <p className="eyebrow">Ben</p>
-          <h1>Desktop Music Player</h1>
-        </div>
-        <div className="scan-actions">
-          <button onClick={onRunIncrementalScan} disabled={scanStatus.running}>
-            {scanStatus.running ? "Scanning..." : "Run Incremental Scan"}
-          </button>
-          <button
-            className="scan-button"
-            onClick={onRunFullScan}
-            disabled={scanStatus.running}
-          >
-            {scanStatus.running ? "Scanning..." : "Run Full Scan"}
-          </button>
-        </div>
-      </header>
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      <div className="grid min-h-screen grid-cols-1 gap-4 p-4 pb-44 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
+        <LeftSidebar
+          location={location}
+          onNavigate={navigate}
+          scanRunning={scanStatus.running}
+          onRunIncrementalScan={onRunIncrementalScan}
+          onRunFullScan={onRunFullScan}
+        />
 
-      <nav className="main-nav" aria-label="Main sections">
-        <button
-          className={location.startsWith("/library") ? "active" : ""}
-          onClick={() => navigate("/library")}
-        >
-          Library
-        </button>
-        <button
-          className={location.startsWith("/queue") ? "active" : ""}
-          onClick={() => navigate("/queue")}
-        >
-          Queue
-        </button>
-        <button
-          className={location.startsWith("/settings") ? "active" : ""}
-          onClick={() => navigate("/settings")}
-        >
-          Settings
-        </button>
-      </nav>
+        <main className="min-h-0 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+          {errorMessage ? (
+            <p className="mb-3 rounded-md border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-300">
+              {errorMessage}
+            </p>
+          ) : null}
 
-      <main className="panel-grid">
-        <Switch>
-          <Route path="/">
-            <Redirect to="/library" replace />
-          </Route>
+          <Switch>
+            <Route path="/">
+              <Redirect to="/albums" replace />
+            </Route>
 
-          <Route path="/library">
-            <LibraryView
-              libraryQueryInput={libraryQueryInput}
-              onLibraryQueryInputChange={setLibraryQueryInput}
-              onSubmitLibrarySearch={onSubmitLibrarySearch}
-              artistsPage={artistsPage}
-              albumsPage={albumsPage}
-              tracksPage={tracksPage}
-              selectedArtist={selectedArtist}
-              selectedAlbum={selectedAlbum}
-              artistDetail={artistDetail}
-              albumDetail={albumDetail}
-              artistCanGoBack={artistCanGoBack}
-              artistCanGoNext={artistCanGoNext}
-              albumCanGoBack={albumCanGoBack}
-              albumCanGoNext={albumCanGoNext}
-              trackCanGoBack={trackCanGoBack}
-              trackCanGoNext={trackCanGoNext}
-              visibleTrackIDs={visibleTrackIDs}
-              onSelectArtist={onSelectArtist}
-              onSelectAlbum={onSelectAlbum}
-              onArtistPrev={() => setArtistOffset(artistOffset - browsePageSize)}
-              onArtistNext={() => setArtistOffset(artistOffset + browsePageSize)}
-              onAlbumPrev={() => setAlbumOffset(albumOffset - browsePageSize)}
-              onAlbumNext={() => setAlbumOffset(albumOffset + browsePageSize)}
-              onTrackPrev={() => setTrackOffset(trackOffset - browsePageSize)}
-              onTrackNext={() => setTrackOffset(trackOffset + browsePageSize)}
-              onSetQueue={onSetQueue}
-              onAppendTrack={onAppendTrack}
-              onPlayTrackNow={onPlayTrackNow}
-            />
-          </Route>
+            <Route path="/albums">
+              {selectedAlbum ? (
+                <AlbumDetailView
+                  albumDetail={albumDetail}
+                  onBack={() => setSelectedAlbum(null)}
+                  onPlayAlbum={onPlayAlbum}
+                  onPlayTrackFromAlbum={onPlayTrackFromAlbum}
+                  formatDuration={formatDuration}
+                />
+              ) : (
+                <AlbumsGridView
+                  albums={sortedAlbums}
+                  onSelectAlbum={(album) => {
+                    setSelectedAlbum({
+                      title: album.title,
+                      albumArtist: album.albumArtist,
+                    });
+                  }}
+                />
+              )}
+            </Route>
 
-          <Route path="/settings">
-            <SettingsView
-              lastProgress={lastProgress}
-              scanStatus={scanStatus}
-              watchedRoots={watchedRoots}
-              newRootPath={newRootPath}
-              errorMessage={errorMessage}
-              queueState={queueState}
-              playerState={playerState}
-              statsOverview={statsOverview}
-              onNewRootPathChange={setNewRootPath}
-              onAddWatchedRoot={onAddWatchedRoot}
-              onToggleWatchedRoot={onToggleWatchedRoot}
-              onRemoveWatchedRoot={onRemoveWatchedRoot}
-            />
-          </Route>
+            <Route path="/artists">
+              {selectedArtist ? (
+                <ArtistDetailView
+                  artistDetail={artistDetail}
+                  topTracks={artistTopTracks}
+                  onBack={() => setSelectedArtist(null)}
+                  onPlayArtist={onPlayArtistTracks}
+                  onPlayTopTrack={onPlayArtistTopTrack}
+                  onSelectAlbum={(album) => {
+                    setSelectedAlbum({
+                      title: album.title,
+                      albumArtist: album.albumArtist,
+                    });
+                    navigate("/albums");
+                  }}
+                  formatPlayedTime={formatPlayedTime}
+                />
+              ) : (
+                <ArtistsGridView
+                  artists={sortedArtists}
+                  onSelectArtist={(artistName) => {
+                    setSelectedArtist(artistName);
+                  }}
+                />
+              )}
+            </Route>
 
-          <Route path="/queue">
-            <QueueView
-              queueState={queueState}
-              playerState={playerState}
-              transportBusy={transportBusy}
-              hasCurrentTrack={hasCurrentTrack}
-              playPauseLabel={playPauseLabel}
-              onPreviousTrack={onPreviousTrack}
-              onTogglePlayback={onTogglePlayback}
-              onNextTrack={onNextTrack}
-              onClearQueue={onClearQueue}
-              onSetRepeatMode={onSetRepeatMode}
-              onToggleShuffle={onToggleShuffle}
-              onSelectQueueIndex={onSelectQueueIndex}
-              onRemoveQueueTrack={onRemoveQueueTrack}
-            />
-          </Route>
+            <Route path="/tracks">
+              <TracksListView
+                tracks={tracksPage.items}
+                onPlayTrack={onPlayTrackNow}
+                onQueueTrack={onAppendTrack}
+                formatDuration={formatDuration}
+              />
+            </Route>
 
-          <Route path="*">
-            <section className="panel queue-panel">
-              <h2>Not Found</h2>
-              <p>Choose Library, Queue, or Settings.</p>
-            </section>
-          </Route>
-        </Switch>
-      </main>
+            <Route path="/settings">
+              <SettingsView
+                lastProgress={lastProgress}
+                scanStatus={scanStatus}
+                watchedRoots={watchedRoots}
+                newRootPath={newRootPath}
+                errorMessage={errorMessage}
+                queueState={queueState}
+                playerState={playerState}
+                statsOverview={statsOverview}
+                onNewRootPathChange={setNewRootPath}
+                onAddWatchedRoot={onAddWatchedRoot}
+                onToggleWatchedRoot={onToggleWatchedRoot}
+                onRemoveWatchedRoot={onRemoveWatchedRoot}
+              />
+            </Route>
+
+            <Route path="*">
+              <section>
+                <h1 className="text-xl font-semibold text-zinc-100">
+                  Not Found
+                </h1>
+                <p className="text-sm text-zinc-400">
+                  Choose Albums, Artists, Tracks, or Settings.
+                </p>
+              </section>
+            </Route>
+          </Switch>
+        </main>
+
+        <RightSidebar
+          tab={rightSidebarTab}
+          onTabChange={setRightSidebarTab}
+          queueState={queueState}
+          playerState={playerState}
+          onSelectQueueIndex={onSelectQueueIndex}
+          onRemoveQueueTrack={onRemoveQueueTrack}
+          onClearQueue={onClearQueue}
+          formatDuration={formatDuration}
+        />
+      </div>
 
       <PlayerBar
         currentTrack={currentTrack}
@@ -740,12 +764,13 @@ function AppContent() {
         queueState={queueState}
         transportBusy={transportBusy}
         hasCurrentTrack={hasCurrentTrack}
-        playPauseLabel={playPauseLabel}
         seekMax={seekMax}
         seekValue={seekValue}
         onPreviousTrack={onPreviousTrack}
         onTogglePlayback={onTogglePlayback}
         onNextTrack={onNextTrack}
+        onToggleShuffle={onToggleShuffle}
+        onCycleRepeat={onCycleRepeat}
         onSeek={onSeek}
         onSetVolume={onSetVolume}
         formatDuration={formatDuration}
@@ -774,6 +799,22 @@ function formatDuration(durationMS?: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function formatPlayedTime(durationMS: number): string {
+  if (!durationMS || durationMS <= 0) {
+    return "0m";
+  }
+
+  const totalMinutes = Math.floor(durationMS / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours <= 0) {
+    return `${minutes}m`;
+  }
+
+  return `${hours}h ${minutes}m`;
 }
 
 function parseError(error: unknown): string {

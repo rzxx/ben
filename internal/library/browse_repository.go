@@ -78,6 +78,23 @@ type AlbumDetail struct {
 	Page        PageInfo       `json:"page"`
 }
 
+type ArtistTopTrack struct {
+	TrackID       int64   `json:"trackId"`
+	Title         string  `json:"title"`
+	Artist        string  `json:"artist"`
+	Album         string  `json:"album"`
+	AlbumArtist   string  `json:"albumArtist"`
+	DiscNo        *int    `json:"discNo,omitempty"`
+	TrackNo       *int    `json:"trackNo,omitempty"`
+	DurationMS    *int    `json:"durationMs,omitempty"`
+	Path          string  `json:"path"`
+	CoverPath     *string `json:"coverPath,omitempty"`
+	PlayedMS      int     `json:"playedMs"`
+	CompleteCount int     `json:"completeCount"`
+	SkipCount     int     `json:"skipCount"`
+	PartialCount  int     `json:"partialCount"`
+}
+
 type BrowseRepository struct {
 	db *sql.DB
 }
@@ -577,6 +594,410 @@ func (r *BrowseRepository) GetAlbumDetail(ctx context.Context, title string, alb
 	}
 
 	return detail, nil
+}
+
+func (r *BrowseRepository) GetAlbumQueueTrackIDs(ctx context.Context, title string, albumArtist string) ([]int64, error) {
+	orderedIDs, err := r.listAlbumTrackIDs(ctx, title, albumArtist)
+	if err != nil {
+		return nil, err
+	}
+
+	return orderedIDs, nil
+}
+
+func (r *BrowseRepository) GetAlbumQueueTrackIDsFromTrack(ctx context.Context, title string, albumArtist string, trackID int64) ([]int64, error) {
+	orderedIDs, err := r.listAlbumTrackIDs(ctx, title, albumArtist)
+	if err != nil {
+		return nil, err
+	}
+
+	startIndex := indexOfTrackID(orderedIDs, trackID)
+	if startIndex < 0 {
+		return nil, fmt.Errorf("track %d not found in album %q by %q", trackID, strings.TrimSpace(title), strings.TrimSpace(albumArtist))
+	}
+
+	queueIDs := make([]int64, len(orderedIDs)-startIndex)
+	copy(queueIDs, orderedIDs[startIndex:])
+	return queueIDs, nil
+}
+
+func (r *BrowseRepository) GetArtistQueueTrackIDs(ctx context.Context, artist string) ([]int64, error) {
+	artistName := strings.TrimSpace(artist)
+	if artistName == "" {
+		return nil, errors.New("artist name is required")
+	}
+
+	orderedIDs, err := r.listArtistTrackIDsByAlbumOrder(ctx, artistName)
+	if err != nil {
+		return nil, err
+	}
+	if len(orderedIDs) == 0 {
+		return nil, ErrArtistNotFound
+	}
+
+	return orderedIDs, nil
+}
+
+func (r *BrowseRepository) GetArtistTopTracks(ctx context.Context, artist string, limit int) ([]ArtistTopTrack, error) {
+	artistName := strings.TrimSpace(artist)
+	if artistName == "" {
+		return nil, errors.New("artist name is required")
+	}
+
+	normalizedLimit := limit
+	if normalizedLimit <= 0 {
+		normalizedLimit = 5
+	}
+	if normalizedLimit > maxBrowseLimit {
+		normalizedLimit = maxBrowseLimit
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		WITH track_metrics AS (
+			SELECT
+				track_id,
+				COALESCE(SUM(played_ms), 0) AS played_ms,
+				COALESCE(SUM(complete_count), 0) AS complete_count,
+				COALESCE(SUM(skip_count), 0) AS skip_count,
+				COALESCE(SUM(partial_count), 0) AS partial_count
+			FROM (
+				SELECT
+					track_id,
+					CASE WHEN event_type = 'heartbeat' THEN COALESCE(position_ms, 0) ELSE 0 END AS played_ms,
+					CASE WHEN event_type = 'complete' THEN 1 ELSE 0 END AS complete_count,
+					CASE WHEN event_type = 'skip' THEN 1 ELSE 0 END AS skip_count,
+					CASE WHEN event_type = 'partial' THEN 1 ELSE 0 END AS partial_count
+				FROM play_events
+				UNION ALL
+				SELECT
+					track_id,
+					played_ms,
+					complete_count,
+					skip_count,
+					partial_count
+				FROM play_stats_daily
+			) metrics
+			GROUP BY track_id
+		)
+		SELECT
+			t.id,
+			COALESCE(NULLIF(TRIM(t.title), ''), 'Unknown Title') AS track_title,
+			COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist') AS track_artist,
+			COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album') AS track_album,
+			COALESCE(NULLIF(TRIM(t.album_artist), ''), COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist')) AS track_album_artist,
+			t.disc_no,
+			t.track_no,
+			t.duration_ms,
+			f.path,
+			cover.cache_path,
+			tm.played_ms,
+			tm.complete_count,
+			tm.skip_count,
+			tm.partial_count
+		FROM track_metrics tm
+		JOIN tracks t ON t.id = tm.track_id
+		JOIN files f ON f.id = t.file_id
+		LEFT JOIN covers cover ON cover.source_file_id = t.file_id
+		WHERE f.file_exists = 1
+		  AND LOWER(COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist')) = LOWER(?)
+		  AND (
+			tm.played_ms > 0
+			OR tm.complete_count > 0
+			OR tm.skip_count > 0
+			OR tm.partial_count > 0
+		  )
+		ORDER BY tm.played_ms DESC, tm.complete_count DESC, tm.skip_count ASC, LOWER(track_title)
+		LIMIT ?
+	`, artistName, normalizedLimit)
+	if err != nil {
+		return nil, fmt.Errorf("list top tracks for artist %q: %w", artistName, err)
+	}
+	defer rows.Close()
+
+	topTracks := make([]ArtistTopTrack, 0, normalizedLimit)
+	for rows.Next() {
+		var item ArtistTopTrack
+		var discNo sql.NullInt64
+		var trackNo sql.NullInt64
+		var durationMS sql.NullInt64
+		var coverPath sql.NullString
+		if scanErr := rows.Scan(
+			&item.TrackID,
+			&item.Title,
+			&item.Artist,
+			&item.Album,
+			&item.AlbumArtist,
+			&discNo,
+			&trackNo,
+			&durationMS,
+			&item.Path,
+			&coverPath,
+			&item.PlayedMS,
+			&item.CompleteCount,
+			&item.SkipCount,
+			&item.PartialCount,
+		); scanErr != nil {
+			return nil, fmt.Errorf("scan top track for artist %q: %w", artistName, scanErr)
+		}
+
+		item.DiscNo = intPointer(discNo)
+		item.TrackNo = intPointer(trackNo)
+		item.DurationMS = intPointer(durationMS)
+		item.CoverPath = stringPointer(coverPath)
+		topTracks = append(topTracks, item)
+	}
+
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, fmt.Errorf("iterate top tracks for artist %q: %w", artistName, rowsErr)
+	}
+
+	return topTracks, nil
+}
+
+func (r *BrowseRepository) GetArtistQueueTrackIDsFromTopTrack(ctx context.Context, artist string, trackID int64) ([]int64, error) {
+	artistName := strings.TrimSpace(artist)
+	if artistName == "" {
+		return nil, errors.New("artist name is required")
+	}
+	if trackID <= 0 {
+		return nil, errors.New("track id is required")
+	}
+
+	statsOrderedTrackIDs, err := r.listArtistTrackIDsByStatsOrder(ctx, artistName)
+	if err != nil {
+		return nil, err
+	}
+	if len(statsOrderedTrackIDs) == 0 {
+		return nil, fmt.Errorf("artist %q has no top tracks yet", artistName)
+	}
+
+	albumOrderedTrackIDs, err := r.listArtistTrackIDsByAlbumOrder(ctx, artistName)
+	if err != nil {
+		return nil, err
+	}
+	if len(albumOrderedTrackIDs) == 0 {
+		return nil, ErrArtistNotFound
+	}
+
+	queueIDs, buildErr := buildArtistQueueFromTopTrack(statsOrderedTrackIDs, albumOrderedTrackIDs, trackID)
+	if buildErr != nil {
+		return nil, buildErr
+	}
+
+	return queueIDs, nil
+}
+
+func (r *BrowseRepository) listAlbumTrackIDs(ctx context.Context, title string, albumArtist string) ([]int64, error) {
+	albumTitle := strings.TrimSpace(title)
+	artistName := strings.TrimSpace(albumArtist)
+	if albumTitle == "" {
+		return nil, errors.New("album title is required")
+	}
+	if artistName == "" {
+		return nil, errors.New("album artist is required")
+	}
+
+	var albumID int64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT a.id
+		FROM albums a
+		WHERE LOWER(COALESCE(NULLIF(TRIM(a.title), ''), 'Unknown Album')) = LOWER(?)
+		  AND LOWER(COALESCE(NULLIF(TRIM(a.album_artist), ''), 'Unknown Artist')) = LOWER(?)
+		LIMIT 1
+	`, albumTitle, artistName).Scan(&albumID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrAlbumNotFound
+		}
+		return nil, fmt.Errorf("resolve album id for %q by %q: %w", albumTitle, artistName, err)
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT t.id
+		FROM album_tracks at
+		JOIN tracks t ON t.id = at.track_id
+		JOIN files f ON f.id = t.file_id
+		WHERE at.album_id = ?
+		  AND f.file_exists = 1
+		ORDER BY
+			COALESCE(at.disc_no, t.disc_no, 0),
+			COALESCE(at.track_no, t.track_no, 0),
+			LOWER(COALESCE(NULLIF(TRIM(t.title), ''), 'Unknown Title')),
+			t.id
+	`, albumID)
+	if err != nil {
+		return nil, fmt.Errorf("list album track ids for %q by %q: %w", albumTitle, artistName, err)
+	}
+	defer rows.Close()
+
+	trackIDs := make([]int64, 0)
+	for rows.Next() {
+		var trackID int64
+		if scanErr := rows.Scan(&trackID); scanErr != nil {
+			return nil, fmt.Errorf("scan album track id for %q by %q: %w", albumTitle, artistName, scanErr)
+		}
+		trackIDs = append(trackIDs, trackID)
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, fmt.Errorf("iterate album track ids for %q by %q: %w", albumTitle, artistName, rowsErr)
+	}
+
+	if len(trackIDs) == 0 {
+		return nil, ErrAlbumNotFound
+	}
+
+	return trackIDs, nil
+}
+
+func (r *BrowseRepository) listArtistTrackIDsByAlbumOrder(ctx context.Context, artistName string) ([]int64, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			t.id
+		FROM tracks t
+		JOIN files f ON f.id = t.file_id
+		LEFT JOIN album_tracks at ON at.track_id = t.id
+		LEFT JOIN albums a ON a.id = at.album_id
+		WHERE f.file_exists = 1
+		  AND LOWER(COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist')) = LOWER(?)
+		ORDER BY
+			CASE WHEN a.year IS NULL THEN 1 ELSE 0 END,
+			a.year DESC,
+			LOWER(COALESCE(NULLIF(TRIM(a.title), ''), COALESCE(NULLIF(TRIM(t.album), ''), 'Unknown Album'))),
+			COALESCE(at.disc_no, t.disc_no, 0),
+			COALESCE(at.track_no, t.track_no, 0),
+			LOWER(COALESCE(NULLIF(TRIM(t.title), ''), 'Unknown Title')),
+			t.id
+	`, artistName)
+	if err != nil {
+		return nil, fmt.Errorf("list artist tracks for %q: %w", artistName, err)
+	}
+	defer rows.Close()
+
+	trackIDs := make([]int64, 0)
+	for rows.Next() {
+		var trackID int64
+		if scanErr := rows.Scan(&trackID); scanErr != nil {
+			return nil, fmt.Errorf("scan artist track id for %q: %w", artistName, scanErr)
+		}
+		trackIDs = append(trackIDs, trackID)
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, fmt.Errorf("iterate artist track ids for %q: %w", artistName, rowsErr)
+	}
+
+	return trackIDs, nil
+}
+
+func (r *BrowseRepository) listArtistTrackIDsByStatsOrder(ctx context.Context, artistName string) ([]int64, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		WITH track_metrics AS (
+			SELECT
+				track_id,
+				COALESCE(SUM(played_ms), 0) AS played_ms,
+				COALESCE(SUM(complete_count), 0) AS complete_count,
+				COALESCE(SUM(skip_count), 0) AS skip_count,
+				COALESCE(SUM(partial_count), 0) AS partial_count
+			FROM (
+				SELECT
+					track_id,
+					CASE WHEN event_type = 'heartbeat' THEN COALESCE(position_ms, 0) ELSE 0 END AS played_ms,
+					CASE WHEN event_type = 'complete' THEN 1 ELSE 0 END AS complete_count,
+					CASE WHEN event_type = 'skip' THEN 1 ELSE 0 END AS skip_count,
+					CASE WHEN event_type = 'partial' THEN 1 ELSE 0 END AS partial_count
+				FROM play_events
+				UNION ALL
+				SELECT
+					track_id,
+					played_ms,
+					complete_count,
+					skip_count,
+					partial_count
+				FROM play_stats_daily
+			) metrics
+			GROUP BY track_id
+		)
+		SELECT t.id
+		FROM track_metrics tm
+		JOIN tracks t ON t.id = tm.track_id
+		JOIN files f ON f.id = t.file_id
+		WHERE f.file_exists = 1
+		  AND LOWER(COALESCE(NULLIF(TRIM(t.artist), ''), 'Unknown Artist')) = LOWER(?)
+		  AND (
+			tm.played_ms > 0
+			OR tm.complete_count > 0
+			OR tm.skip_count > 0
+			OR tm.partial_count > 0
+		  )
+		ORDER BY tm.played_ms DESC, tm.complete_count DESC, tm.skip_count ASC, LOWER(COALESCE(NULLIF(TRIM(t.title), ''), 'Unknown Title'))
+	`, artistName)
+	if err != nil {
+		return nil, fmt.Errorf("list artist stats tracks for %q: %w", artistName, err)
+	}
+	defer rows.Close()
+
+	trackIDs := make([]int64, 0)
+	for rows.Next() {
+		var trackID int64
+		if scanErr := rows.Scan(&trackID); scanErr != nil {
+			return nil, fmt.Errorf("scan artist stats track id for %q: %w", artistName, scanErr)
+		}
+		trackIDs = append(trackIDs, trackID)
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, fmt.Errorf("iterate artist stats track ids for %q: %w", artistName, rowsErr)
+	}
+
+	return trackIDs, nil
+}
+
+func buildArtistQueueFromTopTrack(statsOrderedTrackIDs []int64, albumOrderedTrackIDs []int64, startTrackID int64) ([]int64, error) {
+	if len(statsOrderedTrackIDs) == 0 {
+		return nil, errors.New("no stats-ranked tracks available")
+	}
+
+	startIndex := indexOfTrackID(statsOrderedTrackIDs, startTrackID)
+	if startIndex < 0 {
+		return nil, fmt.Errorf("track %d is not in artist top tracks", startTrackID)
+	}
+
+	queueIDs := make([]int64, 0, len(statsOrderedTrackIDs)+len(albumOrderedTrackIDs))
+	skipIDs := make(map[int64]struct{}, len(statsOrderedTrackIDs))
+
+	for _, trackID := range statsOrderedTrackIDs[:startIndex] {
+		skipIDs[trackID] = struct{}{}
+	}
+
+	for _, trackID := range statsOrderedTrackIDs[startIndex:] {
+		if _, alreadySkipped := skipIDs[trackID]; alreadySkipped {
+			continue
+		}
+		queueIDs = append(queueIDs, trackID)
+		skipIDs[trackID] = struct{}{}
+	}
+
+	for _, trackID := range albumOrderedTrackIDs {
+		if _, shouldSkip := skipIDs[trackID]; shouldSkip {
+			continue
+		}
+		queueIDs = append(queueIDs, trackID)
+		skipIDs[trackID] = struct{}{}
+	}
+
+	if len(queueIDs) == 0 {
+		return nil, errors.New("no playable tracks available for queue")
+	}
+
+	return queueIDs, nil
+}
+
+func indexOfTrackID(trackIDs []int64, targetTrackID int64) int {
+	for index, trackID := range trackIDs {
+		if trackID == targetTrackID {
+			return index
+		}
+	}
+
+	return -1
 }
 
 func normalizePagination(limit int, offset int, defaultLimit int) (int, int) {

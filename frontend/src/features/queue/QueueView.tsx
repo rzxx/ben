@@ -1,103 +1,65 @@
-import { PlayerState, QueueState } from "../types";
+import { QueueState } from "../types";
 
 type QueueViewProps = {
   queueState: QueueState;
-  playerState: PlayerState;
-  transportBusy: boolean;
-  hasCurrentTrack: boolean;
-  playPauseLabel: string;
-  onPreviousTrack: () => Promise<void>;
-  onTogglePlayback: () => Promise<void>;
-  onNextTrack: () => Promise<void>;
-  onClearQueue: () => Promise<void>;
-  onSetRepeatMode: (mode: "off" | "all" | "one") => Promise<void>;
-  onToggleShuffle: () => Promise<void>;
   onSelectQueueIndex: (index: number) => Promise<void>;
   onRemoveQueueTrack: (index: number) => Promise<void>;
+  onClearQueue: () => Promise<void>;
 };
 
 export function QueueView(props: QueueViewProps) {
   return (
-    <section className="panel queue-panel">
-      <div className="queue-header">
+    <section className="flex h-full flex-col gap-3">
+      <div className="flex items-center justify-between">
         <div>
-          <h2>Queue</h2>
-          <p>{props.queueState.total} track(s) in queue.</p>
-        </div>
-        <div className="queue-actions">
-          <button onClick={() => void props.onPreviousTrack()} disabled={!props.hasCurrentTrack || props.transportBusy}>
-            Prev
-          </button>
-          <button onClick={() => void props.onTogglePlayback()} disabled={props.queueState.total === 0 || props.transportBusy}>
-            {props.playPauseLabel}
-          </button>
-          <button onClick={() => void props.onNextTrack()} disabled={!props.hasCurrentTrack || props.transportBusy}>
-            Next
-          </button>
-          <button onClick={() => void props.onClearQueue()} disabled={props.queueState.total === 0}>
-            Clear
-          </button>
-        </div>
-      </div>
-
-      <div className="queue-mode-row">
-        <div className="repeat-controls" role="group" aria-label="Repeat mode">
-          <button
-            className={props.queueState.repeatMode === "off" ? "mode-button active" : "mode-button"}
-            onClick={() => {
-              void props.onSetRepeatMode("off");
-            }}
-          >
-            Repeat Off
-          </button>
-          <button
-            className={props.queueState.repeatMode === "all" ? "mode-button active" : "mode-button"}
-            onClick={() => {
-              void props.onSetRepeatMode("all");
-            }}
-          >
-            Repeat All
-          </button>
-          <button
-            className={props.queueState.repeatMode === "one" ? "mode-button active" : "mode-button"}
-            onClick={() => {
-              void props.onSetRepeatMode("one");
-            }}
-          >
-            Repeat One
-          </button>
+          <h2 className="text-sm font-semibold text-zinc-100">Queue</h2>
+          <p className="text-xs text-zinc-400">
+            {props.queueState.total} tracks
+          </p>
         </div>
         <button
-          className={props.queueState.shuffle ? "mode-button active" : "mode-button"}
-          onClick={() => {
-            void props.onToggleShuffle();
-          }}
+          type="button"
+          onClick={() => void props.onClearQueue()}
+          disabled={props.queueState.total === 0}
+          className="rounded-md bg-zinc-800 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Shuffle {props.queueState.shuffle ? "On" : "Off"}
+          Clear
         </button>
       </div>
 
       {props.queueState.entries.length === 0 ? (
-        <p>Add tracks from Library to build your queue.</p>
+        <p className="text-sm text-zinc-400">Queue is empty.</p>
       ) : (
-        <ul className="queue-list">
+        <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
           {props.queueState.entries.map((track, index) => (
-            <li key={`${track.id}-${index}`} className={index === props.queueState.currentIndex ? "active" : ""}>
+            <li
+              key={`${track.id}-${index}`}
+              className={`flex items-center gap-2 rounded-md border p-2 ${
+                index === props.queueState.currentIndex
+                  ? "border-zinc-300 bg-zinc-100/10"
+                  : "border-zinc-800 bg-zinc-900/70"
+              }`}
+            >
               <button
-                className="queue-select"
+                type="button"
+                className="min-w-0 flex-1 text-left"
                 onClick={() => {
                   void props.onSelectQueueIndex(index);
                 }}
               >
-                <strong>{track.title}</strong>
-                <span>
+                <p className="truncate text-sm font-medium text-zinc-100">
+                  {track.title}
+                </p>
+                <p className="truncate text-xs text-zinc-400">
                   {track.artist} - {track.album}
-                </span>
+                </p>
               </button>
               <button
+                type="button"
                 onClick={() => {
                   void props.onRemoveQueueTrack(index);
                 }}
+                className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700"
               >
                 Remove
               </button>
