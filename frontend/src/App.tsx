@@ -19,6 +19,7 @@ import { ArtistsGridView } from "./features/library/ArtistsGridView";
 import { TracksListView } from "./features/library/TracksListView";
 import { PlayerBar } from "./features/player/PlayerBar";
 import { SettingsView } from "./features/settings/SettingsView";
+import { coverPathToURL } from "./shared/cover";
 import {
   AlbumDetail,
   ArtistDetail,
@@ -637,6 +638,7 @@ function AppContent() {
   };
 
   const currentTrack = playerState.currentTrack;
+  const currentTrackCoverURL = coverPathToURL(currentTrack?.coverPath);
   const hasCurrentTrack = !!currentTrack;
   const seekMax = Math.max(playerState.durationMs ?? 0, 1);
   const seekValue = Math.min(playerState.positionMs, seekMax);
@@ -651,8 +653,19 @@ function AppContent() {
   );
 
   return (
-    <div className="h-dvh overflow-hidden bg-zinc-950 text-zinc-100">
-      <div className="flex h-full min-h-0">
+    <div className="relative isolate h-dvh overflow-hidden bg-zinc-950 text-zinc-100">
+      {currentTrackCoverURL ? (
+        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+          <img
+            src={currentTrackCoverURL}
+            alt=""
+            aria-hidden="true"
+            className="h-full w-full scale-125 object-cover opacity-15 blur-[96px]"
+          />
+        </div>
+      ) : null}
+
+      <div className="relative z-10 flex h-full min-h-0">
         <LeftSidebar
           location={location}
           onNavigate={navigate}
@@ -664,7 +677,7 @@ function AppContent() {
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           <ScrollArea.Root className="min-h-0 flex-1">
             <ScrollArea.Viewport className="h-full">
-              <ScrollArea.Content className="min-w-full px-4 pb-36 pt-4 lg:px-6">
+              <ScrollArea.Content className="min-w-full px-4 pt-4 pb-36 lg:px-6">
                 <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-3">
                   {errorMessage ? (
                     <p className="rounded-md border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-300">
@@ -766,7 +779,7 @@ function AppContent() {
                 </div>
               </ScrollArea.Content>
             </ScrollArea.Viewport>
-            <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-zinc-800/80 opacity-0 transition-opacity duration-150 data-[hovering]:pointer-events-auto data-[hovering]:opacity-100 data-[scrolling]:pointer-events-auto data-[scrolling]:opacity-100 data-[scrolling]:duration-0">
+            <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-zinc-800/80 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
               <ScrollArea.Thumb className="w-full rounded bg-zinc-500" />
             </ScrollArea.Scrollbar>
           </ScrollArea.Root>

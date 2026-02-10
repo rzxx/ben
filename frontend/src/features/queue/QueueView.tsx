@@ -35,10 +35,10 @@ export function QueueView(props: QueueViewProps) {
           {props.queueState.entries.map((track, index) => (
             <li
               key={`${track.id}-${index}`}
-              className={`flex items-center gap-2 rounded-md border p-2 ${
+              className={`flex items-center gap-2 rounded-md border p-2 transition-colors ${
                 index === props.queueState.currentIndex
-                  ? "border-zinc-300 bg-zinc-100/10"
-                  : "border-zinc-800 bg-zinc-900/70"
+                  ? "border-zinc-300 bg-zinc-800/85"
+                  : "border-zinc-800 bg-zinc-950/15 hover:bg-zinc-800"
               }`}
             >
               <button

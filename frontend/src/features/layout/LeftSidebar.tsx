@@ -24,7 +24,7 @@ const navItems = [
 
 export function LeftSidebar(props: LeftSidebarProps) {
   return (
-    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 px-4 pt-4 pb-36">
+    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950/30 px-4 pt-4 pb-36">
       <div className="border-b border-zinc-800 pb-4">
         <p className="text-xl font-semibold tracking-wide text-zinc-100">ben</p>
       </div>
@@ -44,7 +44,7 @@ export function LeftSidebar(props: LeftSidebarProps) {
               className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
                 isActive
                   ? "bg-zinc-100 text-zinc-900"
-                  : "bg-zinc-800/70 text-zinc-200 hover:bg-zinc-800"
+                  : "text-zinc-200 hover:bg-zinc-800"
               }`}
             >
               <Icon size={15} />
@@ -60,7 +60,7 @@ export function LeftSidebar(props: LeftSidebarProps) {
           type="button"
           onClick={() => void props.onRunIncrementalScan()}
           disabled={props.scanRunning}
-          className="inline-flex items-center gap-2 rounded-md bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Disc3 size={15} />
           {props.scanRunning ? "Scanning..." : "Incremental Scan"}
@@ -69,7 +69,7 @@ export function LeftSidebar(props: LeftSidebarProps) {
           type="button"
           onClick={() => void props.onRunFullScan()}
           disabled={props.scanRunning}
-          className="inline-flex items-center gap-2 rounded-md bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <FolderSearch size={15} />
           {props.scanRunning ? "Scanning..." : "Full Scan"}

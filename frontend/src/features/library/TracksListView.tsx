@@ -19,7 +19,7 @@ export function TracksListView(props: TracksListViewProps) {
           {props.tracks.map((track) => (
             <li
               key={track.id}
-              className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900/70 px-3 py-2"
+              className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950/15 px-3 py-2"
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm text-zinc-100">{track.title}</p>

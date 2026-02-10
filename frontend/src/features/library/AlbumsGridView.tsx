@@ -20,7 +20,7 @@ export function AlbumsGridView(props: AlbumsGridViewProps) {
             key={`${album.albumArtist}-${album.title}`}
             type="button"
             onClick={() => props.onSelectAlbum(album)}
-            className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 text-left transition hover:border-zinc-600"
+            className="rounded-lg border border-zinc-800 bg-zinc-950/15 p-3 text-left transition hover:border-zinc-600"
           >
             <CoverArt
               coverPath={album.coverPath}

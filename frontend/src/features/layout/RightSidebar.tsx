@@ -16,7 +16,7 @@ type RightSidebarProps = {
 
 export function RightSidebar(props: RightSidebarProps) {
   return (
-    <aside className="flex h-full min-h-0 w-80 shrink-0 flex-col border-l border-zinc-800 bg-zinc-950 pt-4">
+    <aside className="flex h-full min-h-0 w-80 shrink-0 flex-col border-l border-zinc-800 bg-zinc-950/30 pt-4">
       <div className="flex gap-2 px-3">
         <button
           type="button"

@@ -19,7 +19,7 @@ export function ArtistsGridView(props: ArtistsGridViewProps) {
             key={artist.name}
             type="button"
             onClick={() => props.onSelectArtist(artist.name)}
-            className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 text-left transition hover:border-zinc-600"
+            className="rounded-lg border border-zinc-800 bg-zinc-950/15 p-3 text-left transition hover:border-zinc-600"
           >
             <div className="mb-3 flex h-20 w-20 items-center justify-center rounded-full bg-zinc-800 text-2xl font-semibold text-zinc-200">
               {artist.name.charAt(0).toUpperCase()}

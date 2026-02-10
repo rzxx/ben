@@ -30,7 +30,7 @@ export function ArtistDetailView(props: ArtistDetailViewProps) {
         Back to artists
       </button>
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950/15 p-4">
         <p className="text-xs tracking-wide text-zinc-400 uppercase">Artist</p>
         <h1 className="text-2xl font-semibold text-zinc-100">{artist.name}</h1>
         <p className="text-sm text-zinc-400">
@@ -46,7 +46,7 @@ export function ArtistDetailView(props: ArtistDetailViewProps) {
         </button>
       </div>
 
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/15 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-100">
           Most Liked Tracks
         </h2>
@@ -59,7 +59,7 @@ export function ArtistDetailView(props: ArtistDetailViewProps) {
             {props.topTracks.slice(0, 5).map((track, index) => (
               <li
                 key={track.trackId}
-                className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2"
+                className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950/15 px-3 py-2"
               >
                 <p className="w-6 text-xs text-zinc-500">{index + 1}</p>
                 <div className="min-w-0 flex-1">
@@ -97,7 +97,7 @@ export function ArtistDetailView(props: ArtistDetailViewProps) {
               key={`${album.albumArtist}-${album.title}`}
               type="button"
               onClick={() => props.onSelectAlbum(album)}
-              className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3 text-left transition hover:border-zinc-600"
+              className="rounded-lg border border-zinc-800 bg-zinc-950/15 p-3 text-left transition hover:border-zinc-600"
             >
               <CoverArt
                 coverPath={album.coverPath}

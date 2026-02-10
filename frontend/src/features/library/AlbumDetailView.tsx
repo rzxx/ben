@@ -32,7 +32,7 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
         Back to albums
       </button>
 
-      <div className="flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:flex-row sm:items-end">
+      <div className="flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-950/15 p-4 sm:flex-row sm:items-end">
         <CoverArt
           coverPath={album.coverPath}
           alt={`${album.title} cover`}
@@ -61,7 +61,7 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
         {album.tracks.map((track) => (
           <li
             key={track.id}
-            className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900/70 px-3 py-2"
+            className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950/15 px-3 py-2"
           >
             <p className="w-14 shrink-0 text-xs text-zinc-500">
               {track.discNo ? `${track.discNo}-` : ""}
