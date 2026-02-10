@@ -611,13 +611,12 @@ func (r *BrowseRepository) GetAlbumQueueTrackIDsFromTrack(ctx context.Context, t
 		return nil, err
 	}
 
-	startIndex := indexOfTrackID(orderedIDs, trackID)
-	if startIndex < 0 {
+	if indexOfTrackID(orderedIDs, trackID) < 0 {
 		return nil, fmt.Errorf("track %d not found in album %q by %q", trackID, strings.TrimSpace(title), strings.TrimSpace(albumArtist))
 	}
 
-	queueIDs := make([]int64, len(orderedIDs)-startIndex)
-	copy(queueIDs, orderedIDs[startIndex:])
+	queueIDs := make([]int64, len(orderedIDs))
+	copy(queueIDs, orderedIDs)
 	return queueIDs, nil
 }
 
@@ -706,7 +705,7 @@ func (r *BrowseRepository) GetArtistTopTracks(ctx context.Context, artist string
 			OR tm.skip_count > 0
 			OR tm.partial_count > 0
 		  )
-		ORDER BY tm.played_ms DESC, tm.complete_count DESC, tm.skip_count ASC, LOWER(track_title)
+		ORDER BY tm.played_ms DESC, tm.complete_count DESC, tm.partial_count DESC, tm.skip_count ASC, LOWER(track_title)
 		LIMIT ?
 	`, artistName, normalizedLimit)
 	if err != nil {
@@ -928,7 +927,7 @@ func (r *BrowseRepository) listArtistTrackIDsByStatsOrder(ctx context.Context, a
 			OR tm.skip_count > 0
 			OR tm.partial_count > 0
 		  )
-		ORDER BY tm.played_ms DESC, tm.complete_count DESC, tm.skip_count ASC, LOWER(COALESCE(NULLIF(TRIM(t.title), ''), 'Unknown Title'))
+		ORDER BY tm.played_ms DESC, tm.complete_count DESC, tm.partial_count DESC, tm.skip_count ASC, LOWER(COALESCE(NULLIF(TRIM(t.title), ''), 'Unknown Title'))
 	`, artistName)
 	if err != nil {
 		return nil, fmt.Errorf("list artist stats tracks for %q: %w", artistName, err)
@@ -955,32 +954,27 @@ func buildArtistQueueFromTopTrack(statsOrderedTrackIDs []int64, albumOrderedTrac
 		return nil, errors.New("no stats-ranked tracks available")
 	}
 
-	startIndex := indexOfTrackID(statsOrderedTrackIDs, startTrackID)
-	if startIndex < 0 {
+	if indexOfTrackID(statsOrderedTrackIDs, startTrackID) < 0 {
 		return nil, fmt.Errorf("track %d is not in artist top tracks", startTrackID)
 	}
 
 	queueIDs := make([]int64, 0, len(statsOrderedTrackIDs)+len(albumOrderedTrackIDs))
-	skipIDs := make(map[int64]struct{}, len(statsOrderedTrackIDs))
+	seenIDs := make(map[int64]struct{}, len(statsOrderedTrackIDs)+len(albumOrderedTrackIDs))
 
-	for _, trackID := range statsOrderedTrackIDs[:startIndex] {
-		skipIDs[trackID] = struct{}{}
-	}
-
-	for _, trackID := range statsOrderedTrackIDs[startIndex:] {
-		if _, alreadySkipped := skipIDs[trackID]; alreadySkipped {
+	for _, trackID := range statsOrderedTrackIDs {
+		if _, alreadySeen := seenIDs[trackID]; alreadySeen {
 			continue
 		}
 		queueIDs = append(queueIDs, trackID)
-		skipIDs[trackID] = struct{}{}
+		seenIDs[trackID] = struct{}{}
 	}
 
 	for _, trackID := range albumOrderedTrackIDs {
-		if _, shouldSkip := skipIDs[trackID]; shouldSkip {
+		if _, alreadySeen := seenIDs[trackID]; alreadySeen {
 			continue
 		}
 		queueIDs = append(queueIDs, trackID)
-		skipIDs[trackID] = struct{}{}
+		seenIDs[trackID] = struct{}{}
 	}
 
 	if len(queueIDs) == 0 {

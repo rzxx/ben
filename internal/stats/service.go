@@ -327,7 +327,7 @@ func (s *Service) readTopTracks(ctx context.Context, limit int) ([]TrackStat, er
 				OR tm.skip_count > 0
 				OR tm.partial_count > 0
 			)
-		ORDER BY played_ms DESC, complete_count DESC, skip_count ASC, LOWER(track_title)
+		ORDER BY played_ms DESC, complete_count DESC, partial_count DESC, skip_count ASC, LOWER(track_title)
 		LIMIT ?
 	`,
 		EventHeartbeat,

@@ -385,14 +385,18 @@ function AppContent() {
     }
   };
 
-  const onSetQueue = async (trackIDs: number[], autoplay: boolean) => {
+  const onSetQueue = async (
+    trackIDs: number[],
+    autoplay: boolean,
+    startIndex = 0,
+  ) => {
     if (trackIDs.length === 0) {
       return;
     }
 
     try {
       setErrorMessage(null);
-      await Call.ByName(`${queueService}.SetQueue`, trackIDs, 0);
+      await Call.ByName(`${queueService}.SetQueue`, trackIDs, startIndex);
       if (autoplay) {
         await Call.ByName(`${playerService}.Play`);
       }
@@ -588,7 +592,12 @@ function AppContent() {
         albumArtist,
         trackID,
       )) as number[];
-      await onSetQueue(trackIDs ?? [], true);
+      const queueTrackIDs = trackIDs ?? [];
+      const startIndex = queueTrackIDs.indexOf(trackID);
+      if (startIndex < 0) {
+        throw new Error("Selected track is not part of the album queue.");
+      }
+      await onSetQueue(queueTrackIDs, true, startIndex);
     } catch (error) {
       setErrorMessage(parseError(error));
     }
@@ -615,7 +624,12 @@ function AppContent() {
         artistName,
         trackID,
       )) as number[];
-      await onSetQueue(trackIDs ?? [], true);
+      const queueTrackIDs = trackIDs ?? [];
+      const startIndex = queueTrackIDs.indexOf(trackID);
+      if (startIndex < 0) {
+        throw new Error("Selected track is not part of the artist queue.");
+      }
+      await onSetQueue(queueTrackIDs, true, startIndex);
     } catch (error) {
       setErrorMessage(parseError(error));
     }

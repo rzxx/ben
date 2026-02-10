@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestBuildArtistQueueFromTopTrack_StartAtClickedRank(t *testing.T) {
+func TestBuildArtistQueueFromTopTrack_IncludesFullContext(t *testing.T) {
 	t.Parallel()
 
 	statsOrder := []int64{50, 40, 30, 20, 10}
@@ -16,13 +16,13 @@ func TestBuildArtistQueueFromTopTrack_StartAtClickedRank(t *testing.T) {
 		t.Fatalf("build queue: %v", err)
 	}
 
-	expected := []int64{30, 20, 10, 1, 2, 3, 4, 5, 60, 70}
+	expected := []int64{50, 40, 30, 20, 10, 1, 2, 3, 4, 5, 60, 70}
 	if !reflect.DeepEqual(queueIDs, expected) {
 		t.Fatalf("unexpected queue order: got %v, want %v", queueIDs, expected)
 	}
 }
 
-func TestBuildArtistQueueFromTopTrack_SkipsHigherRankedTracks(t *testing.T) {
+func TestBuildArtistQueueFromTopTrack_DeduplicatesAndKeepsStatsFirst(t *testing.T) {
 	t.Parallel()
 
 	statsOrder := []int64{9, 8, 7}
@@ -33,7 +33,7 @@ func TestBuildArtistQueueFromTopTrack_SkipsHigherRankedTracks(t *testing.T) {
 		t.Fatalf("build queue: %v", err)
 	}
 
-	expected := []int64{8, 7, 6, 5, 4}
+	expected := []int64{9, 8, 7, 6, 5, 4}
 	if !reflect.DeepEqual(queueIDs, expected) {
 		t.Fatalf("unexpected queue order: got %v, want %v", queueIDs, expected)
 	}
