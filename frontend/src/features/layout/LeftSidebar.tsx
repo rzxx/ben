@@ -24,14 +24,10 @@ const navItems = [
 
 export function LeftSidebar(props: LeftSidebarProps) {
   return (
-    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-neutral-800 bg-neutral-950/30 px-4 pt-4 pb-36">
-      <div className="border-b border-neutral-800 pb-4">
-        <p className="text-xl font-semibold tracking-wide text-neutral-100">ben</p>
-      </div>
-
+    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-white/3 px-4 pt-4 pb-36">
       <nav
         aria-label="Main navigation"
-        className="mt-4 flex min-h-0 flex-1 flex-col gap-2"
+        className="flex min-h-0 flex-1 flex-col gap-2"
       >
         {navItems.map((item) => {
           const isActive = props.location.startsWith(item.path);
@@ -54,7 +50,7 @@ export function LeftSidebar(props: LeftSidebarProps) {
         })}
       </nav>
 
-      <div className="mt-4 flex flex-col gap-2 border-t border-neutral-800 pt-4">
+      <div className="mt-4 flex flex-col gap-2 border-t border-white/3 pt-4">
         <p className="text-xs tracking-wide text-neutral-400 uppercase">Scan</p>
         <button
           type="button"

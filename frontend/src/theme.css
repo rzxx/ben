@@ -1,1 +1,13 @@
 @import "tailwindcss";
+
+body {
+  --wails-resize: all;
+}
+
+.wails-drag {
+  --wails-draggable: drag;
+}
+
+.wails-no-drag {
+  --wails-draggable: no-drag;
+}

@@ -22,7 +22,7 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
   const album = props.albumDetail;
 
   return (
-    <section className="flex flex-col gap-4">
+    <section className="">
       <button
         type="button"
         onClick={props.onBack}
@@ -40,11 +40,15 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
           loading="eager"
         />
         <div className="min-w-0 flex-1">
-          <p className="text-xs tracking-wide text-neutral-400 uppercase">Album</p>
+          <p className="text-xs tracking-wide text-neutral-400 uppercase">
+            Album
+          </p>
           <h1 className="truncate text-2xl font-semibold text-neutral-100">
             {album.title}
           </h1>
-          <p className="truncate text-sm text-neutral-300">{album.albumArtist}</p>
+          <p className="truncate text-sm text-neutral-300">
+            {album.albumArtist}
+          </p>
           <p className="text-xs text-neutral-500">{album.trackCount} tracks</p>
         </div>
         <button
@@ -69,7 +73,9 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
             </p>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm text-neutral-100">{track.title}</p>
-              <p className="truncate text-xs text-neutral-400">{track.artist}</p>
+              <p className="truncate text-xs text-neutral-400">
+                {track.artist}
+              </p>
             </div>
             <p className="w-14 shrink-0 text-right text-xs text-neutral-500">
               {props.formatDuration(track.durationMs)}

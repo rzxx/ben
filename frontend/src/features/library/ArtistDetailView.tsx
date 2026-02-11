@@ -20,7 +20,7 @@ export function ArtistDetailView(props: ArtistDetailViewProps) {
   const artist = props.artistDetail;
 
   return (
-    <section className="flex flex-col gap-4">
+    <section className="">
       <button
         type="button"
         onClick={props.onBack}
@@ -31,8 +31,12 @@ export function ArtistDetailView(props: ArtistDetailViewProps) {
       </button>
 
       <div className="rounded-xl border border-neutral-800 bg-neutral-950/15 p-4">
-        <p className="text-xs tracking-wide text-neutral-400 uppercase">Artist</p>
-        <h1 className="text-2xl font-semibold text-neutral-100">{artist.name}</h1>
+        <p className="text-xs tracking-wide text-neutral-400 uppercase">
+          Artist
+        </p>
+        <h1 className="text-2xl font-semibold text-neutral-100">
+          {artist.name}
+        </h1>
         <p className="text-sm text-neutral-400">
           {artist.albumCount} albums - {artist.trackCount} tracks
         </p>

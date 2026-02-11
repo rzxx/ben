@@ -16,15 +16,15 @@ type RightSidebarProps = {
 
 export function RightSidebar(props: RightSidebarProps) {
   return (
-    <aside className="flex h-full min-h-0 w-80 shrink-0 flex-col border-l border-neutral-800 bg-neutral-950/30 pt-4">
+    <aside className="flex h-full min-h-0 w-80 shrink-0 flex-col border-l border-white/3 pt-4">
       <div className="flex gap-2 px-3">
         <button
           type="button"
           onClick={() => props.onTabChange("queue")}
-          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
+          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
             props.tab === "queue"
               ? "bg-neutral-100 text-neutral-900"
-              : "bg-neutral-800 text-neutral-200 hover:bg-neutral-700"
+              : "text-neutral-200 hover:bg-neutral-800"
           }`}
         >
           <ListMusic size={14} />
@@ -33,10 +33,10 @@ export function RightSidebar(props: RightSidebarProps) {
         <button
           type="button"
           onClick={() => props.onTabChange("details")}
-          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
+          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
             props.tab === "details"
               ? "bg-neutral-100 text-neutral-900"
-              : "bg-neutral-800 text-neutral-200 hover:bg-neutral-700"
+              : "text-neutral-200 hover:bg-neutral-800"
           }`}
         >
           <Rows4 size={14} />
@@ -46,7 +46,7 @@ export function RightSidebar(props: RightSidebarProps) {
 
       <ScrollArea.Root className="mt-3 min-h-0 flex-1">
         <ScrollArea.Viewport className="h-full">
-          <ScrollArea.Content className="min-w-full px-3 pb-36">
+          <ScrollArea.Content className="pb-36">
             {props.tab === "queue" ? (
               <QueueView
                 queueState={props.queueState}
@@ -62,8 +62,8 @@ export function RightSidebar(props: RightSidebarProps) {
             )}
           </ScrollArea.Content>
         </ScrollArea.Viewport>
-        <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-neutral-800/80 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
-          <ScrollArea.Thumb className="w-full rounded bg-neutral-500" />
+        <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-white/7 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
+          <ScrollArea.Thumb className="w-full rounded bg-neutral-300" />
         </ScrollArea.Scrollbar>
       </ScrollArea.Root>
     </aside>

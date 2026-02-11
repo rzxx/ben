@@ -109,11 +109,17 @@ func main() {
 	defer scannerDomain.StopWatching()
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "Ben",
+		Title:     "Ben",
+		Frameless: true,
+		MinWidth:  1080,
+		MinHeight: 720,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,
 			TitleBar:                application.MacTitleBarHiddenInset,
+		},
+		Windows: application.WindowsWindow{
+			DisableFramelessWindowDecorations: false,
 		},
 		BackgroundColour: application.NewRGB(10, 10, 10),
 		URL:              "/",

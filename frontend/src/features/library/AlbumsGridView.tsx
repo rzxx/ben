@@ -12,25 +12,25 @@ export function AlbumsGridView(props: AlbumsGridViewProps) {
   }
 
   return (
-    <section className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold text-neutral-100">Albums</h1>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+    <section className="">
+      <h1 className="mb-4 text-xl font-semibold text-neutral-100">Albums</h1>
+      <div className="grid grid-cols-2 gap-8 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
         {props.albums.map((album) => (
           <button
             key={`${album.albumArtist}-${album.title}`}
             type="button"
             onClick={() => props.onSelectAlbum(album)}
-            className="rounded-lg border border-neutral-800 bg-neutral-950/15 p-3 text-left transition hover:border-neutral-600"
+            className="text-left"
           >
             <CoverArt
               coverPath={album.coverPath}
               alt={`${album.title} cover`}
-              className="mb-2 aspect-square w-full rounded-md"
+              className="mb-2 aspect-square rounded-lg border border-white/7"
             />
-            <p className="truncate text-sm font-medium text-neutral-100">
+            <p className="line-clamp-1 text-base font-medium text-neutral-100">
               {album.title}
             </p>
-            <p className="truncate text-xs text-neutral-400">
+            <p className="line-clamp-1 text-xs text-neutral-400">
               {album.albumArtist}
             </p>
           </button>

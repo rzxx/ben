@@ -56,7 +56,9 @@ export function SettingsView(props: SettingsViewProps) {
             </p>
           </div>
         ) : (
-          <p className="mt-2 text-sm text-neutral-400">No progress events yet.</p>
+          <p className="mt-2 text-sm text-neutral-400">
+            No progress events yet.
+          </p>
         )}
 
         <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-neutral-300 sm:grid-cols-2 lg:grid-cols-4">
@@ -89,7 +91,9 @@ export function SettingsView(props: SettingsViewProps) {
       </section>
 
       <section className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
-        <h2 className="text-sm font-semibold text-neutral-100">Watched Folders</h2>
+        <h2 className="text-sm font-semibold text-neutral-100">
+          Watched Folders
+        </h2>
         <form
           className="mt-3 flex flex-col gap-2 sm:flex-row"
           onSubmit={(event) => void props.onAddWatchedRoot(event)}
@@ -177,7 +181,9 @@ function MetricCard(props: MetricProps) {
       <p className="text-xs tracking-wide text-neutral-500 uppercase">
         {props.label}
       </p>
-      <p className="mt-1 text-lg font-semibold text-neutral-100">{props.value}</p>
+      <p className="mt-1 text-lg font-semibold text-neutral-100">
+        {props.value}
+      </p>
     </div>
   );
 }

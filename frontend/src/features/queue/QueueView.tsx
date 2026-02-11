@@ -10,10 +10,9 @@ type QueueViewProps = {
 
 export function QueueView(props: QueueViewProps) {
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex w-76 flex-col gap-3 px-3">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-100">Queue</h2>
           <p className="text-xs text-neutral-400">
             {props.queueState.total} tracks
           </p>
@@ -22,7 +21,7 @@ export function QueueView(props: QueueViewProps) {
           type="button"
           onClick={() => void props.onClearQueue()}
           disabled={props.queueState.total === 0}
-          className="rounded-md bg-neutral-800 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md px-2 py-1 text-xs text-neutral-200 transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Clear
         </button>
@@ -31,14 +30,14 @@ export function QueueView(props: QueueViewProps) {
       {props.queueState.entries.length === 0 ? (
         <p className="text-sm text-neutral-400">Queue is empty.</p>
       ) : (
-        <ul className="flex flex-col gap-2 pr-1">
+        <ul className="flex min-w-0 flex-col gap-2 pr-1">
           {props.queueState.entries.map((track, index) => (
             <li
               key={`${track.id}-${index}`}
-              className={`flex items-center gap-2 rounded-md border p-2 transition-colors ${
+              className={`group flex min-w-0 items-center gap-2 rounded-md border p-2 transition-colors ${
                 index === props.queueState.currentIndex
-                  ? "border-neutral-300 bg-neutral-800/85"
-                  : "border-neutral-800 bg-neutral-950/15 hover:bg-neutral-800"
+                  ? "border-white/7"
+                  : "border-transparent hover:bg-neutral-800"
               }`}
             >
               <button
@@ -60,7 +59,7 @@ export function QueueView(props: QueueViewProps) {
                 onClick={() => {
                   void props.onRemoveQueueTrack(index);
                 }}
-                className="rounded p-1 text-neutral-500 transition-colors hover:text-neutral-200"
+                className="text-neutral-400/ rounded p-1 transition-colors not-group-hover:hidden group-hover:text-neutral-400 hover:text-neutral-200"
                 aria-label="Remove track from queue"
               >
                 <X size={14} />

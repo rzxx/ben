@@ -12,6 +12,7 @@ import { Call, Events } from "@wailsio/runtime";
 import { ScrollArea } from "@base-ui/react/scroll-area";
 import { LeftSidebar } from "./features/layout/LeftSidebar";
 import { RightSidebar } from "./features/layout/RightSidebar";
+import { TitleBar } from "./features/layout/TitleBar";
 import { AlbumDetailView } from "./features/library/AlbumDetailView";
 import { AlbumsGridView } from "./features/library/AlbumsGridView";
 import { ArtistDetailView } from "./features/library/ArtistDetailView";
@@ -653,19 +654,21 @@ function AppContent() {
   );
 
   return (
-    <div className="relative isolate h-dvh overflow-hidden bg-neutral-950 text-neutral-100">
+    <div className="relative isolate flex h-dvh flex-col overflow-hidden bg-neutral-950 text-neutral-100">
       {currentTrackCoverURL ? (
         <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
           <img
             src={currentTrackCoverURL}
             alt=""
             aria-hidden="true"
-            className="h-full w-full scale-125 object-cover opacity-15 blur-[96px]"
+            className="h-full w-full scale-125 object-cover opacity-10 blur-[96px]"
           />
         </div>
       ) : null}
 
-      <div className="relative z-10 flex h-full min-h-0">
+      <TitleBar />
+
+      <div className="relative z-10 flex min-h-0 flex-1">
         <LeftSidebar
           location={location}
           onNavigate={navigate}
@@ -779,8 +782,8 @@ function AppContent() {
                 </div>
               </ScrollArea.Content>
             </ScrollArea.Viewport>
-            <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-neutral-800/80 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
-              <ScrollArea.Thumb className="w-full rounded bg-neutral-500" />
+            <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-white/7 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
+              <ScrollArea.Thumb className="w-full rounded bg-neutral-300" />
             </ScrollArea.Scrollbar>
           </ScrollArea.Root>
         </main>
