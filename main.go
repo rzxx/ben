@@ -51,6 +51,7 @@ func main() {
 	settingsService := NewSettingsService(watchedRoots, scannerDomain)
 	libraryService := NewLibraryService(browseRepo)
 	coverService := NewCoverService(paths.CoverCacheDir)
+	themeService := NewThemeService(paths.CoverCacheDir)
 	queueService := NewQueueService(queueDomain)
 	playerService := NewPlayerService(playerDomain)
 	statsService := NewStatsService(statsDomain)
@@ -63,6 +64,7 @@ func main() {
 			application.NewService(settingsService),
 			application.NewService(libraryService),
 			application.NewServiceWithOptions(coverService, application.ServiceOptions{Route: "/covers"}),
+			application.NewService(themeService),
 			application.NewService(queueService),
 			application.NewService(playerService),
 			application.NewService(statsService),

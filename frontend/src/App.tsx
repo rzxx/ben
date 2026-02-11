@@ -36,6 +36,8 @@ import {
   ScanStatus,
   SelectedAlbum,
   StatsOverview,
+  ThemeExtractOptions,
+  ThemePalette,
   WatchedRoot,
 } from "./features/types";
 
@@ -45,6 +47,7 @@ const scannerService = "main.ScannerService";
 const queueService = "main.QueueService";
 const playerService = "main.PlayerService";
 const statsService = "main.StatsService";
+const themeService = "main.ThemeService";
 
 const scanProgressEvent = "scanner:progress";
 const queueStateEvent = "queue:state";
@@ -96,6 +99,26 @@ function createEmptyStatsOverview(): StatsOverview {
   };
 }
 
+function createDefaultThemeExtractOptions(): ThemeExtractOptions {
+  return {
+    maxDimension: 220,
+    quality: 2,
+    colorCount: 5,
+    candidateCount: 24,
+    quantizationBits: 5,
+    alphaThreshold: 16,
+    ignoreNearWhite: true,
+    ignoreNearBlack: false,
+    minLuma: 0.02,
+    maxLuma: 0.98,
+    minChroma: 0.03,
+    targetChroma: 0.14,
+    maxChroma: 0.32,
+    minDelta: 0.08,
+    workerCount: 0,
+  };
+}
+
 function normalizePagedResult<T>(
   value: unknown,
   limit: number,
@@ -126,6 +149,15 @@ function AppContent() {
   );
   const [statsOverview, setStatsOverview] = useState<StatsOverview>(
     createEmptyStatsOverview(),
+  );
+  const [themeOptions, setThemeOptions] = useState<ThemeExtractOptions>(
+    createDefaultThemeExtractOptions(),
+  );
+  const [generatedThemePalette, setGeneratedThemePalette] =
+    useState<ThemePalette | null>(null);
+  const [themeBusy, setThemeBusy] = useState(false);
+  const [themeErrorMessage, setThemeErrorMessage] = useState<string | null>(
+    null,
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [transportBusy, setTransportBusy] = useState(false);
@@ -183,6 +215,13 @@ function AppContent() {
     setStatsOverview((overview ?? createEmptyStatsOverview()) as StatsOverview);
   }, []);
 
+  const loadThemeDefaults = useCallback(async () => {
+    const options = await Call.ByName(`${themeService}.DefaultOptions`);
+    setThemeOptions(
+      (options ?? createDefaultThemeExtractOptions()) as ThemeExtractOptions,
+    );
+  }, []);
+
   const loadLibraryData = useCallback(async () => {
     const [artistRows, albumRows, trackRows] = await Promise.all([
       Call.ByName(`${libraryService}.ListArtists`, "", browseLimit, 0),
@@ -230,6 +269,7 @@ function AppContent() {
           loadQueueState(),
           loadPlayerState(),
           loadStatsOverview(),
+          loadThemeDefaults(),
           loadLibraryData(),
         ]);
       } catch (error) {
@@ -275,8 +315,14 @@ function AppContent() {
     loadQueueState,
     loadScanStatus,
     loadStatsOverview,
+    loadThemeDefaults,
     loadWatchedRoots,
   ]);
+
+  useEffect(() => {
+    setGeneratedThemePalette(null);
+    setThemeErrorMessage(null);
+  }, [playerState.currentTrack?.coverPath]);
 
   useEffect(() => {
     if (!selectedArtist) {
@@ -638,6 +684,30 @@ function AppContent() {
     }
   };
 
+  const onGenerateThemePalette = async () => {
+    const coverPath = playerState.currentTrack?.coverPath?.trim();
+    if (!coverPath) {
+      setThemeErrorMessage("No cover art available for the current track.");
+      setGeneratedThemePalette(null);
+      return;
+    }
+
+    try {
+      setThemeBusy(true);
+      setThemeErrorMessage(null);
+      const nextPalette = await Call.ByName(
+        `${themeService}.GenerateFromCover`,
+        coverPath,
+        themeOptions,
+      );
+      setGeneratedThemePalette((nextPalette ?? null) as ThemePalette | null);
+    } catch (error) {
+      setThemeErrorMessage(parseError(error));
+    } finally {
+      setThemeBusy(false);
+    }
+  };
+
   const currentTrack = playerState.currentTrack;
   const currentTrackCoverURL = coverPathToURL(currentTrack?.coverPath);
   const hasCurrentTrack = !!currentTrack;
@@ -761,10 +831,17 @@ function AppContent() {
                         queueState={queueState}
                         playerState={playerState}
                         statsOverview={statsOverview}
+                        currentCoverPath={playerState.currentTrack?.coverPath}
+                        themeOptions={themeOptions}
+                        themePalette={generatedThemePalette}
+                        themeBusy={themeBusy}
+                        themeErrorMessage={themeErrorMessage}
                         onNewRootPathChange={setNewRootPath}
                         onAddWatchedRoot={onAddWatchedRoot}
                         onToggleWatchedRoot={onToggleWatchedRoot}
                         onRemoveWatchedRoot={onRemoveWatchedRoot}
+                        onThemeOptionsChange={setThemeOptions}
+                        onGenerateThemePalette={onGenerateThemePalette}
                       />
                     </Route>
 

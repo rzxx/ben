@@ -7,11 +7,13 @@ import * as QueueService from "./queueservice.js";
 import * as ScannerService from "./scannerservice.js";
 import * as SettingsService from "./settingsservice.js";
 import * as StatsService from "./statsservice.js";
+import * as ThemeService from "./themeservice.js";
 export {
     LibraryService,
     PlayerService,
     QueueService,
     ScannerService,
     SettingsService,
-    StatsService
+    StatsService,
+    ThemeService
 };

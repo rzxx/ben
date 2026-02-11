@@ -149,3 +149,47 @@ export type StatsOverview = {
   topTracks: StatsTrack[];
   topArtists: StatsArtist[];
 };
+
+export type ThemeExtractOptions = {
+  maxDimension: number;
+  quality: number;
+  colorCount: number;
+  candidateCount: number;
+  quantizationBits: number;
+  alphaThreshold: number;
+  ignoreNearWhite: boolean;
+  ignoreNearBlack: boolean;
+  minLuma: number;
+  maxLuma: number;
+  minChroma: number;
+  targetChroma: number;
+  maxChroma: number;
+  minDelta: number;
+  workerCount: number;
+};
+
+export type ThemePaletteColor = {
+  hex: string;
+  r: number;
+  g: number;
+  b: number;
+  population: number;
+  lightness: number;
+  chroma: number;
+  hue: number;
+};
+
+export type ThemePalette = {
+  primary?: ThemePaletteColor;
+  secondary?: ThemePaletteColor;
+  tertiary?: ThemePaletteColor;
+  dark?: ThemePaletteColor;
+  light?: ThemePaletteColor;
+  accent?: ThemePaletteColor;
+  gradient: ThemePaletteColor[];
+  sourceWidth: number;
+  sourceHeight: number;
+  sampleWidth: number;
+  sampleHeight: number;
+  options: ThemeExtractOptions;
+};

@@ -1,10 +1,14 @@
-import { FormEvent } from "react";
+import { CSSProperties, FormEvent } from "react";
+import { coverPathToURL } from "../../shared/cover";
 import {
   PlayerState,
   QueueState,
   ScanProgress,
   ScanStatus,
   StatsOverview,
+  ThemeExtractOptions,
+  ThemePalette,
+  ThemePaletteColor,
   WatchedRoot,
 } from "../types";
 
@@ -17,13 +21,25 @@ type SettingsViewProps = {
   queueState: QueueState;
   playerState: PlayerState;
   statsOverview: StatsOverview;
+  currentCoverPath?: string;
+  themeOptions: ThemeExtractOptions;
+  themePalette: ThemePalette | null;
+  themeBusy: boolean;
+  themeErrorMessage: string | null;
   onNewRootPathChange: (value: string) => void;
   onAddWatchedRoot: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onToggleWatchedRoot: (root: WatchedRoot) => Promise<void>;
   onRemoveWatchedRoot: (id: number) => Promise<void>;
+  onThemeOptionsChange: (next: ThemeExtractOptions) => void;
+  onGenerateThemePalette: () => Promise<void>;
 };
 
 export function SettingsView(props: SettingsViewProps) {
+  const coverURL = coverPathToURL(props.currentCoverPath);
+  const gradientPreviewStyle = buildGradientPreviewStyle(
+    props.themePalette?.gradient ?? [],
+  );
+
   return (
     <section className="flex flex-col gap-5">
       <div className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
@@ -147,6 +163,279 @@ export function SettingsView(props: SettingsViewProps) {
         </ul>
       </section>
 
+      <section className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
+        <h2 className="text-sm font-semibold text-neutral-100">
+          Theme Palette Demo
+        </h2>
+        <p className="mt-1 text-sm text-neutral-400">
+          Backend-generated palette from the active track cover.
+        </p>
+
+        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-neutral-300 sm:grid-cols-2 lg:grid-cols-4">
+          <NumericSetting
+            label="Max Dimension"
+            value={props.themeOptions.maxDimension}
+            min={64}
+            max={1024}
+            step={1}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                maxDimension: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Quality"
+            value={props.themeOptions.quality}
+            min={1}
+            max={12}
+            step={1}
+            onChange={(next) =>
+              props.onThemeOptionsChange({ ...props.themeOptions, quality: next })
+            }
+          />
+          <NumericSetting
+            label="Color Count"
+            value={props.themeOptions.colorCount}
+            min={3}
+            max={10}
+            step={1}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                colorCount: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Candidates"
+            value={props.themeOptions.candidateCount}
+            min={3}
+            max={128}
+            step={1}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                candidateCount: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Quantization Bits"
+            value={props.themeOptions.quantizationBits}
+            min={4}
+            max={6}
+            step={1}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                quantizationBits: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Min Chroma"
+            value={props.themeOptions.minChroma}
+            min={0}
+            max={0.4}
+            step={0.01}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                minChroma: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Target Chroma"
+            value={props.themeOptions.targetChroma}
+            min={0.02}
+            max={0.42}
+            step={0.01}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                targetChroma: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Max Chroma"
+            value={props.themeOptions.maxChroma}
+            min={0.06}
+            max={0.5}
+            step={0.01}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                maxChroma: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Min Delta (OKLab)"
+            value={props.themeOptions.minDelta}
+            min={0.01}
+            max={0.45}
+            step={0.01}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                minDelta: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Alpha Threshold"
+            value={props.themeOptions.alphaThreshold}
+            min={0}
+            max={254}
+            step={1}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                alphaThreshold: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Min Luma"
+            value={props.themeOptions.minLuma}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(next) =>
+              props.onThemeOptionsChange({ ...props.themeOptions, minLuma: next })
+            }
+          />
+          <NumericSetting
+            label="Max Luma"
+            value={props.themeOptions.maxLuma}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(next) =>
+              props.onThemeOptionsChange({ ...props.themeOptions, maxLuma: next })
+            }
+          />
+          <NumericSetting
+            label="Workers"
+            value={props.themeOptions.workerCount}
+            min={0}
+            max={32}
+            step={1}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                workerCount: next,
+              })
+            }
+          />
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-neutral-300">
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={props.themeOptions.ignoreNearWhite}
+              onChange={(event) =>
+                props.onThemeOptionsChange({
+                  ...props.themeOptions,
+                  ignoreNearWhite: event.target.checked,
+                })
+              }
+            />
+            Ignore near white
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={props.themeOptions.ignoreNearBlack}
+              onChange={(event) =>
+                props.onThemeOptionsChange({
+                  ...props.themeOptions,
+                  ignoreNearBlack: event.target.checked,
+                })
+              }
+            />
+            Ignore near black
+          </label>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={!coverURL || props.themeBusy}
+            onClick={() => {
+              void props.onGenerateThemePalette();
+            }}
+            className="rounded-md bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-200 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400"
+          >
+            {props.themeBusy ? "Generating..." : "Generate Theme Palette"}
+          </button>
+          {!coverURL ? (
+            <p className="text-sm text-neutral-400">
+              Play a track with cover art to run the demo.
+            </p>
+          ) : null}
+        </div>
+
+        {props.themeErrorMessage ? (
+          <p className="mt-2 text-sm text-red-400">{props.themeErrorMessage}</p>
+        ) : null}
+
+        {coverURL ? (
+          <div className="mt-4 flex flex-col gap-3 lg:flex-row">
+            <img
+              src={coverURL}
+              alt="Current cover"
+              className="h-40 w-40 rounded-lg border border-neutral-800 object-cover"
+            />
+
+            <div className="min-w-0 flex-1">
+              {props.themePalette ? (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    {props.themePalette.gradient.map((color, index) => (
+                      <PaletteChip
+                        key={`${color.hex}-${index}`}
+                        color={color}
+                        label={`Gradient ${index + 1}`}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6">
+                    <RoleChip label="Primary" color={props.themePalette.primary} />
+                    <RoleChip label="Secondary" color={props.themePalette.secondary} />
+                    <RoleChip label="Tertiary" color={props.themePalette.tertiary} />
+                    <RoleChip label="Accent" color={props.themePalette.accent} />
+                    <RoleChip label="Dark" color={props.themePalette.dark} />
+                    <RoleChip label="Light" color={props.themePalette.light} />
+                  </div>
+
+                  <div className="mt-3 overflow-hidden rounded-lg border border-neutral-800">
+                    <div className="h-28 w-full" style={gradientPreviewStyle} />
+                  </div>
+                  <p className="mt-2 text-xs text-neutral-400">
+                    Source {props.themePalette.sourceWidth}x
+                    {props.themePalette.sourceHeight}, sampled to
+                    {" "}
+                    {props.themePalette.sampleWidth}x
+                    {props.themePalette.sampleHeight}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-neutral-400">
+                  Generate a palette to preview swatches and gradient output.
+                </p>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <MetricCard label="Queue Length" value={`${props.queueState.total}`} />
         <MetricCard label="Player Status" value={props.playerState.status} />
@@ -186,6 +475,106 @@ function MetricCard(props: MetricProps) {
       </p>
     </div>
   );
+}
+
+type NumericSettingProps = {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (next: number) => void;
+};
+
+function NumericSetting(props: NumericSettingProps) {
+  return (
+    <label className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-2">
+      <p className="text-xs tracking-wide text-neutral-500 uppercase">
+        {props.label}
+      </p>
+      <input
+        type="number"
+        value={props.value}
+        min={props.min}
+        max={props.max}
+        step={props.step}
+        onChange={(event) => {
+          const parsed = Number(event.target.value);
+          if (!Number.isFinite(parsed)) {
+            return;
+          }
+          props.onChange(parsed);
+        }}
+        className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-500"
+      />
+    </label>
+  );
+}
+
+type PaletteChipProps = {
+  label: string;
+  color: ThemePaletteColor;
+};
+
+function PaletteChip(props: PaletteChipProps) {
+  return (
+    <div className="min-w-32 rounded-md border border-neutral-800 bg-neutral-900 p-2">
+      <p className="text-xs tracking-wide text-neutral-500 uppercase">
+        {props.label}
+      </p>
+      <div
+        className="mt-1 h-10 w-full rounded border border-neutral-700"
+        style={{ backgroundColor: props.color.hex }}
+      />
+      <p className="mt-1 text-xs font-medium text-neutral-200">{props.color.hex}</p>
+      <p className="text-[11px] text-neutral-400">
+        L {Math.round(props.color.lightness * 100)}% | C
+        {" "}
+        {Math.round(props.color.chroma * 100)}%
+      </p>
+    </div>
+  );
+}
+
+type RoleChipProps = {
+  label: string;
+  color?: ThemePaletteColor;
+};
+
+function RoleChip(props: RoleChipProps) {
+  return (
+    <div className="rounded-md border border-neutral-800 bg-neutral-900 p-2">
+      <p className="text-xs tracking-wide text-neutral-500 uppercase">
+        {props.label}
+      </p>
+      <div
+        className="mt-1 h-8 w-full rounded border border-neutral-700"
+        style={{ backgroundColor: props.color?.hex ?? "#111111" }}
+      />
+      <p className="mt-1 text-xs text-neutral-300">{props.color?.hex ?? "-"}</p>
+    </div>
+  );
+}
+
+function buildGradientPreviewStyle(colors: ThemePaletteColor[]): CSSProperties {
+  if (colors.length === 0) {
+    return {
+      background:
+        "linear-gradient(135deg, rgba(24,24,27,1) 0%, rgba(9,9,11,1) 100%)",
+    };
+  }
+
+  const anchors = colors.slice(0, 4);
+  const ordered = [
+    anchors[0]?.hex,
+    anchors[1]?.hex ?? anchors[0]?.hex,
+    anchors[2]?.hex ?? anchors[0]?.hex,
+    anchors[3]?.hex ?? anchors[1]?.hex ?? anchors[0]?.hex,
+  ];
+
+  return {
+    backgroundImage: `radial-gradient(circle at 12% 24%, ${ordered[0]} 0%, transparent 50%), radial-gradient(circle at 82% 28%, ${ordered[1]} 0%, transparent 48%), radial-gradient(circle at 24% 86%, ${ordered[2]} 0%, transparent 44%), linear-gradient(135deg, ${ordered[3]} 0%, #09090b 92%)`,
+  };
 }
 
 function formatPlayedTime(durationMS: number): string {
