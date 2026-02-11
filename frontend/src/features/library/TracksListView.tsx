@@ -11,29 +11,29 @@ type TracksListViewProps = {
 export function TracksListView(props: TracksListViewProps) {
   return (
     <section className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold text-zinc-100">Tracks</h1>
+      <h1 className="text-xl font-semibold text-neutral-100">Tracks</h1>
       {props.tracks.length === 0 ? (
-        <p className="text-sm text-zinc-400">No tracks found.</p>
+        <p className="text-sm text-neutral-400">No tracks found.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {props.tracks.map((track) => (
             <li
               key={track.id}
-              className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950/15 px-3 py-2"
+              className="flex items-center gap-3 rounded-md border border-neutral-800 bg-neutral-950/15 px-3 py-2"
             >
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-zinc-100">{track.title}</p>
-                <p className="truncate text-xs text-zinc-400">
+                <p className="truncate text-sm text-neutral-100">{track.title}</p>
+                <p className="truncate text-xs text-neutral-400">
                   {track.artist} - {track.album}
                 </p>
               </div>
-              <p className="w-14 shrink-0 text-right text-xs text-zinc-500">
+              <p className="w-14 shrink-0 text-right text-xs text-neutral-500">
                 {props.formatDuration(track.durationMs)}
               </p>
               <button
                 type="button"
                 onClick={() => void props.onQueueTrack(track.id)}
-                className="rounded p-2 text-zinc-500 transition-colors hover:text-zinc-200"
+                className="rounded p-2 text-neutral-500 transition-colors hover:text-neutral-200"
                 aria-label={`Queue ${track.title}`}
               >
                 <Plus size={14} />
@@ -41,7 +41,7 @@ export function TracksListView(props: TracksListViewProps) {
               <button
                 type="button"
                 onClick={() => void props.onPlayTrack(track.id)}
-                className="rounded p-2 text-zinc-500 transition-colors hover:text-zinc-200"
+                className="rounded p-2 text-neutral-500 transition-colors hover:text-neutral-200"
                 aria-label={`Play ${track.title}`}
               >
                 <Play size={14} />

@@ -26,40 +26,40 @@ type SettingsViewProps = {
 export function SettingsView(props: SettingsViewProps) {
   return (
     <section className="flex flex-col gap-5">
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
-        <h1 className="text-xl font-semibold text-zinc-100">Settings</h1>
-        <p className="mt-1 text-sm text-zinc-400">
+      <div className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
+        <h1 className="text-xl font-semibold text-neutral-100">Settings</h1>
+        <p className="mt-1 text-sm text-neutral-400">
           Scanner, watched folders, and runtime stats.
         </p>
       </div>
 
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
-        <h2 className="text-sm font-semibold text-zinc-100">
+      <section className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
+        <h2 className="text-sm font-semibold text-neutral-100">
           Scanner Progress
         </h2>
         {props.lastProgress ? (
           <div className="mt-3 flex flex-col gap-2">
-            <div className="flex items-center justify-between text-xs text-zinc-400">
+            <div className="flex items-center justify-between text-xs text-neutral-400">
               <span className="capitalize">{props.lastProgress.phase}</span>
               <span>{props.lastProgress.percent}%</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
+            <div className="h-2 overflow-hidden rounded-full bg-neutral-800">
               <div
-                className="h-full bg-zinc-200"
+                className="h-full bg-neutral-200"
                 style={{
                   width: `${Math.max(0, Math.min(100, props.lastProgress.percent))}%`,
                 }}
               />
             </div>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-neutral-400">
               {props.lastProgress.message}
             </p>
           </div>
         ) : (
-          <p className="mt-2 text-sm text-zinc-400">No progress events yet.</p>
+          <p className="mt-2 text-sm text-neutral-400">No progress events yet.</p>
         )}
 
-        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-zinc-300 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-neutral-300 sm:grid-cols-2 lg:grid-cols-4">
           <Metric
             label="Running"
             value={props.scanStatus.running ? "Yes" : "No"}
@@ -88,8 +88,8 @@ export function SettingsView(props: SettingsViewProps) {
         ) : null}
       </section>
 
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
-        <h2 className="text-sm font-semibold text-zinc-100">Watched Folders</h2>
+      <section className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
+        <h2 className="text-sm font-semibold text-neutral-100">Watched Folders</h2>
         <form
           className="mt-3 flex flex-col gap-2 sm:flex-row"
           onSubmit={(event) => void props.onAddWatchedRoot(event)}
@@ -99,11 +99,11 @@ export function SettingsView(props: SettingsViewProps) {
             value={props.newRootPath}
             onChange={(event) => props.onNewRootPathChange(event.target.value)}
             placeholder="C:\\Music"
-            className="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-zinc-500"
+            className="flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 outline-none focus:border-neutral-500"
           />
           <button
             type="submit"
-            className="rounded-md bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-200"
+            className="rounded-md bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-200"
           >
             Add
           </button>
@@ -117,9 +117,9 @@ export function SettingsView(props: SettingsViewProps) {
           {props.watchedRoots.map((root) => (
             <li
               key={root.id}
-              className="flex flex-col gap-2 rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-2 rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
             >
-              <label className="flex min-w-0 items-center gap-2 text-sm text-zinc-300">
+              <label className="flex min-w-0 items-center gap-2 text-sm text-neutral-300">
                 <input
                   type="checkbox"
                   checked={root.enabled}
@@ -134,7 +134,7 @@ export function SettingsView(props: SettingsViewProps) {
                 onClick={() => {
                   void props.onRemoveWatchedRoot(root.id);
                 }}
-                className="w-fit rounded-md bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-700"
+                className="w-fit rounded-md bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-700"
               >
                 Remove
               </button>
@@ -162,22 +162,22 @@ type MetricProps = {
 
 function Metric(props: MetricProps) {
   return (
-    <div className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-2">
-      <p className="text-xs tracking-wide text-zinc-500 uppercase">
+    <div className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-2">
+      <p className="text-xs tracking-wide text-neutral-500 uppercase">
         {props.label}
       </p>
-      <p className="truncate text-sm text-zinc-200">{props.value}</p>
+      <p className="truncate text-sm text-neutral-200">{props.value}</p>
     </div>
   );
 }
 
 function MetricCard(props: MetricProps) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
-      <p className="text-xs tracking-wide text-zinc-500 uppercase">
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
+      <p className="text-xs tracking-wide text-neutral-500 uppercase">
         {props.label}
       </p>
-      <p className="mt-1 text-lg font-semibold text-zinc-100">{props.value}</p>
+      <p className="mt-1 text-lg font-semibold text-neutral-100">{props.value}</p>
     </div>
   );
 }

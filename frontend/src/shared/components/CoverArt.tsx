@@ -15,13 +15,13 @@ export function CoverArt(props: CoverArtProps) {
   const canRenderImage = !!source && source !== failedSource;
 
   const className = props.className
-    ? `shrink-0 bg-zinc-800 object-cover object-center ${props.className}`
-    : "h-12 w-12 shrink-0 rounded-md bg-zinc-800 object-cover object-center";
+    ? `shrink-0 bg-neutral-800 object-cover object-center ${props.className}`
+    : "h-12 w-12 shrink-0 rounded-md bg-neutral-800 object-cover object-center";
 
   if (!canRenderImage) {
     return (
       <div
-        className={`${className} flex items-center justify-center text-[10px] tracking-wide text-zinc-500 uppercase`}
+        className={`${className} flex items-center justify-center text-[10px] tracking-wide text-neutral-500 uppercase`}
       >
         No Cover
       </div>

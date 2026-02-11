@@ -653,7 +653,7 @@ function AppContent() {
   );
 
   return (
-    <div className="relative isolate h-dvh overflow-hidden bg-zinc-950 text-zinc-100">
+    <div className="relative isolate h-dvh overflow-hidden bg-neutral-950 text-neutral-100">
       {currentTrackCoverURL ? (
         <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
           <img
@@ -767,10 +767,10 @@ function AppContent() {
 
                     <Route path="*">
                       <section>
-                        <h1 className="text-xl font-semibold text-zinc-100">
+                        <h1 className="text-xl font-semibold text-neutral-100">
                           Not Found
                         </h1>
-                        <p className="text-sm text-zinc-400">
+                        <p className="text-sm text-neutral-400">
                           Choose Albums, Artists, Tracks, or Settings.
                         </p>
                       </section>
@@ -779,8 +779,8 @@ function AppContent() {
                 </div>
               </ScrollArea.Content>
             </ScrollArea.Viewport>
-            <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-zinc-800/80 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
-              <ScrollArea.Thumb className="w-full rounded bg-zinc-500" />
+            <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-neutral-800/80 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
+              <ScrollArea.Thumb className="w-full rounded bg-neutral-500" />
             </ScrollArea.Scrollbar>
           </ScrollArea.Root>
         </main>

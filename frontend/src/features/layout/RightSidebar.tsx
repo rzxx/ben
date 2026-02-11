@@ -16,15 +16,15 @@ type RightSidebarProps = {
 
 export function RightSidebar(props: RightSidebarProps) {
   return (
-    <aside className="flex h-full min-h-0 w-80 shrink-0 flex-col border-l border-zinc-800 bg-zinc-950/30 pt-4">
+    <aside className="flex h-full min-h-0 w-80 shrink-0 flex-col border-l border-neutral-800 bg-neutral-950/30 pt-4">
       <div className="flex gap-2 px-3">
         <button
           type="button"
           onClick={() => props.onTabChange("queue")}
           className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
             props.tab === "queue"
-              ? "bg-zinc-100 text-zinc-900"
-              : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+              ? "bg-neutral-100 text-neutral-900"
+              : "bg-neutral-800 text-neutral-200 hover:bg-neutral-700"
           }`}
         >
           <ListMusic size={14} />
@@ -35,8 +35,8 @@ export function RightSidebar(props: RightSidebarProps) {
           onClick={() => props.onTabChange("details")}
           className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
             props.tab === "details"
-              ? "bg-zinc-100 text-zinc-900"
-              : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+              ? "bg-neutral-100 text-neutral-900"
+              : "bg-neutral-800 text-neutral-200 hover:bg-neutral-700"
           }`}
         >
           <Rows4 size={14} />
@@ -62,8 +62,8 @@ export function RightSidebar(props: RightSidebarProps) {
             )}
           </ScrollArea.Content>
         </ScrollArea.Viewport>
-        <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-zinc-800/80 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
-          <ScrollArea.Thumb className="w-full rounded bg-zinc-500" />
+        <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-neutral-800/80 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
+          <ScrollArea.Thumb className="w-full rounded bg-neutral-500" />
         </ScrollArea.Scrollbar>
       </ScrollArea.Root>
     </aside>
@@ -79,12 +79,12 @@ function TrackDetailsPanel(props: TrackDetailsPanelProps) {
   const track = props.playerState.currentTrack;
 
   if (!track) {
-    return <p className="text-sm text-zinc-400">No track selected.</p>;
+    return <p className="text-sm text-neutral-400">No track selected.</p>;
   }
 
   return (
     <section className="flex flex-col gap-2 text-sm">
-      <h2 className="text-sm font-semibold text-zinc-100">Current Track</h2>
+      <h2 className="text-sm font-semibold text-neutral-100">Current Track</h2>
       <DetailRow label="Title" value={track.title} />
       <DetailRow label="Artist" value={track.artist} />
       <DetailRow label="Album" value={track.album} />
@@ -113,11 +113,11 @@ type DetailRowProps = {
 
 function DetailRow(props: DetailRowProps) {
   return (
-    <div className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1.5">
-      <p className="text-xs tracking-wide text-zinc-500 uppercase">
+    <div className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5">
+      <p className="text-xs tracking-wide text-neutral-500 uppercase">
         {props.label}
       </p>
-      <p className="truncate text-zinc-200">{props.value}</p>
+      <p className="truncate text-neutral-200">{props.value}</p>
     </div>
   );
 }

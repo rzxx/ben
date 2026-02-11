@@ -24,9 +24,9 @@ const navItems = [
 
 export function LeftSidebar(props: LeftSidebarProps) {
   return (
-    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950/30 px-4 pt-4 pb-36">
-      <div className="border-b border-zinc-800 pb-4">
-        <p className="text-xl font-semibold tracking-wide text-zinc-100">ben</p>
+    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-neutral-800 bg-neutral-950/30 px-4 pt-4 pb-36">
+      <div className="border-b border-neutral-800 pb-4">
+        <p className="text-xl font-semibold tracking-wide text-neutral-100">ben</p>
       </div>
 
       <nav
@@ -43,8 +43,8 @@ export function LeftSidebar(props: LeftSidebarProps) {
               onClick={() => props.onNavigate(item.path)}
               className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
                 isActive
-                  ? "bg-zinc-100 text-zinc-900"
-                  : "text-zinc-200 hover:bg-zinc-800"
+                  ? "bg-neutral-100 text-neutral-900"
+                  : "text-neutral-200 hover:bg-neutral-800"
               }`}
             >
               <Icon size={15} />
@@ -54,13 +54,13 @@ export function LeftSidebar(props: LeftSidebarProps) {
         })}
       </nav>
 
-      <div className="mt-4 flex flex-col gap-2 border-t border-zinc-800 pt-4">
-        <p className="text-xs tracking-wide text-zinc-400 uppercase">Scan</p>
+      <div className="mt-4 flex flex-col gap-2 border-t border-neutral-800 pt-4">
+        <p className="text-xs tracking-wide text-neutral-400 uppercase">Scan</p>
         <button
           type="button"
           onClick={() => void props.onRunIncrementalScan()}
           disabled={props.scanRunning}
-          className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Disc3 size={15} />
           {props.scanRunning ? "Scanning..." : "Incremental Scan"}
@@ -69,7 +69,7 @@ export function LeftSidebar(props: LeftSidebarProps) {
           type="button"
           onClick={() => void props.onRunFullScan()}
           disabled={props.scanRunning}
-          className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <FolderSearch size={15} />
           {props.scanRunning ? "Scanning..." : "Full Scan"}

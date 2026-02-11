@@ -16,7 +16,7 @@ type AlbumDetailViewProps = {
 
 export function AlbumDetailView(props: AlbumDetailViewProps) {
   if (!props.albumDetail) {
-    return <p className="text-sm text-zinc-400">Loading album...</p>;
+    return <p className="text-sm text-neutral-400">Loading album...</p>;
   }
 
   const album = props.albumDetail;
@@ -26,13 +26,13 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
       <button
         type="button"
         onClick={props.onBack}
-        className="inline-flex w-fit items-center gap-2 rounded-md px-1 py-1 text-sm text-zinc-400 transition-colors hover:text-zinc-200"
+        className="inline-flex w-fit items-center gap-2 rounded-md px-1 py-1 text-sm text-neutral-400 transition-colors hover:text-neutral-200"
       >
         <ArrowLeft size={14} />
         Back to albums
       </button>
 
-      <div className="flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-950/15 p-4 sm:flex-row sm:items-end">
+      <div className="flex flex-col gap-4 rounded-xl border border-neutral-800 bg-neutral-950/15 p-4 sm:flex-row sm:items-end">
         <CoverArt
           coverPath={album.coverPath}
           alt={`${album.title} cover`}
@@ -40,17 +40,17 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
           loading="eager"
         />
         <div className="min-w-0 flex-1">
-          <p className="text-xs tracking-wide text-zinc-400 uppercase">Album</p>
-          <h1 className="truncate text-2xl font-semibold text-zinc-100">
+          <p className="text-xs tracking-wide text-neutral-400 uppercase">Album</p>
+          <h1 className="truncate text-2xl font-semibold text-neutral-100">
             {album.title}
           </h1>
-          <p className="truncate text-sm text-zinc-300">{album.albumArtist}</p>
-          <p className="text-xs text-zinc-500">{album.trackCount} tracks</p>
+          <p className="truncate text-sm text-neutral-300">{album.albumArtist}</p>
+          <p className="text-xs text-neutral-500">{album.trackCount} tracks</p>
         </div>
         <button
           type="button"
           onClick={() => void props.onPlayAlbum(album.title, album.albumArtist)}
-          className="inline-flex items-center gap-2 rounded-md bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-200"
+          className="inline-flex items-center gap-2 rounded-md bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-200"
         >
           <Play size={16} />
           Play Album
@@ -61,17 +61,17 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
         {album.tracks.map((track) => (
           <li
             key={track.id}
-            className="flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-950/15 px-3 py-2"
+            className="flex items-center gap-3 rounded-md border border-neutral-800 bg-neutral-950/15 px-3 py-2"
           >
-            <p className="w-14 shrink-0 text-xs text-zinc-500">
+            <p className="w-14 shrink-0 text-xs text-neutral-500">
               {track.discNo ? `${track.discNo}-` : ""}
               {track.trackNo ?? "-"}
             </p>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-zinc-100">{track.title}</p>
-              <p className="truncate text-xs text-zinc-400">{track.artist}</p>
+              <p className="truncate text-sm text-neutral-100">{track.title}</p>
+              <p className="truncate text-xs text-neutral-400">{track.artist}</p>
             </div>
-            <p className="w-14 shrink-0 text-right text-xs text-zinc-500">
+            <p className="w-14 shrink-0 text-right text-xs text-neutral-500">
               {props.formatDuration(track.durationMs)}
             </p>
             <button
@@ -83,7 +83,7 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
                   track.id,
                 )
               }
-              className="rounded p-2 text-zinc-500 transition-colors hover:text-zinc-200"
+              className="rounded p-2 text-neutral-500 transition-colors hover:text-neutral-200"
               aria-label={`Play ${track.title}`}
             >
               <Play size={14} />
