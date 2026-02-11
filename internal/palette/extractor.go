@@ -134,7 +134,8 @@ func (e *Extractor) ExtractFromImage(img image.Image, options ExtractOptions) (T
 		return ThemePalette{}, errors.New("unable to select final palette")
 	}
 
-	selection := resolveThemeSelection(uniqueSwatches, selected, normalized)
+	broadCandidates := buildBroadCandidateSwatches(sampled, normalized)
+	selection := resolveThemeSelection(uniqueSwatches, selected, broadCandidates, normalized)
 
 	return ThemePalette{
 		Primary:      toPaletteColorPointer(selection.primary),
@@ -307,15 +308,19 @@ func downscaleNRGBA(src *image.NRGBA, maxDimension int, workerCount int) *image.
 		wg.Add(1)
 		go func(start, end int) {
 			defer wg.Done()
+			xScale := float64(sourceWidth) / float64(targetWidth)
+			yScale := float64(sourceHeight) / float64(targetHeight)
 			for y := start; y < end; y++ {
-				sourceY := minInt((y*sourceHeight)/targetHeight, sourceHeight-1)
-				sourceRowOffset := sourceY * src.Stride
+				sampleY := (float64(y)+0.5)*yScale - 0.5
 				targetRowOffset := y * dst.Stride
 				for x := 0; x < targetWidth; x++ {
-					sourceX := minInt((x*sourceWidth)/targetWidth, sourceWidth-1)
-					sourceOffset := sourceRowOffset + sourceX*4
+					sampleX := (float64(x)+0.5)*xScale - 0.5
+					r, g, b, a := bilinearSampleNRGBA(src, sampleX, sampleY)
 					targetOffset := targetRowOffset + x*4
-					copy(dst.Pix[targetOffset:targetOffset+4], src.Pix[sourceOffset:sourceOffset+4])
+					dst.Pix[targetOffset] = r
+					dst.Pix[targetOffset+1] = g
+					dst.Pix[targetOffset+2] = b
+					dst.Pix[targetOffset+3] = a
 				}
 			}
 		}(startY, endY)
@@ -323,6 +328,42 @@ func downscaleNRGBA(src *image.NRGBA, maxDimension int, workerCount int) *image.
 
 	wg.Wait()
 	return dst
+}
+
+func bilinearSampleNRGBA(src *image.NRGBA, x float64, y float64) (uint8, uint8, uint8, uint8) {
+	width := src.Bounds().Dx()
+	height := src.Bounds().Dy()
+	if width <= 0 || height <= 0 {
+		return 0, 0, 0, 0
+	}
+
+	x = clampFloat(x, 0, float64(width-1))
+	y = clampFloat(y, 0, float64(height-1))
+
+	x0 := int(math.Floor(x))
+	y0 := int(math.Floor(y))
+	x1 := minInt(x0+1, width-1)
+	y1 := minInt(y0+1, height-1)
+
+	tx := x - float64(x0)
+	ty := y - float64(y0)
+
+	offset00 := y0*src.Stride + x0*4
+	offset10 := y0*src.Stride + x1*4
+	offset01 := y1*src.Stride + x0*4
+	offset11 := y1*src.Stride + x1*4
+
+	w00 := (1 - tx) * (1 - ty)
+	w10 := tx * (1 - ty)
+	w01 := (1 - tx) * ty
+	w11 := tx * ty
+
+	r := w00*float64(src.Pix[offset00]) + w10*float64(src.Pix[offset10]) + w01*float64(src.Pix[offset01]) + w11*float64(src.Pix[offset11])
+	g := w00*float64(src.Pix[offset00+1]) + w10*float64(src.Pix[offset10+1]) + w01*float64(src.Pix[offset01+1]) + w11*float64(src.Pix[offset11+1])
+	b := w00*float64(src.Pix[offset00+2]) + w10*float64(src.Pix[offset10+2]) + w01*float64(src.Pix[offset01+2]) + w11*float64(src.Pix[offset11+2])
+	a := w00*float64(src.Pix[offset00+3]) + w10*float64(src.Pix[offset10+3]) + w01*float64(src.Pix[offset01+3]) + w11*float64(src.Pix[offset11+3])
+
+	return uint8(math.Round(r)), uint8(math.Round(g)), uint8(math.Round(b)), uint8(math.Round(a))
 }
 
 func buildColorBins(img *image.NRGBA, options ExtractOptions) ([]colorBin, int, error) {
@@ -735,6 +776,29 @@ func selectPaletteSwatches(swatches []swatch, options ExtractOptions) []swatch {
 	return selected
 }
 
+func buildBroadCandidateSwatches(img *image.NRGBA, options ExtractOptions) []swatch {
+	broad := options
+	broad.Quality = 1
+	broad.IgnoreNearWhite = false
+	broad.IgnoreNearBlack = false
+	broad.MinLuma = 0
+	broad.MaxLuma = 1
+	broad.CandidateCount = clampInt(maxInt(options.CandidateCount, options.ColorCount*6), options.ColorCount, 128)
+
+	bins, _, err := buildColorBins(img, broad)
+	if err != nil {
+		return nil
+	}
+
+	boxes := buildBoxes(bins, broad.CandidateCount)
+	swatches := boxesToSwatches(boxes)
+	if len(swatches) == 0 {
+		return nil
+	}
+
+	return deduplicateSwatches(swatches, maxFloat(options.MinDelta*0.55, 0.01))
+}
+
 func scoreSwatch(candidate swatch, maxPopulation float64, options ExtractOptions) float64 {
 	popScore := float64(candidate.population) / maxPopulation
 	lightnessScore := 1 - math.Abs(candidate.lightness-0.58)
@@ -788,10 +852,18 @@ type themeSelection struct {
 	gradient  []swatch
 }
 
-func resolveThemeSelection(candidates []swatch, selected []swatch, options ExtractOptions) themeSelection {
+func resolveThemeSelection(candidates []swatch, selected []swatch, broadCandidates []swatch, options ExtractOptions) themeSelection {
 	selection := themeSelection{}
 	if len(selected) == 0 {
 		return selection
+	}
+	if len(candidates) == 0 {
+		candidates = append([]swatch(nil), selected...)
+	}
+
+	supportCandidates := mergeSwatchPools(broadCandidates, candidates, maxFloat(options.MinDelta*0.35, 0.01))
+	if len(supportCandidates) == 0 {
+		supportCandidates = append([]swatch(nil), candidates...)
 	}
 
 	primary := selected[0]
@@ -827,69 +899,208 @@ func resolveThemeSelection(candidates []swatch, selected []swatch, options Extra
 		chosen = append(chosen, accent)
 	}
 
-	if dark, ok := bestDistinctSwatch(candidates, chosen, options.MinDelta*0.6, func(candidate swatch) float64 {
+	if dark, ok := bestDistinctSwatch(supportCandidates, chosen, options.MinDelta*0.46, func(candidate swatch) float64 {
 		if candidate.lightness > 0.45 {
 			return -1
 		}
 		lightnessFit := 1 - math.Abs(candidate.lightness-0.27)
-		popFit := float64(candidate.population) / float64(candidates[0].population)
+		popFit := float64(candidate.population) / float64(supportCandidates[0].population)
 		return 0.72*lightnessFit + 0.28*popFit
 	}); ok {
 		selection.dark = swatchPointer(dark)
+		chosen = append(chosen, dark)
+	} else if darkFallback, ok := extremeLightnessFallback(supportCandidates, true); ok {
+		selection.dark = swatchPointer(darkFallback)
+		chosen = append(chosen, darkFallback)
 	}
 
-	if light, ok := bestDistinctSwatch(candidates, chosen, options.MinDelta*0.6, func(candidate swatch) float64 {
+	if light, ok := bestDistinctSwatch(supportCandidates, chosen, options.MinDelta*0.46, func(candidate swatch) float64 {
 		if candidate.lightness < 0.62 {
 			return -1
 		}
 		lightnessFit := 1 - math.Abs(candidate.lightness-0.82)
-		popFit := float64(candidate.population) / float64(candidates[0].population)
+		popFit := float64(candidate.population) / float64(supportCandidates[0].population)
 		return 0.72*lightnessFit + 0.28*popFit
 	}); ok {
 		selection.light = swatchPointer(light)
+	} else if lightFallback, ok := extremeLightnessFallback(supportCandidates, false); ok {
+		selection.light = swatchPointer(lightFallback)
 	}
 
-	selection.gradient = buildGradientSwatches(selection, candidates, options.MinDelta)
+	gradientCandidates := mergeSwatchPools(candidates, supportCandidates, maxFloat(options.MinDelta*0.3, 0.008))
+	if len(gradientCandidates) == 0 {
+		gradientCandidates = append([]swatch(nil), candidates...)
+	}
+	selection.gradient = buildGradientSwatches(selection, gradientCandidates, options.MinDelta)
 	return selection
 }
 
 func buildGradientSwatches(selection themeSelection, candidates []swatch, minDelta float64) []swatch {
 	ordered := make([]swatch, 0, 5)
-	seeds := []*swatch{
-		selection.primary,
-		selection.secondary,
-		selection.accent,
-		selection.tertiary,
-		selection.dark,
-		selection.light,
-	}
 
-	for _, seed := range seeds {
+	addSeed := func(seed *swatch, threshold float64) {
 		if seed == nil {
-			continue
+			return
 		}
-		if isDistinctFromSelection(ordered, *seed, minDelta*0.68) {
+		if len(ordered) == 0 || isDistinctFromSelection(ordered, *seed, threshold) {
 			ordered = append(ordered, *seed)
 		}
-		if len(ordered) >= 5 {
-			return ordered[:5]
+	}
+
+	addSeed(selection.primary, minDelta*0.45)
+	addSeed(selection.accent, minDelta*0.42)
+	addSeed(selection.secondary, minDelta*0.42)
+	addSeed(selection.tertiary, minDelta*0.4)
+	addSeed(selection.dark, minDelta*0.28)
+	addSeed(selection.light, minDelta*0.28)
+
+	for len(ordered) < 5 {
+		candidate, ok := bestGradientCandidate(candidates, ordered, minDelta)
+		if !ok {
+			break
+		}
+		ordered = append(ordered, candidate)
+	}
+
+	if len(ordered) == 0 && len(candidates) > 0 {
+		ordered = append(ordered, candidates[0])
+	}
+
+	if len(ordered) > 0 && len(ordered) < 5 {
+		base := append([]swatch(nil), ordered...)
+		for index := 0; len(ordered) < 5; index++ {
+			ordered = append(ordered, base[index%len(base)])
 		}
 	}
 
-	for _, candidate := range candidates {
-		if isDistinctFromSelection(ordered, candidate, minDelta*0.64) {
-			ordered = append(ordered, candidate)
-		}
-		if len(ordered) >= 5 {
-			return ordered[:5]
-		}
-	}
-
-	for len(ordered) > 0 && len(ordered) < 5 {
-		ordered = append(ordered, ordered[len(ordered)%len(ordered)])
+	if len(ordered) > 5 {
+		ordered = ordered[:5]
 	}
 
 	return ordered
+}
+
+func mergeSwatchPools(primary []swatch, secondary []swatch, threshold float64) []swatch {
+	combined := make([]swatch, 0, len(primary)+len(secondary))
+	combined = append(combined, primary...)
+	combined = append(combined, secondary...)
+	if len(combined) == 0 {
+		return nil
+	}
+	return deduplicateSwatches(combined, threshold)
+}
+
+func extremeLightnessFallback(candidates []swatch, preferDark bool) (swatch, bool) {
+	if len(candidates) == 0 {
+		return swatch{}, false
+	}
+
+	best := candidates[0]
+	for _, candidate := range candidates[1:] {
+		if preferDark {
+			if candidate.lightness < best.lightness || (candidate.lightness == best.lightness && candidate.population > best.population) {
+				best = candidate
+			}
+			continue
+		}
+		if candidate.lightness > best.lightness || (candidate.lightness == best.lightness && candidate.population > best.population) {
+			best = candidate
+		}
+	}
+
+	return best, true
+}
+
+func bestGradientCandidate(candidates []swatch, selected []swatch, minDelta float64) (swatch, bool) {
+	if len(candidates) == 0 {
+		return swatch{}, false
+	}
+
+	maxPopulation := float64(candidates[0].population)
+	if maxPopulation <= 0 {
+		maxPopulation = 1
+	}
+
+	best := swatch{}
+	bestScore := -1.0
+	found := false
+
+	for _, candidate := range candidates {
+		if containsSwatch(selected, candidate) {
+			continue
+		}
+
+		nearestDistance := nearestOKLabDistance(selected, candidate)
+		if len(selected) > 0 && nearestDistance < minDelta*0.28 {
+			continue
+		}
+
+		popScore := float64(candidate.population) / maxPopulation
+		distanceScore := 1.0
+		if len(selected) > 0 {
+			distanceScore = clampFloat(nearestDistance/maxFloat(minDelta, 0.001), 0, 1)
+		}
+		hueScore := nearestHueDistance(selected, candidate) / 180
+		lightnessScore := nearestLightnessDistance(selected, candidate)
+		chromaScore := clampFloat(candidate.chroma/0.34, 0, 1)
+
+		candidateScore := 0.30*popScore + 0.26*distanceScore + 0.2*hueScore + 0.14*lightnessScore + 0.1*chromaScore
+		if !found || candidateScore > bestScore {
+			best = candidate
+			bestScore = candidateScore
+			found = true
+		}
+	}
+
+	return best, found
+}
+
+func nearestOKLabDistance(selected []swatch, candidate swatch) float64 {
+	if len(selected) == 0 {
+		return 1
+	}
+
+	best := math.MaxFloat64
+	for _, existing := range selected {
+		distance := okLabDistance(existing, candidate)
+		if distance < best {
+			best = distance
+		}
+	}
+	return best
+}
+
+func nearestHueDistance(selected []swatch, candidate swatch) float64 {
+	if len(selected) == 0 {
+		return 180
+	}
+
+	best := 180.0
+	for _, existing := range selected {
+		delta := math.Abs(existing.hue - candidate.hue)
+		if delta > 180 {
+			delta = 360 - delta
+		}
+		if delta < best {
+			best = delta
+		}
+	}
+	return best
+}
+
+func nearestLightnessDistance(selected []swatch, candidate swatch) float64 {
+	if len(selected) == 0 {
+		return 1
+	}
+
+	best := 1.0
+	for _, existing := range selected {
+		delta := math.Abs(existing.lightness - candidate.lightness)
+		if delta < best {
+			best = delta
+		}
+	}
+	return best
 }
 
 func firstDistinctSwatch(candidates []swatch, selected []swatch, minDelta float64) (swatch, bool) {
