@@ -20,7 +20,8 @@ import { ArtistsGridView } from "./features/library/ArtistsGridView";
 import { TracksListView } from "./features/library/TracksListView";
 import { PlayerBar } from "./features/player/PlayerBar";
 import { SettingsView } from "./features/settings/SettingsView";
-import { coverPathToURL } from "./shared/cover";
+import { BackgroundShader } from "./shared/components/BackgroundShader";
+import { useBackgroundShaderStore } from "./shared/store/backgroundShaderStore";
 import {
   AlbumDetail,
   ArtistDetail,
@@ -186,9 +187,15 @@ function AppContent() {
     "queue",
   );
 
+  const setBackgroundThemePalette = useBackgroundShaderStore(
+    (state) => state.setThemePalette,
+  );
+
   const statsRefreshKeyRef = useRef("");
   const seekRequestInFlightRef = useRef(false);
   const pendingSeekMSRef = useRef<number | null>(null);
+  const themeRequestTokenRef = useRef(0);
+  const themeOptionsRef = useRef(themeOptions);
 
   const loadWatchedRoots = useCallback(async () => {
     const roots = await Call.ByName(`${settingsService}.ListWatchedRoots`);
@@ -320,7 +327,14 @@ function AppContent() {
   ]);
 
   useEffect(() => {
-    setGeneratedThemePalette(null);
+    themeOptionsRef.current = themeOptions;
+  }, [themeOptions]);
+
+  useEffect(() => {
+    setBackgroundThemePalette(generatedThemePalette);
+  }, [generatedThemePalette, setBackgroundThemePalette]);
+
+  useEffect(() => {
     setThemeErrorMessage(null);
   }, [playerState.currentTrack?.coverPath]);
 
@@ -684,32 +698,62 @@ function AppContent() {
     }
   };
 
-  const onGenerateThemePalette = async () => {
-    const coverPath = playerState.currentTrack?.coverPath?.trim();
-    if (!coverPath) {
-      setThemeErrorMessage("No cover art available for the current track.");
-      setGeneratedThemePalette(null);
+  const generateThemePaletteForCover = useCallback(async (coverPath: string) => {
+    const trimmedPath = coverPath.trim();
+    if (!trimmedPath) {
       return;
     }
+
+    const requestToken = themeRequestTokenRef.current + 1;
+    themeRequestTokenRef.current = requestToken;
 
     try {
       setThemeBusy(true);
       setThemeErrorMessage(null);
       const nextPalette = await Call.ByName(
         `${themeService}.GenerateFromCover`,
-        coverPath,
-        themeOptions,
+        trimmedPath,
+        themeOptionsRef.current,
       );
+
+      if (requestToken !== themeRequestTokenRef.current) {
+        return;
+      }
+
       setGeneratedThemePalette((nextPalette ?? null) as ThemePalette | null);
     } catch (error) {
-      setThemeErrorMessage(parseError(error));
+      if (requestToken === themeRequestTokenRef.current) {
+        setThemeErrorMessage(parseError(error));
+      }
     } finally {
-      setThemeBusy(false);
+      if (requestToken === themeRequestTokenRef.current) {
+        setThemeBusy(false);
+      }
     }
+  }, []);
+
+  const onGenerateThemePalette = async () => {
+    const coverPath = playerState.currentTrack?.coverPath?.trim();
+    if (!coverPath) {
+      setThemeErrorMessage("No cover art available for the current track.");
+      return;
+    }
+
+    await generateThemePaletteForCover(coverPath);
   };
 
+  useEffect(() => {
+    const coverPath = playerState.currentTrack?.coverPath?.trim();
+    if (!coverPath) {
+      themeRequestTokenRef.current += 1;
+      setThemeBusy(false);
+      return;
+    }
+
+    void generateThemePaletteForCover(coverPath);
+  }, [generateThemePaletteForCover, playerState.currentTrack?.coverPath]);
+
   const currentTrack = playerState.currentTrack;
-  const currentTrackCoverURL = coverPathToURL(currentTrack?.coverPath);
   const hasCurrentTrack = !!currentTrack;
   const seekMax = Math.max(playerState.durationMs ?? 0, 1);
   const seekValue = Math.min(playerState.positionMs, seekMax);
@@ -725,16 +769,7 @@ function AppContent() {
 
   return (
     <div className="relative isolate flex h-dvh flex-col overflow-hidden bg-neutral-950 text-neutral-100">
-      {currentTrackCoverURL ? (
-        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
-          <img
-            src={currentTrackCoverURL}
-            alt=""
-            aria-hidden="true"
-            className="h-full w-full scale-125 object-cover opacity-10 blur-[96px]"
-          />
-        </div>
-      ) : null}
+      <BackgroundShader />
 
       <TitleBar />
 

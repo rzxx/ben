@@ -11,6 +11,7 @@ import {
   ThemePaletteColor,
   WatchedRoot,
 } from "../types";
+import { useBackgroundShaderStore } from "../../shared/store/backgroundShaderStore";
 
 type SettingsViewProps = {
   lastProgress: ScanProgress | null;
@@ -39,6 +40,8 @@ export function SettingsView(props: SettingsViewProps) {
   const gradientPreviewStyle = buildGradientPreviewStyle(
     props.themePalette?.gradient ?? [],
   );
+  const shaderSettings = useBackgroundShaderStore((state) => state.settings);
+  const setShaderSettings = useBackgroundShaderStore((state) => state.setSettings);
 
   return (
     <section className="flex flex-col gap-5">
@@ -434,6 +437,91 @@ export function SettingsView(props: SettingsViewProps) {
             </div>
           </div>
         ) : null}
+      </section>
+
+      <section className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
+        <h2 className="text-sm font-semibold text-neutral-100">Background Shader</h2>
+        <p className="mt-1 text-sm text-neutral-400">
+          WebGPU Perlin gradient controls. Palette transitions use OKLab
+          interpolation in shader.
+        </p>
+
+        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-neutral-300 sm:grid-cols-2 lg:grid-cols-3">
+          <NumericSetting
+            label="Effect Opacity"
+            value={shaderSettings.opacity}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(next) => setShaderSettings({ opacity: next })}
+          />
+          <NumericSetting
+            label="Transition (sec)"
+            value={shaderSettings.colorTransitionSeconds}
+            min={0}
+            max={16}
+            step={0.1}
+            onChange={(next) =>
+              setShaderSettings({ colorTransitionSeconds: next })
+            }
+          />
+          <NumericSetting
+            label="Noise Scale"
+            value={shaderSettings.noiseScale}
+            min={0.1}
+            max={5}
+            step={0.01}
+            onChange={(next) => setShaderSettings({ noiseScale: next })}
+          />
+          <NumericSetting
+            label="Flow Speed"
+            value={shaderSettings.flowSpeed}
+            min={0}
+            max={5}
+            step={0.01}
+            onChange={(next) => setShaderSettings({ flowSpeed: next })}
+          />
+          <NumericSetting
+            label="Warp Strength"
+            value={shaderSettings.warpStrength}
+            min={0}
+            max={1.5}
+            step={0.01}
+            onChange={(next) => setShaderSettings({ warpStrength: next })}
+          />
+          <NumericSetting
+            label="Blur Radius"
+            value={shaderSettings.blurRadius}
+            min={0}
+            max={6}
+            step={0.05}
+            onChange={(next) => setShaderSettings({ blurRadius: next })}
+          />
+          <NumericSetting
+            label="Grain Strength"
+            value={shaderSettings.grainStrength}
+            min={0}
+            max={0.25}
+            step={0.001}
+            onChange={(next) => setShaderSettings({ grainStrength: next })}
+          />
+          <NumericSetting
+            label="Grain Scale"
+            value={shaderSettings.grainScale}
+            min={0.1}
+            max={8}
+            step={0.01}
+            onChange={(next) => setShaderSettings({ grainScale: next })}
+          />
+          <NumericSetting
+            label="Grain Speed"
+            value={shaderSettings.grainSpeed}
+            min={0}
+            max={6}
+            step={0.01}
+            onChange={(next) => setShaderSettings({ grainSpeed: next })}
+          />
+        </div>
       </section>
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
