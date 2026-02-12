@@ -165,7 +165,11 @@ function getLiveColorSet(
   ];
 }
 
-function mixColorInOklab(a: ShaderColor, b: ShaderColor, t: number): ShaderColor {
+function mixColorInOklab(
+  a: ShaderColor,
+  b: ShaderColor,
+  t: number,
+): ShaderColor {
   const from = srgbToOklab(a);
   const to = srgbToOklab(b);
   const mixAmount = clamp(t, 0, 1);
@@ -175,11 +179,7 @@ function mixColorInOklab(a: ShaderColor, b: ShaderColor, t: number): ShaderColor
     from[2] + (to[2] - from[2]) * mixAmount,
   ]);
 
-  return [
-    clamp(mixed[0], 0, 1),
-    clamp(mixed[1], 0, 1),
-    clamp(mixed[2], 0, 1),
-  ];
+  return [clamp(mixed[0], 0, 1), clamp(mixed[1], 0, 1), clamp(mixed[2], 0, 1)];
 }
 
 function srgbToOklab(color: ShaderColor): [number, number, number] {
@@ -205,7 +205,9 @@ function srgbToOklab(color: ShaderColor): [number, number, number] {
   ];
 }
 
-function oklabToSrgb(color: [number, number, number]): [number, number, number] {
+function oklabToSrgb(
+  color: [number, number, number],
+): [number, number, number] {
   const lPrime = color[0] + 0.3963377774 * color[1] + 0.2158037573 * color[2];
   const mPrime = color[0] - 0.1055613458 * color[1] - 0.0638541728 * color[2];
   const sPrime = color[0] - 0.0894841775 * color[1] - 1.291485548 * color[2];
@@ -218,11 +220,7 @@ function oklabToSrgb(color: [number, number, number]): [number, number, number] 
   const linearG = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
   const linearB = -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s;
 
-  return [
-    linearToSrgb(linearR),
-    linearToSrgb(linearG),
-    linearToSrgb(linearB),
-  ];
+  return [linearToSrgb(linearR), linearToSrgb(linearG), linearToSrgb(linearB)];
 }
 
 function srgbToLinear(value: number): number {

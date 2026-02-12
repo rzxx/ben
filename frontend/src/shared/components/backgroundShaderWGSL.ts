@@ -341,11 +341,10 @@ fn fsMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
   let c4 = interpolatedPaletteColor(4u);
 
   let useLegacy = uniforms.paramsC.x > 0.5;
-  let color = select(
-    stableLayeredColorField(uv, time, c0, c1, c2, c3, c4),
-    legacyFeedbackColorField(uv, time, c0, c1, c2, c3, c4),
-    useLegacy
-  );
+  var color = stableLayeredColorField(uv, time, c0, c1, c2, c3, c4);
+  if (useLegacy) {
+    color = legacyFeedbackColorField(uv, time, c0, c1, c2, c3, c4);
+  }
   return vec4<f32>(saturate3(color), 1.0);
 }
 `;

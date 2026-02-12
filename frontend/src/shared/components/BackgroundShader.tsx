@@ -1,4 +1,4 @@
-import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BackgroundShaderSettings,
   ShaderColorSet,
@@ -13,12 +13,39 @@ import {
   mipDownsampleWGSL,
   temporalResolveWGSL,
 } from "./backgroundShaderWGSL";
+import {
+  runDualKawaseBlur,
+  runMipPyramidBlur,
+} from "./backgroundShaderBlurModules";
+import { runTemporalResolve } from "./backgroundShaderTemporalModule";
+import {
+  buildGrainStyle,
+  buildFallbackStyle,
+  createNoiseTextureDataURL,
+} from "./backgroundShaderStyles";
+import {
+  BlurModule,
+  CachedBindGroupKeyPart,
+  RenderTarget,
+  TargetConfig,
+} from "./backgroundShaderRuntimeTypes";
+import {
+  areTargetConfigsEqual,
+  buildBlurDimensions,
+  buildMipDimensions,
+  buildTargetConfig,
+  clamp,
+  createRenderTarget,
+  shouldApplyDualKawase,
+  shouldApplyMipBlur,
+} from "./backgroundShaderRuntimeUtils";
 
 const sceneUniformFloatCount = 56;
 const sceneUniformBufferSize =
   sceneUniformFloatCount * Float32Array.BYTES_PER_ELEMENT;
 const blurUniformFloatCount = 4;
-const blurUniformBufferSize = blurUniformFloatCount * Float32Array.BYTES_PER_ELEMENT;
+const blurUniformBufferSize =
+  blurUniformFloatCount * Float32Array.BYTES_PER_ELEMENT;
 const mipCompositeUniformFloatCount = 4;
 const mipCompositeUniformBufferSize =
   mipCompositeUniformFloatCount * Float32Array.BYTES_PER_ELEMENT;
@@ -35,17 +62,6 @@ const shaderTargetFrameIntervalMs = 1000 / shaderTargetFrameRate;
 const maxMipCompositeLevels = 5;
 
 const baseColor: [number, number, number] = [0.03, 0.035, 0.045];
-
-type RenderTarget = {
-  texture: GPUTexture;
-  view: GPUTextureView;
-  width: number;
-  height: number;
-};
-
-type BlurModule = "none" | "dualKawase" | "mipPyramid";
-
-type CachedBindGroupKeyPart = string | number | object;
 
 export function BackgroundShader() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -92,7 +108,26 @@ export function BackgroundShader() {
     let lastRenderAtMs = -shaderTargetFrameIntervalMs;
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
-    let lastTemporalResetToken = "";
+    let initializePromise: Promise<void> | null = null;
+    let hasRenderLoopStarted = false;
+    let lastTemporalSceneVariant:
+      | BackgroundShaderSettings["sceneVariant"]
+      | null = null;
+    let lastTemporalBlurMode: BackgroundShaderSettings["blurMode"] | null =
+      null;
+    let lastTemporalNoiseScale = Number.NaN;
+    let lastTemporalFlowSpeed = Number.NaN;
+    let lastTemporalWarpStrength = Number.NaN;
+    let lastTemporalDetailAmount = Number.NaN;
+    let lastTemporalDetailScale = Number.NaN;
+    let lastTemporalDetailSpeed = Number.NaN;
+    let lastTemporalColorDrift = Number.NaN;
+    let lastTemporalLumaAnchor = Number.NaN;
+    let lastTemporalBlurRadius = Number.NaN;
+    let lastTemporalStrength = Number.NaN;
+    let lastTemporalResponse = Number.NaN;
+    let lastTemporalClamp = Number.NaN;
+    let lastTemporalTransitionMs = Number.NaN;
 
     const renderState = {
       context: null as GPUCanvasContext | null,
@@ -121,11 +156,14 @@ export function BackgroundShader() {
       postTarget: null as RenderTarget | null,
       dualBlurTargets: [] as RenderTarget[],
       mipTargets: [] as RenderTarget[],
-      historyTargets: [null, null] as [RenderTarget | null, RenderTarget | null],
+      historyTargets: [null, null] as [
+        RenderTarget | null,
+        RenderTarget | null,
+      ],
       historyReadIndex: 0,
       historyValid: false,
       historyFrameCount: 0,
-      targetConfigKey: "",
+      targetConfig: null as TargetConfig | null,
       bindGroupCache: new Map<string, GPUBindGroup>(),
       bindGroupResourceIDs: new WeakMap<object, number>(),
       bindGroupResourceIDCounter: 0,
@@ -230,7 +268,8 @@ export function BackgroundShader() {
       historyBlendScale: number,
     ) => {
       const uniformData = renderState.temporalUniformData;
-      uniformData[0] = settingsValue.temporalStrength * clamp(historyBlendScale, 0, 1);
+      uniformData[0] =
+        settingsValue.temporalStrength * clamp(historyBlendScale, 0, 1);
       uniformData[1] = settingsValue.temporalResponse;
       uniformData[2] = settingsValue.temporalClamp;
       uniformData[3] = enabled ? 1 : 0;
@@ -258,6 +297,48 @@ export function BackgroundShader() {
         uniformData.byteOffset,
         uniformData.byteLength,
       );
+    };
+
+    const temporalResetInputsChanged = (
+      settingsValue: BackgroundShaderSettings,
+      transitionStartedAtMsValue: number,
+    ): boolean => {
+      if (
+        lastTemporalSceneVariant === settingsValue.sceneVariant &&
+        lastTemporalBlurMode === settingsValue.blurMode &&
+        lastTemporalNoiseScale === settingsValue.noiseScale &&
+        lastTemporalFlowSpeed === settingsValue.flowSpeed &&
+        lastTemporalWarpStrength === settingsValue.warpStrength &&
+        lastTemporalDetailAmount === settingsValue.detailAmount &&
+        lastTemporalDetailScale === settingsValue.detailScale &&
+        lastTemporalDetailSpeed === settingsValue.detailSpeed &&
+        lastTemporalColorDrift === settingsValue.colorDrift &&
+        lastTemporalLumaAnchor === settingsValue.lumaAnchor &&
+        lastTemporalBlurRadius === settingsValue.blurRadius &&
+        lastTemporalStrength === settingsValue.temporalStrength &&
+        lastTemporalResponse === settingsValue.temporalResponse &&
+        lastTemporalClamp === settingsValue.temporalClamp &&
+        lastTemporalTransitionMs === transitionStartedAtMsValue
+      ) {
+        return false;
+      }
+
+      lastTemporalSceneVariant = settingsValue.sceneVariant;
+      lastTemporalBlurMode = settingsValue.blurMode;
+      lastTemporalNoiseScale = settingsValue.noiseScale;
+      lastTemporalFlowSpeed = settingsValue.flowSpeed;
+      lastTemporalWarpStrength = settingsValue.warpStrength;
+      lastTemporalDetailAmount = settingsValue.detailAmount;
+      lastTemporalDetailScale = settingsValue.detailScale;
+      lastTemporalDetailSpeed = settingsValue.detailSpeed;
+      lastTemporalColorDrift = settingsValue.colorDrift;
+      lastTemporalLumaAnchor = settingsValue.lumaAnchor;
+      lastTemporalBlurRadius = settingsValue.blurRadius;
+      lastTemporalStrength = settingsValue.temporalStrength;
+      lastTemporalResponse = settingsValue.temporalResponse;
+      lastTemporalClamp = settingsValue.temporalClamp;
+      lastTemporalTransitionMs = transitionStartedAtMsValue;
+      return true;
     };
 
     const clearBindGroupCache = () => {
@@ -329,7 +410,40 @@ export function BackgroundShader() {
       renderState.historyReadIndex = 0;
       renderState.historyValid = false;
       renderState.historyFrameCount = 0;
-      renderState.targetConfigKey = "";
+      renderState.targetConfig = null;
+      clearBindGroupCache();
+    };
+
+    const resetGpuState = (destroyDevice: boolean) => {
+      destroyRenderTargets();
+
+      renderState.sceneUniformBuffer?.destroy();
+      renderState.blurUniformBuffer?.destroy();
+      renderState.mipCompositeUniformBuffer?.destroy();
+      renderState.temporalUniformBuffer?.destroy();
+      renderState.compositeUniformBuffer?.destroy();
+
+      if (destroyDevice) {
+        renderState.device?.destroy();
+      }
+
+      renderState.context = null;
+      renderState.device = null;
+      renderState.renderTextureFormat = "" as GPUTextureFormat;
+      renderState.scenePipeline = null;
+      renderState.dualDownPipeline = null;
+      renderState.dualUpPipeline = null;
+      renderState.mipDownPipeline = null;
+      renderState.mipCompositePipeline = null;
+      renderState.temporalPipeline = null;
+      renderState.compositePipeline = null;
+      renderState.sceneUniformBuffer = null;
+      renderState.blurUniformBuffer = null;
+      renderState.mipCompositeUniformBuffer = null;
+      renderState.temporalUniformBuffer = null;
+      renderState.compositeUniformBuffer = null;
+      renderState.sceneBindGroup = null;
+      renderState.sampler = null;
       clearBindGroupCache();
     };
 
@@ -344,7 +458,7 @@ export function BackgroundShader() {
       const needsDualTargets = blurModule === "dualKawase";
       const needsMipTargets = blurModule === "mipPyramid";
       const needsTemporalHistory = settingsValue.temporalEnabled;
-      const configKey = buildTargetConfigKey(width, height, settingsValue);
+      const nextConfig = buildTargetConfig(width, height, settingsValue);
       const hasRequiredTargets =
         renderState.sceneTarget !== null &&
         (!needsMipTargets || renderState.postTarget !== null) &&
@@ -353,8 +467,8 @@ export function BackgroundShader() {
             renderState.historyTargets[1] !== null));
 
       if (
-        renderState.targetConfigKey === configKey &&
-        hasRequiredTargets
+        hasRequiredTargets &&
+        areTargetConfigsEqual(renderState.targetConfig, nextConfig)
       ) {
         return;
       }
@@ -369,7 +483,12 @@ export function BackgroundShader() {
       );
 
       renderState.postTarget = needsMipTargets
-        ? createRenderTarget(device, width, height, renderState.renderTextureFormat)
+        ? createRenderTarget(
+            device,
+            width,
+            height,
+            renderState.renderTextureFormat,
+          )
         : null;
 
       if (needsDualTargets) {
@@ -409,15 +528,25 @@ export function BackgroundShader() {
 
       renderState.historyTargets = needsTemporalHistory
         ? [
-            createRenderTarget(device, width, height, renderState.renderTextureFormat),
-            createRenderTarget(device, width, height, renderState.renderTextureFormat),
+            createRenderTarget(
+              device,
+              width,
+              height,
+              renderState.renderTextureFormat,
+            ),
+            createRenderTarget(
+              device,
+              width,
+              height,
+              renderState.renderTextureFormat,
+            ),
           ]
         : [null, null];
       renderState.historyReadIndex = 0;
       renderState.historyValid = false;
       renderState.historyFrameCount = 0;
 
-      renderState.targetConfigKey = configKey;
+      renderState.targetConfig = nextConfig;
     };
 
     const resizeCanvas = () => {
@@ -451,249 +580,9 @@ export function BackgroundShader() {
         ],
       });
 
-    const runDualKawaseBlur = (
-      encoder: GPUCommandEncoder,
-      settingsValue: BackgroundShaderSettings,
-      sceneTarget: RenderTarget,
-    ) => {
-      const device = renderState.device;
-      const sampler = renderState.sampler;
-      const dualDownPipeline = renderState.dualDownPipeline;
-      const dualUpPipeline = renderState.dualUpPipeline;
-
-      if (!device || !sampler || !dualDownPipeline || !dualUpPipeline) {
-        return;
-      }
-
-      let sourceTarget = sceneTarget;
-
-      for (let i = 0; i < renderState.dualBlurTargets.length; i += 1) {
-        const target = renderState.dualBlurTargets[i];
-        const passOffset = settingsValue.blurRadius + settingsValue.blurRadiusStep * i;
-
-        writeBlurUniforms(
-          1 / Math.max(1, sourceTarget.width),
-          1 / Math.max(1, sourceTarget.height),
-          passOffset,
-        );
-
-        const bindGroup = getCachedBindGroup(
-          [
-            "dualDown",
-            dualDownPipeline,
-            sampler,
-            sourceTarget.view,
-            renderState.blurUniformBuffer as GPUBuffer,
-          ],
-          () =>
-            device.createBindGroup({
-              layout: dualDownPipeline.getBindGroupLayout(0),
-              entries: [
-                { binding: 0, resource: sampler },
-                { binding: 1, resource: sourceTarget.view },
-                {
-                  binding: 2,
-                  resource: { buffer: renderState.blurUniformBuffer as GPUBuffer },
-                },
-              ],
-            }),
-        );
-
-        const pass = beginPass(encoder, target.view);
-        pass.setPipeline(dualDownPipeline);
-        pass.setBindGroup(0, bindGroup);
-        pass.draw(3, 1, 0, 0);
-        pass.end();
-
-        sourceTarget = target;
-      }
-
-      let upSourceTarget = sourceTarget;
-      for (let i = renderState.dualBlurTargets.length - 2; i >= 0; i -= 1) {
-        const target = renderState.dualBlurTargets[i];
-        const passOffset = settingsValue.blurRadius + settingsValue.blurRadiusStep * i;
-
-        writeBlurUniforms(
-          1 / Math.max(1, upSourceTarget.width),
-          1 / Math.max(1, upSourceTarget.height),
-          passOffset,
-        );
-
-        const bindGroup = getCachedBindGroup(
-          [
-            "dualUp",
-            dualUpPipeline,
-            sampler,
-            upSourceTarget.view,
-            renderState.blurUniformBuffer as GPUBuffer,
-          ],
-          () =>
-            device.createBindGroup({
-              layout: dualUpPipeline.getBindGroupLayout(0),
-              entries: [
-                { binding: 0, resource: sampler },
-                { binding: 1, resource: upSourceTarget.view },
-                {
-                  binding: 2,
-                  resource: { buffer: renderState.blurUniformBuffer as GPUBuffer },
-                },
-              ],
-            }),
-        );
-
-        const pass = beginPass(encoder, target.view);
-        pass.setPipeline(dualUpPipeline);
-        pass.setBindGroup(0, bindGroup);
-        pass.draw(3, 1, 0, 0);
-        pass.end();
-
-        upSourceTarget = target;
-      }
-
-      writeBlurUniforms(
-        1 / Math.max(1, upSourceTarget.width),
-        1 / Math.max(1, upSourceTarget.height),
-        settingsValue.blurRadius,
-      );
-
-      const finalBindGroup = getCachedBindGroup(
-        [
-          "dualUpFinal",
-          dualUpPipeline,
-          sampler,
-          upSourceTarget.view,
-          renderState.blurUniformBuffer as GPUBuffer,
-        ],
-        () =>
-          device.createBindGroup({
-            layout: dualUpPipeline.getBindGroupLayout(0),
-            entries: [
-              { binding: 0, resource: sampler },
-              { binding: 1, resource: upSourceTarget.view },
-              {
-                binding: 2,
-                resource: { buffer: renderState.blurUniformBuffer as GPUBuffer },
-              },
-            ],
-          }),
-      );
-
-      const finalPass = beginPass(encoder, sceneTarget.view);
-      finalPass.setPipeline(dualUpPipeline);
-      finalPass.setBindGroup(0, finalBindGroup);
-      finalPass.draw(3, 1, 0, 0);
-      finalPass.end();
-    };
-
-    const runMipPyramidBlur = (
-      encoder: GPUCommandEncoder,
-      settingsValue: BackgroundShaderSettings,
-      sceneTarget: RenderTarget,
-      destinationTarget: RenderTarget,
-    ) => {
-      const device = renderState.device;
-      const sampler = renderState.sampler;
-      const mipDownPipeline = renderState.mipDownPipeline;
-      const mipCompositePipeline = renderState.mipCompositePipeline;
-
-      if (!device || !sampler || !mipDownPipeline || !mipCompositePipeline) {
-        return;
-      }
-
-      let source = sceneTarget;
-      for (const target of renderState.mipTargets) {
-        writeBlurUniforms(
-          1 / Math.max(1, source.width),
-          1 / Math.max(1, source.height),
-          settingsValue.blurRadius,
-        );
-
-        const bindGroup = getCachedBindGroup(
-          [
-            "mipDown",
-            mipDownPipeline,
-            sampler,
-            source.view,
-            renderState.blurUniformBuffer as GPUBuffer,
-          ],
-          () =>
-            device.createBindGroup({
-              layout: mipDownPipeline.getBindGroupLayout(0),
-              entries: [
-                { binding: 0, resource: sampler },
-                { binding: 1, resource: source.view },
-                {
-                  binding: 2,
-                  resource: { buffer: renderState.blurUniformBuffer as GPUBuffer },
-                },
-              ],
-            }),
-        );
-
-        const pass = beginPass(encoder, target.view);
-        pass.setPipeline(mipDownPipeline);
-        pass.setBindGroup(0, bindGroup);
-        pass.draw(3, 1, 0, 0);
-        pass.end();
-
-        source = target;
-      }
-
-      const activeMipLevels = Math.min(
-        settingsValue.mipLevels,
-        renderState.mipTargets.length,
-        maxMipCompositeLevels,
-      );
-      writeMipCompositeUniforms(
-        settingsValue.blurRadius,
-        settingsValue.mipCurve,
-        activeMipLevels,
-      );
-
-      const mipViews = resolveMipViews(renderState.mipTargets, sceneTarget.view);
-      const compositeBindGroup = getCachedBindGroup(
-        [
-          "mipComposite",
-          mipCompositePipeline,
-          sampler,
-          sceneTarget.view,
-          mipViews[0],
-          mipViews[1],
-          mipViews[2],
-          mipViews[3],
-          mipViews[4],
-          renderState.mipCompositeUniformBuffer as GPUBuffer,
-        ],
-        () =>
-          device.createBindGroup({
-            layout: mipCompositePipeline.getBindGroupLayout(0),
-            entries: [
-              { binding: 0, resource: sampler },
-              { binding: 1, resource: sceneTarget.view },
-              { binding: 2, resource: mipViews[0] },
-              { binding: 3, resource: mipViews[1] },
-              { binding: 4, resource: mipViews[2] },
-              { binding: 5, resource: mipViews[3] },
-              { binding: 6, resource: mipViews[4] },
-              {
-                binding: 7,
-                resource: {
-                  buffer: renderState.mipCompositeUniformBuffer as GPUBuffer,
-                },
-              },
-            ],
-          }),
-      );
-
-      const pass = beginPass(encoder, destinationTarget.view);
-      pass.setPipeline(mipCompositePipeline);
-      pass.setBindGroup(0, compositeBindGroup);
-      pass.draw(3, 1, 0, 0);
-      pass.end();
-    };
-
     const render = (time: number) => {
       if (disposed) {
+        hasRenderLoopStarted = false;
         return;
       }
 
@@ -731,8 +620,6 @@ export function BackgroundShader() {
       const settingsValue = settingsRef.current;
       const sceneTarget = renderState.sceneTarget;
       const postTarget = renderState.postTarget;
-      const historyRead = renderState.historyTargets[renderState.historyReadIndex];
-      const historyWrite = renderState.historyTargets[1 - renderState.historyReadIndex];
       if (!sceneTarget) {
         animationFrameId = window.requestAnimationFrame(render);
         return;
@@ -741,14 +628,14 @@ export function BackgroundShader() {
       writeSceneUniforms(time, canvas.width, canvas.height);
       writeCompositeUniforms(settingsValue.opacity);
 
-      const temporalResetToken = buildTemporalResetToken(
-        settingsValue,
-        transitionStartedAtMsRef.current,
-      );
-      if (temporalResetToken !== lastTemporalResetToken) {
+      if (
+        temporalResetInputsChanged(
+          settingsValue,
+          transitionStartedAtMsRef.current,
+        )
+      ) {
         renderState.historyValid = false;
         renderState.historyFrameCount = 0;
-        lastTemporalResetToken = temporalResetToken;
       }
 
       const encoder = device.createCommandEncoder();
@@ -766,7 +653,25 @@ export function BackgroundShader() {
         blurModule === "dualKawase" &&
         shouldApplyDualKawase(settingsValue, renderState.dualBlurTargets.length)
       ) {
-        runDualKawaseBlur(encoder, settingsValue, sceneTarget);
+        const dualDownPipeline = renderState.dualDownPipeline;
+        const dualUpPipeline = renderState.dualUpPipeline;
+        const blurUniformBuffer = renderState.blurUniformBuffer;
+        if (dualDownPipeline && dualUpPipeline && blurUniformBuffer) {
+          runDualKawaseBlur({
+            encoder,
+            settings: settingsValue,
+            sceneTarget,
+            blurTargets: renderState.dualBlurTargets,
+            sampler,
+            device,
+            downPipeline: dualDownPipeline,
+            upPipeline: dualUpPipeline,
+            blurUniformBuffer,
+            writeBlurUniforms,
+            beginPass,
+            getCachedBindGroup,
+          });
+        }
         outputTarget = sceneTarget;
       }
 
@@ -775,69 +680,68 @@ export function BackgroundShader() {
         postTarget &&
         shouldApplyMipBlur(settingsValue, renderState.mipTargets.length)
       ) {
-        runMipPyramidBlur(encoder, settingsValue, sceneTarget, postTarget);
+        const mipDownPipeline = renderState.mipDownPipeline;
+        const mipCompositePipeline = renderState.mipCompositePipeline;
+        const blurUniformBuffer = renderState.blurUniformBuffer;
+        const mipCompositeUniformBuffer = renderState.mipCompositeUniformBuffer;
+        if (
+          mipDownPipeline &&
+          mipCompositePipeline &&
+          blurUniformBuffer &&
+          mipCompositeUniformBuffer
+        ) {
+          runMipPyramidBlur({
+            encoder,
+            settings: settingsValue,
+            sceneTarget,
+            destinationTarget: postTarget,
+            mipTargets: renderState.mipTargets,
+            sampler,
+            device,
+            downPipeline: mipDownPipeline,
+            compositePipeline: mipCompositePipeline,
+            blurUniformBuffer,
+            mipCompositeUniformBuffer,
+            maxMipCompositeLevels,
+            writeBlurUniforms,
+            writeMipCompositeUniforms,
+            beginPass,
+            getCachedBindGroup,
+          });
+        }
         outputTarget = postTarget;
       }
 
       if (
         settingsValue.temporalEnabled &&
         renderState.temporalPipeline &&
-        historyRead &&
-        historyWrite
+        renderState.temporalUniformBuffer
       ) {
-        const temporalPipeline = renderState.temporalPipeline;
-        const historySourceView = renderState.historyValid
-          ? historyRead.view
-          : outputTarget.view;
-        const historyBlendScale = renderState.historyValid
-          ? clamp(renderState.historyFrameCount / 10, 0, 1)
-          : 0;
+        const temporalResult = runTemporalResolve({
+          encoder,
+          settings: settingsValue,
+          outputTarget,
+          historyTargets: renderState.historyTargets,
+          temporalPipeline: renderState.temporalPipeline,
+          sampler,
+          device,
+          temporalUniformBuffer: renderState.temporalUniformBuffer,
+          temporalState: {
+            historyReadIndex: renderState.historyReadIndex,
+            historyValid: renderState.historyValid,
+            historyFrameCount: renderState.historyFrameCount,
+          },
+          writeTemporalUniforms,
+          beginPass,
+          getCachedBindGroup,
+        });
 
-        writeTemporalUniforms(
-          settingsValue,
-          renderState.historyValid,
-          historyBlendScale,
-        );
-
-        const temporalBindGroup = getCachedBindGroup(
-          [
-            "temporal",
-            temporalPipeline,
-            sampler,
-            outputTarget.view,
-            historySourceView,
-            renderState.temporalUniformBuffer as GPUBuffer,
-          ],
-          () =>
-            device.createBindGroup({
-              layout: temporalPipeline.getBindGroupLayout(0),
-              entries: [
-                { binding: 0, resource: sampler },
-                { binding: 1, resource: outputTarget.view },
-                {
-                  binding: 2,
-                  resource: historySourceView,
-                },
-                {
-                  binding: 3,
-                  resource: {
-                    buffer: renderState.temporalUniformBuffer as GPUBuffer,
-                  },
-                },
-              ],
-            }),
-        );
-
-        const temporalPass = beginPass(encoder, historyWrite.view);
-        temporalPass.setPipeline(temporalPipeline);
-        temporalPass.setBindGroup(0, temporalBindGroup);
-        temporalPass.draw(3, 1, 0, 0);
-        temporalPass.end();
-
-        outputTarget = historyWrite;
-        renderState.historyReadIndex = 1 - renderState.historyReadIndex;
-        renderState.historyValid = true;
-        renderState.historyFrameCount = Math.min(renderState.historyFrameCount + 1, 120);
+        outputTarget = temporalResult.outputTarget;
+        renderState.historyReadIndex =
+          temporalResult.temporalState.historyReadIndex;
+        renderState.historyValid = temporalResult.temporalState.historyValid;
+        renderState.historyFrameCount =
+          temporalResult.temporalState.historyFrameCount;
       } else {
         renderState.historyValid = false;
         renderState.historyFrameCount = 0;
@@ -860,7 +764,9 @@ export function BackgroundShader() {
               { binding: 1, resource: outputTarget.view },
               {
                 binding: 2,
-                resource: { buffer: renderState.compositeUniformBuffer as GPUBuffer },
+                resource: {
+                  buffer: renderState.compositeUniformBuffer as GPUBuffer,
+                },
               },
             ],
           }),
@@ -878,7 +784,9 @@ export function BackgroundShader() {
 
     const shaderHasErrors = async (module: GPUShaderModule) => {
       const compilationInfo = await module.getCompilationInfo();
-      return compilationInfo.messages.some((message) => message.type === "error");
+      return compilationInfo.messages.some(
+        (message) => message.type === "error",
+      );
     };
 
     const initialize = async () => {
@@ -891,11 +799,29 @@ export function BackgroundShader() {
 
         const device = await adapter.requestDevice();
         if (disposed) {
+          device.destroy();
           return;
         }
 
+        device.lost
+          .then(() => {
+            if (disposed) {
+              return;
+            }
+
+            resetGpuState(false);
+            void startInitialize();
+          })
+          .catch(() => {
+            if (disposed) {
+              return;
+            }
+            setIsUnsupported(true);
+          });
+
         const context = canvas.getContext("webgpu");
         if (!context) {
+          device.destroy();
           setIsUnsupported(true);
           return;
         }
@@ -907,15 +833,27 @@ export function BackgroundShader() {
           alphaMode: "premultiplied",
         });
 
-        const sceneModule = device.createShaderModule({ code: backgroundSceneWGSL });
-        const dualDownModule = device.createShaderModule({ code: dualKawaseDownWGSL });
-        const dualUpModule = device.createShaderModule({ code: dualKawaseUpWGSL });
-        const mipDownModule = device.createShaderModule({ code: mipDownsampleWGSL });
+        const sceneModule = device.createShaderModule({
+          code: backgroundSceneWGSL,
+        });
+        const dualDownModule = device.createShaderModule({
+          code: dualKawaseDownWGSL,
+        });
+        const dualUpModule = device.createShaderModule({
+          code: dualKawaseUpWGSL,
+        });
+        const mipDownModule = device.createShaderModule({
+          code: mipDownsampleWGSL,
+        });
         const mipCompositeModule = device.createShaderModule({
           code: mipCompositeWGSL,
         });
-        const temporalModule = device.createShaderModule({ code: temporalResolveWGSL });
-        const compositeModule = device.createShaderModule({ code: backgroundCompositeWGSL });
+        const temporalModule = device.createShaderModule({
+          code: temporalResolveWGSL,
+        });
+        const compositeModule = device.createShaderModule({
+          code: backgroundCompositeWGSL,
+        });
 
         if (
           (await shaderHasErrors(sceneModule)) ||
@@ -1046,6 +984,8 @@ export function BackgroundShader() {
           addressModeV: "clamp-to-edge",
         });
 
+        resetGpuState(false);
+
         renderState.context = context;
         renderState.device = device;
         renderState.renderTextureFormat = canvasFormat;
@@ -1064,6 +1004,7 @@ export function BackgroundShader() {
         renderState.sceneBindGroup = sceneBindGroup;
         renderState.sampler = sampler;
 
+        resizeObserver?.disconnect();
         resizeCanvas();
         resizeObserver = new ResizeObserver(() => {
           resizeCanvas();
@@ -1071,27 +1012,34 @@ export function BackgroundShader() {
         resizeObserver.observe(canvas);
 
         setIsUnsupported(false);
-        animationFrameId = window.requestAnimationFrame(render);
+        if (!hasRenderLoopStarted) {
+          hasRenderLoopStarted = true;
+          animationFrameId = window.requestAnimationFrame(render);
+        }
       } catch {
         setIsUnsupported(true);
       }
     };
 
-    void initialize();
+    const startInitialize = () => {
+      if (initializePromise) {
+        return initializePromise;
+      }
+
+      initializePromise = initialize().finally(() => {
+        initializePromise = null;
+      });
+      return initializePromise;
+    };
+
+    void startInitialize();
 
     return () => {
       disposed = true;
+      hasRenderLoopStarted = false;
       window.cancelAnimationFrame(animationFrameId);
       resizeObserver?.disconnect();
-
-      destroyRenderTargets();
-
-      renderState.sceneUniformBuffer?.destroy();
-      renderState.blurUniformBuffer?.destroy();
-      renderState.mipCompositeUniformBuffer?.destroy();
-      renderState.temporalUniformBuffer?.destroy();
-      renderState.compositeUniformBuffer?.destroy();
-      renderState.device?.destroy();
+      resetGpuState(true);
     };
   }, [webgpuAvailable]);
 
@@ -1131,252 +1079,4 @@ function writeColorSet(
     uniformData[colorOffset + 2] = colorSet[index][2];
     uniformData[colorOffset + 3] = 1;
   }
-}
-
-function buildFallbackStyle(colors: ShaderColorSet, opacity: number): CSSProperties {
-  const c0 = toCssColor(colors[0], 0.75);
-  const c1 = toCssColor(colors[1], 0.7);
-  const c2 = toCssColor(colors[2], 0.68);
-  const c3 = toCssColor(colors[3], 0.85);
-  const c4 = toCssColor(colors[4], 0.64);
-  const safeOpacity = clamp(opacity, 0, 1);
-
-  return {
-    backgroundColor: "#07090d",
-    backgroundImage: `radial-gradient(circle at 16% 20%, ${c0} 0%, transparent 48%), radial-gradient(circle at 84% 26%, ${c1} 0%, transparent 44%), radial-gradient(circle at 24% 88%, ${c2} 0%, transparent 40%), radial-gradient(circle at 58% 62%, ${c4} 0%, transparent 46%), linear-gradient(140deg, ${c3} 0%, #07090d 92%)`,
-    opacity: safeOpacity,
-  };
-}
-
-function buildGrainStyle(
-  settings: {
-    grainStrength: number;
-    grainScale: number;
-  },
-  grainTextureUrl: string,
-): CSSProperties {
-  const textureScale = clamp(settings.grainScale, 0.1, 8);
-  const grainOpacity = clamp(settings.grainStrength * 4.4, 0, 0.38);
-  const grainTileSize = Math.max(32, Math.round(256 / textureScale));
-
-  return {
-    opacity: grainOpacity,
-    backgroundImage: grainTextureUrl ? `url(${grainTextureUrl})` : "none",
-    backgroundRepeat: "repeat",
-    backgroundSize: `${grainTileSize}px ${grainTileSize}px`,
-    mixBlendMode: "soft-light",
-  };
-}
-
-function createNoiseTextureDataURL(size: number): string {
-  if (typeof document === "undefined") {
-    return "";
-  }
-
-  const safeSize = Math.max(16, Math.floor(size));
-  const canvas = document.createElement("canvas");
-  canvas.width = safeSize;
-  canvas.height = safeSize;
-
-  const context = canvas.getContext("2d");
-  if (!context) {
-    return "";
-  }
-
-  const imageData = context.createImageData(safeSize, safeSize);
-  const values = imageData.data;
-
-  for (let i = 0; i < values.length; i += 4) {
-    const grain = 96 + Math.floor(Math.random() * 64);
-    values[i] = grain;
-    values[i + 1] = grain;
-    values[i + 2] = grain;
-    values[i + 3] = 255;
-  }
-
-  context.putImageData(imageData, 0, 0);
-  return canvas.toDataURL("image/png");
-}
-
-function toCssColor(color: [number, number, number], alpha: number): string {
-  const r = Math.round(clamp(color[0], 0, 1) * 255);
-  const g = Math.round(clamp(color[1], 0, 1) * 255);
-  const b = Math.round(clamp(color[2], 0, 1) * 255);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function createRenderTarget(
-  device: GPUDevice,
-  width: number,
-  height: number,
-  format: GPUTextureFormat,
-): RenderTarget {
-  const texture = device.createTexture({
-    size: { width, height },
-    format,
-    usage:
-      GPUTextureUsage.RENDER_ATTACHMENT |
-      GPUTextureUsage.TEXTURE_BINDING |
-      GPUTextureUsage.COPY_SRC |
-      GPUTextureUsage.COPY_DST,
-  });
-
-  return {
-    texture,
-    view: texture.createView(),
-    width,
-    height,
-  };
-}
-
-function buildBlurDimensions(
-  width: number,
-  height: number,
-  passCount: number,
-  downsample: number,
-): Array<{ width: number; height: number }> {
-  const safePassCount = Math.max(0, Math.round(passCount));
-  const safeDownsample = Math.max(1.1, downsample);
-
-  const dimensions: Array<{ width: number; height: number }> = [];
-  let currentWidth = Math.max(1, width);
-  let currentHeight = Math.max(1, height);
-
-  for (let i = 0; i < safePassCount; i += 1) {
-    const nextWidth = Math.max(1, Math.round(currentWidth / safeDownsample));
-    const nextHeight = Math.max(1, Math.round(currentHeight / safeDownsample));
-
-    if (nextWidth === currentWidth && nextHeight === currentHeight) {
-      break;
-    }
-
-    dimensions.push({ width: nextWidth, height: nextHeight });
-    currentWidth = nextWidth;
-    currentHeight = nextHeight;
-
-    if (currentWidth === 1 && currentHeight === 1) {
-      break;
-    }
-  }
-
-  return dimensions;
-}
-
-function buildMipDimensions(
-  width: number,
-  height: number,
-  levelCount: number,
-): Array<{ width: number; height: number }> {
-  const safeLevelCount = Math.max(0, Math.round(levelCount));
-  const dimensions: Array<{ width: number; height: number }> = [];
-  let currentWidth = Math.max(1, width);
-  let currentHeight = Math.max(1, height);
-
-  for (let i = 0; i < safeLevelCount; i += 1) {
-    const nextWidth = Math.max(1, Math.round(currentWidth / 2));
-    const nextHeight = Math.max(1, Math.round(currentHeight / 2));
-    if (nextWidth === currentWidth && nextHeight === currentHeight) {
-      break;
-    }
-
-    dimensions.push({ width: nextWidth, height: nextHeight });
-    currentWidth = nextWidth;
-    currentHeight = nextHeight;
-
-    if (currentWidth === 1 && currentHeight === 1) {
-      break;
-    }
-  }
-
-  return dimensions;
-}
-
-function buildTargetConfigKey(
-  width: number,
-  height: number,
-  settings: BackgroundShaderSettings,
-): string {
-  const blurMode = settings.blurMode as BlurModule;
-  const parts = [
-    `${width}x${height}`,
-    `mode:${blurMode}`,
-    `temporal:${settings.temporalEnabled ? 1 : 0}`,
-  ];
-
-  if (blurMode === "dualKawase") {
-    parts.push(`dual:${Math.max(0, Math.round(settings.blurPasses))}`);
-    parts.push(`dualDown:${Math.max(1.1, settings.blurDownsample).toFixed(3)}`);
-  }
-
-  if (blurMode === "mipPyramid") {
-    parts.push(`mip:${Math.max(1, Math.round(settings.mipLevels))}`);
-  }
-
-  return parts.join("|");
-}
-
-function buildTemporalResetToken(
-  settings: BackgroundShaderSettings,
-  transitionStartedAtMs: number,
-): string {
-  return [
-    settings.sceneVariant,
-    settings.blurMode,
-    settings.noiseScale.toFixed(3),
-    settings.flowSpeed.toFixed(3),
-    settings.warpStrength.toFixed(3),
-    settings.detailAmount.toFixed(3),
-    settings.detailScale.toFixed(3),
-    settings.detailSpeed.toFixed(3),
-    settings.colorDrift.toFixed(3),
-    settings.lumaAnchor.toFixed(3),
-    settings.blurRadius.toFixed(3),
-    settings.temporalStrength.toFixed(3),
-    settings.temporalResponse.toFixed(3),
-    settings.temporalClamp.toFixed(3),
-    `${Math.round(transitionStartedAtMs)}`,
-  ].join("|");
-}
-
-function shouldApplyDualKawase(
-  settings: BackgroundShaderSettings,
-  blurTargetCount: number,
-): boolean {
-  return (
-    settings.blurRadius > 0.001 &&
-    settings.blurPasses > 0 &&
-    blurTargetCount > 0
-  );
-}
-
-function shouldApplyMipBlur(
-  settings: BackgroundShaderSettings,
-  mipTargetCount: number,
-): boolean {
-  return settings.blurRadius > 0.001 && settings.mipLevels > 0 && mipTargetCount > 0;
-}
-
-function resolveMipViews(
-  mipTargets: RenderTarget[],
-  fallbackView: GPUTextureView,
-): [
-  GPUTextureView,
-  GPUTextureView,
-  GPUTextureView,
-  GPUTextureView,
-  GPUTextureView,
-] {
-  const fallback =
-    mipTargets.length > 0 ? mipTargets[mipTargets.length - 1].view : fallbackView;
-  return [
-    mipTargets[0]?.view ?? fallback,
-    mipTargets[1]?.view ?? fallback,
-    mipTargets[2]?.view ?? fallback,
-    mipTargets[3]?.view ?? fallback,
-    mipTargets[4]?.view ?? fallback,
-  ];
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
