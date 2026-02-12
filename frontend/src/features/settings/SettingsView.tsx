@@ -41,7 +41,9 @@ export function SettingsView(props: SettingsViewProps) {
     props.themePalette?.gradient ?? [],
   );
   const shaderSettings = useBackgroundShaderStore((state) => state.settings);
-  const setShaderSettings = useBackgroundShaderStore((state) => state.setSettings);
+  const setShaderSettings = useBackgroundShaderStore(
+    (state) => state.setSettings,
+  );
 
   return (
     <section className="flex flex-col gap-5">
@@ -195,7 +197,10 @@ export function SettingsView(props: SettingsViewProps) {
             max={12}
             step={1}
             onChange={(next) =>
-              props.onThemeOptionsChange({ ...props.themeOptions, quality: next })
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                quality: next,
+              })
             }
           />
           <NumericSetting
@@ -309,7 +314,10 @@ export function SettingsView(props: SettingsViewProps) {
             max={1}
             step={0.01}
             onChange={(next) =>
-              props.onThemeOptionsChange({ ...props.themeOptions, minLuma: next })
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                minLuma: next,
+              })
             }
           />
           <NumericSetting
@@ -319,7 +327,10 @@ export function SettingsView(props: SettingsViewProps) {
             max={1}
             step={0.01}
             onChange={(next) =>
-              props.onThemeOptionsChange({ ...props.themeOptions, maxLuma: next })
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                maxLuma: next,
+              })
             }
           />
           <NumericSetting
@@ -410,10 +421,22 @@ export function SettingsView(props: SettingsViewProps) {
                   </div>
 
                   <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6">
-                    <RoleChip label="Primary" color={props.themePalette.primary} />
-                    <RoleChip label="Secondary" color={props.themePalette.secondary} />
-                    <RoleChip label="Tertiary" color={props.themePalette.tertiary} />
-                    <RoleChip label="Accent" color={props.themePalette.accent} />
+                    <RoleChip
+                      label="Primary"
+                      color={props.themePalette.primary}
+                    />
+                    <RoleChip
+                      label="Secondary"
+                      color={props.themePalette.secondary}
+                    />
+                    <RoleChip
+                      label="Tertiary"
+                      color={props.themePalette.tertiary}
+                    />
+                    <RoleChip
+                      label="Accent"
+                      color={props.themePalette.accent}
+                    />
                     <RoleChip label="Dark" color={props.themePalette.dark} />
                     <RoleChip label="Light" color={props.themePalette.light} />
                   </div>
@@ -423,8 +446,7 @@ export function SettingsView(props: SettingsViewProps) {
                   </div>
                   <p className="mt-2 text-xs text-neutral-400">
                     Source {props.themePalette.sourceWidth}x
-                    {props.themePalette.sourceHeight}, sampled to
-                    {" "}
+                    {props.themePalette.sourceHeight}, sampled to{" "}
                     {props.themePalette.sampleWidth}x
                     {props.themePalette.sampleHeight}
                   </p>
@@ -440,7 +462,9 @@ export function SettingsView(props: SettingsViewProps) {
       </section>
 
       <section className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
-        <h2 className="text-sm font-semibold text-neutral-100">Background Shader</h2>
+        <h2 className="text-sm font-semibold text-neutral-100">
+          Background Shader
+        </h2>
         <p className="mt-1 text-sm text-neutral-400">
           WebGPU Perlin gradient controls. Palette transitions use OKLab
           interpolation in shader.
@@ -464,6 +488,14 @@ export function SettingsView(props: SettingsViewProps) {
             onChange={(next) =>
               setShaderSettings({ colorTransitionSeconds: next })
             }
+          />
+          <NumericSetting
+            label="Render Scale"
+            value={shaderSettings.renderScale}
+            min={0.2}
+            max={1}
+            step={0.01}
+            onChange={(next) => setShaderSettings({ renderScale: next })}
           />
           <NumericSetting
             label="Noise Scale"
@@ -493,9 +525,33 @@ export function SettingsView(props: SettingsViewProps) {
             label="Blur Radius"
             value={shaderSettings.blurRadius}
             min={0}
-            max={6}
+            max={8}
             step={0.05}
             onChange={(next) => setShaderSettings({ blurRadius: next })}
+          />
+          <NumericSetting
+            label="Blur Radius Step"
+            value={shaderSettings.blurRadiusStep}
+            min={0}
+            max={3}
+            step={0.05}
+            onChange={(next) => setShaderSettings({ blurRadiusStep: next })}
+          />
+          <NumericSetting
+            label="Blur Passes"
+            value={shaderSettings.blurPasses}
+            min={0}
+            max={8}
+            step={1}
+            onChange={(next) => setShaderSettings({ blurPasses: next })}
+          />
+          <NumericSetting
+            label="Blur Downsample"
+            value={shaderSettings.blurDownsample}
+            min={1.1}
+            max={4}
+            step={0.1}
+            onChange={(next) => setShaderSettings({ blurDownsample: next })}
           />
           <NumericSetting
             label="Grain Strength"
@@ -606,10 +662,11 @@ function PaletteChip(props: PaletteChipProps) {
         className="mt-1 h-10 w-full rounded border border-neutral-700"
         style={{ backgroundColor: props.color.hex }}
       />
-      <p className="mt-1 text-xs font-medium text-neutral-200">{props.color.hex}</p>
+      <p className="mt-1 text-xs font-medium text-neutral-200">
+        {props.color.hex}
+      </p>
       <p className="text-[11px] text-neutral-400">
-        L {Math.round(props.color.lightness * 100)}% | C
-        {" "}
+        L {Math.round(props.color.lightness * 100)}% | C{" "}
         {Math.round(props.color.chroma * 100)}%
       </p>
     </div>

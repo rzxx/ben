@@ -12,10 +12,14 @@ export type ShaderColorSet = [
 
 export type BackgroundShaderSettings = {
   opacity: number;
+  renderScale: number;
   noiseScale: number;
   flowSpeed: number;
   warpStrength: number;
   blurRadius: number;
+  blurRadiusStep: number;
+  blurPasses: number;
+  blurDownsample: number;
   grainStrength: number;
   grainScale: number;
   colorTransitionSeconds: number;
@@ -40,48 +44,58 @@ const fallbackColors: ShaderColorSet = [
 
 const defaultSettings: BackgroundShaderSettings = {
   opacity: 0.78,
+  renderScale: 0.5,
   noiseScale: 1.3,
   flowSpeed: 0.62,
   warpStrength: 0.26,
-  blurRadius: 1.4,
+  blurRadius: 1.2,
+  blurRadiusStep: 0.75,
+  blurPasses: 4,
+  blurDownsample: 2,
   grainStrength: 0.028,
   grainScale: 1.8,
   colorTransitionSeconds: 1.9,
 };
 
-export const useBackgroundShaderStore = create<BackgroundShaderState>((set) => ({
-  fromColors: fallbackColors,
-  toColors: fallbackColors,
-  transitionStartedAtMs: nowMs(),
-  settings: defaultSettings,
-  setThemePalette: (palette) => {
-    const nextColors = paletteToColorSet(palette);
+export const useBackgroundShaderStore = create<BackgroundShaderState>(
+  (set) => ({
+    fromColors: fallbackColors,
+    toColors: fallbackColors,
+    transitionStartedAtMs: nowMs(),
+    settings: defaultSettings,
+    setThemePalette: (palette) => {
+      const nextColors = paletteToColorSet(palette);
 
-    set((state) => {
-      if (areColorSetsEqual(state.toColors, nextColors)) {
-        return state;
-      }
+      set((state) => {
+        if (areColorSetsEqual(state.toColors, nextColors)) {
+          return state;
+        }
 
-      const now = nowMs();
-      const liveColors = getLiveColorSet(state, now);
+        const now = nowMs();
+        const liveColors = getLiveColorSet(state, now);
 
-      return {
-        fromColors: liveColors,
-        toColors: nextColors,
-        transitionStartedAtMs: now,
-      };
-    });
-  },
-  setSettings: (patch) => {
-    set((state) => ({
-      settings: sanitizeSettings({ ...state.settings, ...patch }),
-    }));
-  },
-}));
+        return {
+          fromColors: liveColors,
+          toColors: nextColors,
+          transitionStartedAtMs: now,
+        };
+      });
+    },
+    setSettings: (patch) => {
+      set((state) => ({
+        settings: sanitizeSettings({ ...state.settings, ...patch }),
+      }));
+    },
+  }),
+);
 
 function paletteToColorSet(palette: ThemePalette | null): ShaderColorSet {
   const colors = (palette?.gradient ?? [])
-    .map((color) => [toUnitColor(color.r), toUnitColor(color.g), toUnitColor(color.b)])
+    .map((color) => [
+      toUnitColor(color.r),
+      toUnitColor(color.g),
+      toUnitColor(color.b),
+    ])
     .slice(0, 5) as ShaderColor[];
 
   if (colors.length === 0) {
@@ -97,7 +111,10 @@ function paletteToColorSet(palette: ThemePalette | null): ShaderColorSet {
   return [first, second, third, fourth, fifth];
 }
 
-function getLiveColorSet(state: BackgroundShaderState, now: number): ShaderColorSet {
+function getLiveColorSet(
+  state: BackgroundShaderState,
+  now: number,
+): ShaderColorSet {
   const durationMs = state.settings.colorTransitionSeconds * 1000;
   if (durationMs <= 0) {
     return state.toColors;
@@ -127,13 +144,19 @@ function mixColor(a: ShaderColor, b: ShaderColor, t: number): ShaderColor {
   ];
 }
 
-function sanitizeSettings(settings: BackgroundShaderSettings): BackgroundShaderSettings {
+function sanitizeSettings(
+  settings: BackgroundShaderSettings,
+): BackgroundShaderSettings {
   return {
     opacity: clamp(settings.opacity, 0, 1),
+    renderScale: clamp(settings.renderScale, 0.2, 1),
     noiseScale: clamp(settings.noiseScale, 0.1, 5),
     flowSpeed: clamp(settings.flowSpeed, 0, 5),
     warpStrength: clamp(settings.warpStrength, 0, 1.5),
-    blurRadius: clamp(settings.blurRadius, 0, 6),
+    blurRadius: clamp(settings.blurRadius, 0, 8),
+    blurRadiusStep: clamp(settings.blurRadiusStep, 0, 3),
+    blurPasses: Math.round(clamp(settings.blurPasses, 0, 8)),
+    blurDownsample: clamp(settings.blurDownsample, 1.1, 4),
     grainStrength: clamp(settings.grainStrength, 0, 0.25),
     grainScale: clamp(settings.grainScale, 0.1, 8),
     colorTransitionSeconds: clamp(settings.colorTransitionSeconds, 0, 16),

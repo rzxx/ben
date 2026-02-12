@@ -698,39 +698,42 @@ function AppContent() {
     }
   };
 
-  const generateThemePaletteForCover = useCallback(async (coverPath: string) => {
-    const trimmedPath = coverPath.trim();
-    if (!trimmedPath) {
-      return;
-    }
-
-    const requestToken = themeRequestTokenRef.current + 1;
-    themeRequestTokenRef.current = requestToken;
-
-    try {
-      setThemeBusy(true);
-      setThemeErrorMessage(null);
-      const nextPalette = await Call.ByName(
-        `${themeService}.GenerateFromCover`,
-        trimmedPath,
-        themeOptionsRef.current,
-      );
-
-      if (requestToken !== themeRequestTokenRef.current) {
+  const generateThemePaletteForCover = useCallback(
+    async (coverPath: string) => {
+      const trimmedPath = coverPath.trim();
+      if (!trimmedPath) {
         return;
       }
 
-      setGeneratedThemePalette((nextPalette ?? null) as ThemePalette | null);
-    } catch (error) {
-      if (requestToken === themeRequestTokenRef.current) {
-        setThemeErrorMessage(parseError(error));
+      const requestToken = themeRequestTokenRef.current + 1;
+      themeRequestTokenRef.current = requestToken;
+
+      try {
+        setThemeBusy(true);
+        setThemeErrorMessage(null);
+        const nextPalette = await Call.ByName(
+          `${themeService}.GenerateFromCover`,
+          trimmedPath,
+          themeOptionsRef.current,
+        );
+
+        if (requestToken !== themeRequestTokenRef.current) {
+          return;
+        }
+
+        setGeneratedThemePalette((nextPalette ?? null) as ThemePalette | null);
+      } catch (error) {
+        if (requestToken === themeRequestTokenRef.current) {
+          setThemeErrorMessage(parseError(error));
+        }
+      } finally {
+        if (requestToken === themeRequestTokenRef.current) {
+          setThemeBusy(false);
+        }
       }
-    } finally {
-      if (requestToken === themeRequestTokenRef.current) {
-        setThemeBusy(false);
-      }
-    }
-  }, []);
+    },
+    [],
+  );
 
   const onGenerateThemePalette = async () => {
     const coverPath = playerState.currentTrack?.coverPath?.trim();

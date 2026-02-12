@@ -1,4 +1,4 @@
-export const backgroundShaderWGSL = /* wgsl */ `
+export const backgroundSceneWGSL = /* wgsl */ `
 struct Uniforms {
   resolution: vec4<f32>,
   paramsA: vec4<f32>,
@@ -111,7 +111,7 @@ fn perlinNoise(point: vec2<f32>) -> f32 {
 }
 
 fn interpolatedPaletteColor(index: u32) -> vec3<f32> {
-  let mixAmount = smoothstep(0.0, 1.0, saturate(uniforms.paramsC.x));
+  let mixAmount = smoothstep(0.0, 1.0, saturate(uniforms.paramsB.x));
   let fromLab = srgbToOklab(uniforms.fromColors[index].xyz);
   let toLab = srgbToOklab(uniforms.toColors[index].xyz);
   return saturate3(oklabToSrgb(mix(fromLab, toLab, mixAmount)));
@@ -173,9 +173,9 @@ fn colorField(
   c3: vec3<f32>,
   c4: vec3<f32>
 ) -> vec3<f32> {
-  let noiseScale = max(0.1, uniforms.paramsA.z);
-  let flowSpeed = uniforms.paramsA.w;
-  let warpStrength = uniforms.paramsB.x;
+  let noiseScale = max(0.1, uniforms.paramsA.y);
+  let flowSpeed = uniforms.paramsA.z;
+  let warpStrength = uniforms.paramsA.w;
 
   let aspect = uniforms.resolution.x / max(uniforms.resolution.y, 1.0);
   let centered = vec2<f32>((uv.x - 0.5) * aspect, uv.y - 0.5);
@@ -201,7 +201,7 @@ fn colorField(
       q + velocity * (0.7 + fi * 0.35),
       time + fi * 0.46,
       flowSpeed,
-      noiseScale,
+      noiseScale
     );
     let angle = probe * (1.0 + fi * 0.28) + time * 0.03;
 
@@ -241,33 +241,6 @@ fn colorField(
   return saturate3(color);
 }
 
-fn blurredGradientField(
-  uv: vec2<f32>,
-  time: f32,
-  c0: vec3<f32>,
-  c1: vec3<f32>,
-  c2: vec3<f32>,
-  c3: vec3<f32>,
-  c4: vec3<f32>
-) -> vec3<f32> {
-  let blurRadius = max(0.0, uniforms.paramsB.y);
-  let invResolution = uniforms.resolution.zw;
-
-  if (blurRadius <= 0.001) {
-    return colorField(uv, time, c0, c1, c2, c3, c4);
-  }
-
-  let offset = invResolution * blurRadius * 2.0;
-  var accum = colorField(uv, time, c0, c1, c2, c3, c4) * 0.5;
-
-  accum += colorField(uv + vec2<f32>(offset.x, 0.0), time, c0, c1, c2, c3, c4) * 0.125;
-  accum += colorField(uv + vec2<f32>(-offset.x, 0.0), time, c0, c1, c2, c3, c4) * 0.125;
-  accum += colorField(uv + vec2<f32>(0.0, offset.y), time, c0, c1, c2, c3, c4) * 0.125;
-  accum += colorField(uv + vec2<f32>(0.0, -offset.y), time, c0, c1, c2, c3, c4) * 0.125;
-
-  return accum;
-}
-
 @vertex
 fn vsMain(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4<f32> {
   var positions = array<vec2<f32>, 3>(
@@ -283,7 +256,6 @@ fn vsMain(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4<f3
 fn fsMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
   let uv = position.xy * uniforms.resolution.zw;
   let time = uniforms.paramsA.x;
-  let opacity = saturate(uniforms.paramsA.y);
 
   let c0 = interpolatedPaletteColor(0u);
   let c1 = interpolatedPaletteColor(1u);
@@ -291,12 +263,157 @@ fn fsMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
   let c3 = interpolatedPaletteColor(3u);
   let c4 = interpolatedPaletteColor(4u);
 
-  var color = blurredGradientField(uv, time, c0, c1, c2, c3, c4);
-  color = saturate3(color);
+  let color = colorField(uv, time, c0, c1, c2, c3, c4);
+  return vec4<f32>(saturate3(color), 1.0);
+}
+`;
 
-  let baseColor = vec3<f32>(0.03, 0.035, 0.045);
+export const dualKawaseDownWGSL = /* wgsl */ `
+struct BlurUniforms {
+  params: vec4<f32>,
+}
+
+@group(0) @binding(0)
+var inputSampler: sampler;
+
+@group(0) @binding(1)
+var inputTexture: texture_2d<f32>;
+
+@group(0) @binding(2)
+var<uniform> uniforms: BlurUniforms;
+
+struct VsOut {
+  @builtin(position) position: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+}
+
+@vertex
+fn vsMain(@builtin(vertex_index) vertexIndex: u32) -> VsOut {
+  var positions = array<vec2<f32>, 3>(
+    vec2<f32>(-1.0, -1.0),
+    vec2<f32>(3.0, -1.0),
+    vec2<f32>(-1.0, 3.0)
+  );
+
+  let clip = positions[vertexIndex];
+  var out: VsOut;
+  out.position = vec4<f32>(clip, 0.0, 1.0);
+  out.uv = clip * 0.5 + vec2<f32>(0.5, 0.5);
+  return out;
+}
+
+@fragment
+fn fsMain(in: VsOut) -> @location(0) vec4<f32> {
+  let texel = uniforms.params.xy;
+  let offset = max(0.0, uniforms.params.z);
+  let delta = texel * offset;
+
+  var color = textureSample(inputTexture, inputSampler, in.uv) * 4.0;
+  color += textureSample(inputTexture, inputSampler, in.uv + vec2<f32>(delta.x, delta.y));
+  color += textureSample(inputTexture, inputSampler, in.uv + vec2<f32>(-delta.x, delta.y));
+  color += textureSample(inputTexture, inputSampler, in.uv + vec2<f32>(delta.x, -delta.y));
+  color += textureSample(inputTexture, inputSampler, in.uv + vec2<f32>(-delta.x, -delta.y));
+
+  return color * 0.125;
+}
+`;
+
+export const dualKawaseUpWGSL = /* wgsl */ `
+struct BlurUniforms {
+  params: vec4<f32>,
+}
+
+@group(0) @binding(0)
+var inputSampler: sampler;
+
+@group(0) @binding(1)
+var inputTexture: texture_2d<f32>;
+
+@group(0) @binding(2)
+var<uniform> uniforms: BlurUniforms;
+
+struct VsOut {
+  @builtin(position) position: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+}
+
+@vertex
+fn vsMain(@builtin(vertex_index) vertexIndex: u32) -> VsOut {
+  var positions = array<vec2<f32>, 3>(
+    vec2<f32>(-1.0, -1.0),
+    vec2<f32>(3.0, -1.0),
+    vec2<f32>(-1.0, 3.0)
+  );
+
+  let clip = positions[vertexIndex];
+  var out: VsOut;
+  out.position = vec4<f32>(clip, 0.0, 1.0);
+  out.uv = clip * 0.5 + vec2<f32>(0.5, 0.5);
+  return out;
+}
+
+@fragment
+fn fsMain(in: VsOut) -> @location(0) vec4<f32> {
+  let texel = uniforms.params.xy;
+  let offset = max(0.0, uniforms.params.z);
+  let delta = texel * offset;
+
+  var color = textureSample(inputTexture, inputSampler, in.uv) * 4.0;
+
+  color += textureSample(inputTexture, inputSampler, in.uv + vec2<f32>(delta.x, 0.0)) * 2.0;
+  color += textureSample(inputTexture, inputSampler, in.uv + vec2<f32>(-delta.x, 0.0)) * 2.0;
+  color += textureSample(inputTexture, inputSampler, in.uv + vec2<f32>(0.0, delta.y)) * 2.0;
+  color += textureSample(inputTexture, inputSampler, in.uv + vec2<f32>(0.0, -delta.y)) * 2.0;
+
+  color += textureSample(inputTexture, inputSampler, in.uv + vec2<f32>(delta.x, delta.y));
+  color += textureSample(inputTexture, inputSampler, in.uv + vec2<f32>(-delta.x, delta.y));
+  color += textureSample(inputTexture, inputSampler, in.uv + vec2<f32>(delta.x, -delta.y));
+  color += textureSample(inputTexture, inputSampler, in.uv + vec2<f32>(-delta.x, -delta.y));
+
+  return color * (1.0 / 16.0);
+}
+`;
+
+export const backgroundCompositeWGSL = /* wgsl */ `
+struct CompositeUniforms {
+  params: vec4<f32>,
+}
+
+@group(0) @binding(0)
+var inputSampler: sampler;
+
+@group(0) @binding(1)
+var inputTexture: texture_2d<f32>;
+
+@group(0) @binding(2)
+var<uniform> uniforms: CompositeUniforms;
+
+struct VsOut {
+  @builtin(position) position: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+}
+
+@vertex
+fn vsMain(@builtin(vertex_index) vertexIndex: u32) -> VsOut {
+  var positions = array<vec2<f32>, 3>(
+    vec2<f32>(-1.0, -1.0),
+    vec2<f32>(3.0, -1.0),
+    vec2<f32>(-1.0, 3.0)
+  );
+
+  let clip = positions[vertexIndex];
+  var out: VsOut;
+  out.position = vec4<f32>(clip, 0.0, 1.0);
+  out.uv = clip * 0.5 + vec2<f32>(0.5, 0.5);
+  return out;
+}
+
+@fragment
+fn fsMain(in: VsOut) -> @location(0) vec4<f32> {
+  let opacity = clamp(uniforms.params.x, 0.0, 1.0);
+  let baseColor = uniforms.params.yzw;
+  let color = textureSample(inputTexture, inputSampler, in.uv).rgb;
   let finalColor = mix(baseColor, color, opacity);
-
   return vec4<f32>(finalColor, 1.0);
 }
 `;
