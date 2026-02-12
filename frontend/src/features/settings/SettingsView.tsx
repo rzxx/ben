@@ -466,9 +466,47 @@ export function SettingsView(props: SettingsViewProps) {
           Background Shader
         </h2>
         <p className="mt-1 text-sm text-neutral-400">
-          WebGPU Perlin gradient controls. Palette transitions use OKLab
-          interpolation in shader.
+          Gradient background controls
         </p>
+
+        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-neutral-300 sm:grid-cols-2 lg:grid-cols-3">
+          <SelectSetting
+            label="Scene Module"
+            value={shaderSettings.sceneVariant}
+            options={[
+              { value: "stableLayered", label: "Stable Layered" },
+              { value: "legacyFeedback", label: "Legacy Feedback" },
+            ]}
+            onChange={(next) => {
+              if (!isSceneVariant(next)) {
+                return;
+              }
+              setShaderSettings({ sceneVariant: next });
+            }}
+          />
+          <SelectSetting
+            label="Blur Module"
+            value={shaderSettings.blurMode}
+            options={[
+              { value: "mipPyramid", label: "Mip Pyramid" },
+              { value: "dualKawase", label: "Dual Kawase" },
+              { value: "none", label: "None" },
+            ]}
+            onChange={(next) => {
+              if (!isBlurMode(next)) {
+                return;
+              }
+              setShaderSettings({ blurMode: next });
+            }}
+          />
+          <ToggleSetting
+            label="Temporal Accumulation"
+            checked={shaderSettings.temporalEnabled}
+            onChange={(checked) =>
+              setShaderSettings({ temporalEnabled: checked })
+            }
+          />
+        </div>
 
         <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-neutral-300 sm:grid-cols-2 lg:grid-cols-3">
           <NumericSetting
@@ -522,6 +560,46 @@ export function SettingsView(props: SettingsViewProps) {
             onChange={(next) => setShaderSettings({ warpStrength: next })}
           />
           <NumericSetting
+            label="Detail Amount"
+            value={shaderSettings.detailAmount}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(next) => setShaderSettings({ detailAmount: next })}
+          />
+          <NumericSetting
+            label="Detail Scale"
+            value={shaderSettings.detailScale}
+            min={0.2}
+            max={4}
+            step={0.01}
+            onChange={(next) => setShaderSettings({ detailScale: next })}
+          />
+          <NumericSetting
+            label="Detail Speed"
+            value={shaderSettings.detailSpeed}
+            min={0}
+            max={4}
+            step={0.01}
+            onChange={(next) => setShaderSettings({ detailSpeed: next })}
+          />
+          <NumericSetting
+            label="Color Drift"
+            value={shaderSettings.colorDrift}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(next) => setShaderSettings({ colorDrift: next })}
+          />
+          <NumericSetting
+            label="Luma Anchor"
+            value={shaderSettings.lumaAnchor}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(next) => setShaderSettings({ lumaAnchor: next })}
+          />
+          <NumericSetting
             label="Blur Radius"
             value={shaderSettings.blurRadius}
             min={0}
@@ -529,30 +607,86 @@ export function SettingsView(props: SettingsViewProps) {
             step={0.05}
             onChange={(next) => setShaderSettings({ blurRadius: next })}
           />
-          <NumericSetting
-            label="Blur Radius Step"
-            value={shaderSettings.blurRadiusStep}
-            min={0}
-            max={3}
-            step={0.05}
-            onChange={(next) => setShaderSettings({ blurRadiusStep: next })}
-          />
-          <NumericSetting
-            label="Blur Passes"
-            value={shaderSettings.blurPasses}
-            min={0}
-            max={8}
-            step={1}
-            onChange={(next) => setShaderSettings({ blurPasses: next })}
-          />
-          <NumericSetting
-            label="Blur Downsample"
-            value={shaderSettings.blurDownsample}
-            min={1.1}
-            max={4}
-            step={0.1}
-            onChange={(next) => setShaderSettings({ blurDownsample: next })}
-          />
+          {shaderSettings.blurMode === "mipPyramid" ? (
+            <>
+              <NumericSetting
+                label="Mip Levels"
+                value={shaderSettings.mipLevels}
+                min={1}
+                max={5}
+                step={1}
+                onChange={(next) => setShaderSettings({ mipLevels: next })}
+              />
+              <NumericSetting
+                label="Mip Curve"
+                value={shaderSettings.mipCurve}
+                min={0.2}
+                max={3}
+                step={0.05}
+                onChange={(next) => setShaderSettings({ mipCurve: next })}
+              />
+            </>
+          ) : null}
+          {shaderSettings.blurMode === "dualKawase" ? (
+            <>
+              <NumericSetting
+                label="Blur Radius Step"
+                value={shaderSettings.blurRadiusStep}
+                min={0}
+                max={3}
+                step={0.05}
+                onChange={(next) => setShaderSettings({ blurRadiusStep: next })}
+              />
+              <NumericSetting
+                label="Blur Passes"
+                value={shaderSettings.blurPasses}
+                min={0}
+                max={8}
+                step={1}
+                onChange={(next) => setShaderSettings({ blurPasses: next })}
+              />
+              <NumericSetting
+                label="Blur Downsample"
+                value={shaderSettings.blurDownsample}
+                min={1.1}
+                max={4}
+                step={0.1}
+                onChange={(next) => setShaderSettings({ blurDownsample: next })}
+              />
+            </>
+          ) : null}
+          {shaderSettings.temporalEnabled ? (
+            <>
+              <NumericSetting
+                label="Temporal Strength"
+                value={shaderSettings.temporalStrength}
+                min={0}
+                max={0.98}
+                step={0.01}
+                onChange={(next) =>
+                  setShaderSettings({ temporalStrength: next })
+                }
+              />
+              <NumericSetting
+                label="Temporal Response"
+                value={shaderSettings.temporalResponse}
+                min={0.01}
+                max={1.5}
+                step={0.01}
+                onChange={(next) =>
+                  setShaderSettings({ temporalResponse: next })
+                }
+              />
+              <NumericSetting
+                label="Temporal Clamp"
+                value={shaderSettings.temporalClamp}
+                min={0.01}
+                max={1}
+                step={0.01}
+                onChange={(next) => setShaderSettings({ temporalClamp: next })}
+              />
+            </>
+          ) : null}
           <NumericSetting
             label="Grain Strength"
             value={shaderSettings.grainStrength}
@@ -621,6 +755,60 @@ type NumericSettingProps = {
   step: number;
   onChange: (next: number) => void;
 };
+
+type SelectOption = {
+  value: string;
+  label: string;
+};
+
+type SelectSettingProps = {
+  label: string;
+  value: string;
+  options: SelectOption[];
+  onChange: (next: string) => void;
+};
+
+type ToggleSettingProps = {
+  label: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+};
+
+function SelectSetting(props: SelectSettingProps) {
+  return (
+    <label className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-2">
+      <p className="text-xs tracking-wide text-neutral-500 uppercase">
+        {props.label}
+      </p>
+      <select
+        value={props.value}
+        onChange={(event) => props.onChange(event.target.value)}
+        className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-500"
+      >
+        {props.options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function ToggleSetting(props: ToggleSettingProps) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-200">
+      <span className="text-xs tracking-wide text-neutral-400 uppercase">
+        {props.label}
+      </span>
+      <input
+        type="checkbox"
+        checked={props.checked}
+        onChange={(event) => props.onChange(event.target.checked)}
+      />
+    </label>
+  );
+}
 
 function NumericSetting(props: NumericSettingProps) {
   return (
@@ -691,6 +879,18 @@ function RoleChip(props: RoleChipProps) {
       <p className="mt-1 text-xs text-neutral-300">{props.color?.hex ?? "-"}</p>
     </div>
   );
+}
+
+function isSceneVariant(
+  value: string,
+): value is "stableLayered" | "legacyFeedback" {
+  return value === "stableLayered" || value === "legacyFeedback";
+}
+
+function isBlurMode(
+  value: string,
+): value is "mipPyramid" | "dualKawase" | "none" {
+  return value === "mipPyramid" || value === "dualKawase" || value === "none";
 }
 
 function buildGradientPreviewStyle(colors: ThemePaletteColor[]): CSSProperties {
