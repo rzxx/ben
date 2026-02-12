@@ -16,8 +16,10 @@ import (
 )
 
 const (
-	minColorCount = 3
-	maxColorCount = 10
+	minColorCount    = 3
+	maxColorCount    = 10
+	defaultWorkerCap = 8
+	maxWorkerCap     = 12
 )
 
 var defaultExtractOptions = ExtractOptions{
@@ -90,6 +92,10 @@ func NewExtractor() *Extractor {
 
 func DefaultExtractOptions() ExtractOptions {
 	return defaultExtractOptions
+}
+
+func NormalizeExtractOptions(options ExtractOptions) ExtractOptions {
+	return options.normalized()
 }
 
 func (e *Extractor) ExtractFromPath(path string, options ExtractOptions) (ThemePalette, error) {
@@ -268,9 +274,14 @@ func (o ExtractOptions) normalized() ExtractOptions {
 	normalized.MinDelta = clampFloat(normalized.MinDelta, 0.01, 0.45)
 
 	if normalized.WorkerCount <= 0 {
-		normalized.WorkerCount = runtime.GOMAXPROCS(0)
+		defaultWorkers := runtime.GOMAXPROCS(0) - 1
+		if defaultWorkers < 1 {
+			defaultWorkers = 1
+		}
+		normalized.WorkerCount = minInt(defaultWorkers, defaultWorkerCap)
 	}
-	normalized.WorkerCount = maxInt(normalized.WorkerCount, 1)
+	maxWorkers := maxInt(1, minInt(runtime.GOMAXPROCS(0), maxWorkerCap))
+	normalized.WorkerCount = clampInt(normalized.WorkerCount, 1, maxWorkers)
 
 	return normalized
 }

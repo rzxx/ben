@@ -18,6 +18,8 @@ export type BackgroundShaderSettings = {
   blurMode: ShaderBlurMode;
   opacity: number;
   renderScale: number;
+  maxRenderDpr: number;
+  targetFrameRate: number;
   noiseScale: number;
   flowSpeed: number;
   warpStrength: number;
@@ -63,6 +65,8 @@ const defaultSettings: BackgroundShaderSettings = {
   blurMode: "mipPyramid",
   opacity: 0.78,
   renderScale: 0.5,
+  maxRenderDpr: 1,
+  targetFrameRate: 30,
   noiseScale: 1.1,
   flowSpeed: 0.48,
   warpStrength: 0.22,
@@ -255,6 +259,8 @@ function sanitizeSettings(
           : "mipPyramid",
     opacity: clamp(settings.opacity, 0, 1),
     renderScale: clamp(settings.renderScale, 0.2, 1),
+    maxRenderDpr: clamp(settings.maxRenderDpr, 0.75, 2),
+    targetFrameRate: Math.round(clamp(settings.targetFrameRate, 15, 60)),
     noiseScale: clamp(settings.noiseScale, 0.1, 5),
     flowSpeed: clamp(settings.flowSpeed, 0, 5),
     warpStrength: clamp(settings.warpStrength, 0, 1.5),

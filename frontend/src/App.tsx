@@ -57,6 +57,7 @@ const playerStateEvent = "player:state";
 const browseLimit = 200;
 const detailLimit = 200;
 const appMemoryLocation = memoryLocation({ path: "/albums" });
+const maxThemePaletteCacheEntries = 48;
 
 function createEmptyPage(limit: number, offset: number): PageInfo {
   return {
@@ -118,6 +119,13 @@ function createDefaultThemeExtractOptions(): ThemeExtractOptions {
     minDelta: 0.08,
     workerCount: 0,
   };
+}
+
+function buildThemePaletteCacheKey(
+  coverPath: string,
+  options: ThemeExtractOptions,
+): string {
+  return `${coverPath}|${JSON.stringify(options)}`;
 }
 
 function normalizePagedResult<T>(
@@ -196,6 +204,7 @@ function AppContent() {
   const pendingSeekMSRef = useRef<number | null>(null);
   const themeRequestTokenRef = useRef(0);
   const themeOptionsRef = useRef(themeOptions);
+  const themePaletteCacheRef = useRef(new Map<string, ThemePalette>());
 
   const loadWatchedRoots = useCallback(async () => {
     const roots = await Call.ByName(`${settingsService}.ListWatchedRoots`);
@@ -705,6 +714,19 @@ function AppContent() {
         return;
       }
 
+      const currentThemeOptions = themeOptionsRef.current;
+      const cacheKey = buildThemePaletteCacheKey(
+        trimmedPath,
+        currentThemeOptions,
+      );
+      const cachedPalette = themePaletteCacheRef.current.get(cacheKey);
+      if (cachedPalette) {
+        setThemeErrorMessage(null);
+        setThemeBusy(false);
+        setGeneratedThemePalette(cachedPalette);
+        return;
+      }
+
       const requestToken = themeRequestTokenRef.current + 1;
       themeRequestTokenRef.current = requestToken;
 
@@ -714,14 +736,28 @@ function AppContent() {
         const nextPalette = await Call.ByName(
           `${themeService}.GenerateFromCover`,
           trimmedPath,
-          themeOptionsRef.current,
+          currentThemeOptions,
         );
 
         if (requestToken !== themeRequestTokenRef.current) {
           return;
         }
 
-        setGeneratedThemePalette((nextPalette ?? null) as ThemePalette | null);
+        const palette = (nextPalette ?? null) as ThemePalette | null;
+        setGeneratedThemePalette(palette);
+        if (palette) {
+          themePaletteCacheRef.current.set(cacheKey, palette);
+          while (
+            themePaletteCacheRef.current.size > maxThemePaletteCacheEntries
+          ) {
+            const oldestKey = themePaletteCacheRef.current.keys().next()
+              .value as string | undefined;
+            if (!oldestKey) {
+              break;
+            }
+            themePaletteCacheRef.current.delete(oldestKey);
+          }
+        }
       } catch (error) {
         if (requestToken === themeRequestTokenRef.current) {
           setThemeErrorMessage(parseError(error));

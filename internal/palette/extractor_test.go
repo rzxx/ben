@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"runtime"
 	"testing"
 )
 
@@ -127,6 +128,23 @@ func TestBuildGradientSwatchesRepeatsExistingOrderWhenPadding(t *testing.T) {
 	}
 	if !sameRGB(result[3], secondary) {
 		t.Fatalf("expected padded gradient to cycle existing colors, got %#v", result[3])
+	}
+}
+
+func TestNormalizeExtractOptionsCapsWorkerCount(t *testing.T) {
+	t.Parallel()
+
+	normalized := NormalizeExtractOptions(ExtractOptions{WorkerCount: 10_000})
+	maxWorkers := runtime.GOMAXPROCS(0)
+	if maxWorkers > maxWorkerCap {
+		maxWorkers = maxWorkerCap
+	}
+	if maxWorkers < 1 {
+		maxWorkers = 1
+	}
+
+	if normalized.WorkerCount < 1 || normalized.WorkerCount > maxWorkers {
+		t.Fatalf("expected worker count in [1,%d], got %d", maxWorkers, normalized.WorkerCount)
 	}
 }
 

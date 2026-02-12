@@ -536,6 +536,22 @@ export function SettingsView(props: SettingsViewProps) {
             onChange={(next) => setShaderSettings({ renderScale: next })}
           />
           <NumericSetting
+            label="Max Render DPR"
+            value={shaderSettings.maxRenderDpr}
+            min={0.75}
+            max={2}
+            step={0.05}
+            onChange={(next) => setShaderSettings({ maxRenderDpr: next })}
+          />
+          <NumericSetting
+            label="Target FPS"
+            value={shaderSettings.targetFrameRate}
+            min={15}
+            max={60}
+            step={1}
+            onChange={(next) => setShaderSettings({ targetFrameRate: next })}
+          />
+          <NumericSetting
             label="Noise Scale"
             value={shaderSettings.noiseScale}
             min={0.1}

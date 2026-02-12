@@ -13,6 +13,8 @@ export type TargetConfig = {
   width: number;
   height: number;
   blurMode: BlurModule;
+  dualEnabled: boolean;
+  mipEnabled: boolean;
   temporalEnabled: boolean;
   dualPasses: number;
   dualDownsample: number;

@@ -93,21 +93,19 @@ export function buildTargetConfig(
   settings: BackgroundShaderSettings,
 ): TargetConfig {
   const blurMode = settings.blurMode as BlurModule;
+  const dualEnabled = isDualKawaseRequested(settings);
+  const mipEnabled = isMipBlurRequested(settings);
+
   return {
     width,
     height,
     blurMode,
+    dualEnabled,
+    mipEnabled,
     temporalEnabled: settings.temporalEnabled,
-    dualPasses:
-      blurMode === "dualKawase"
-        ? Math.max(0, Math.round(settings.blurPasses))
-        : 0,
-    dualDownsample:
-      blurMode === "dualKawase" ? Math.max(1.1, settings.blurDownsample) : 0,
-    mipLevels:
-      blurMode === "mipPyramid"
-        ? Math.max(1, Math.round(settings.mipLevels))
-        : 0,
+    dualPasses: dualEnabled ? Math.max(0, Math.round(settings.blurPasses)) : 0,
+    dualDownsample: dualEnabled ? Math.max(1.1, settings.blurDownsample) : 0,
+    mipLevels: mipEnabled ? Math.max(1, Math.round(settings.mipLevels)) : 0,
   };
 }
 
@@ -123,6 +121,8 @@ export function areTargetConfigsEqual(
     left.width === right.width &&
     left.height === right.height &&
     left.blurMode === right.blurMode &&
+    left.dualEnabled === right.dualEnabled &&
+    left.mipEnabled === right.mipEnabled &&
     left.temporalEnabled === right.temporalEnabled &&
     left.dualPasses === right.dualPasses &&
     left.dualDownsample === right.dualDownsample &&
@@ -130,24 +130,38 @@ export function areTargetConfigsEqual(
   );
 }
 
+export function isDualKawaseRequested(
+  settings: BackgroundShaderSettings,
+): boolean {
+  return (
+    settings.blurMode === "dualKawase" &&
+    settings.blurRadius > 0.001 &&
+    settings.blurPasses > 0
+  );
+}
+
+export function isMipBlurRequested(
+  settings: BackgroundShaderSettings,
+): boolean {
+  return (
+    settings.blurMode === "mipPyramid" &&
+    settings.blurRadius > 0.001 &&
+    settings.mipLevels > 0
+  );
+}
+
 export function shouldApplyDualKawase(
   settings: BackgroundShaderSettings,
   blurTargetCount: number,
 ): boolean {
-  return (
-    settings.blurRadius > 0.001 &&
-    settings.blurPasses > 0 &&
-    blurTargetCount > 0
-  );
+  return isDualKawaseRequested(settings) && blurTargetCount > 0;
 }
 
 export function shouldApplyMipBlur(
   settings: BackgroundShaderSettings,
   mipTargetCount: number,
 ): boolean {
-  return (
-    settings.blurRadius > 0.001 && settings.mipLevels > 0 && mipTargetCount > 0
-  );
+  return isMipBlurRequested(settings) && mipTargetCount > 0;
 }
 
 export function resolveMipViews(
