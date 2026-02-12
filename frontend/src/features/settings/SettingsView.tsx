@@ -513,14 +513,6 @@ export function SettingsView(props: SettingsViewProps) {
             step={0.01}
             onChange={(next) => setShaderSettings({ grainScale: next })}
           />
-          <NumericSetting
-            label="Grain Speed"
-            value={shaderSettings.grainSpeed}
-            min={0}
-            max={6}
-            step={0.01}
-            onChange={(next) => setShaderSettings({ grainSpeed: next })}
-          />
         </div>
       </section>
 

@@ -12,7 +12,6 @@ export type BackgroundShaderSettings = {
   blurRadius: number;
   grainStrength: number;
   grainScale: number;
-  grainSpeed: number;
   colorTransitionSeconds: number;
 };
 
@@ -40,7 +39,6 @@ const defaultSettings: BackgroundShaderSettings = {
   blurRadius: 1.4,
   grainStrength: 0.028,
   grainScale: 1.8,
-  grainSpeed: 0.45,
   colorTransitionSeconds: 1.9,
 };
 
@@ -129,7 +127,6 @@ function sanitizeSettings(settings: BackgroundShaderSettings): BackgroundShaderS
     blurRadius: clamp(settings.blurRadius, 0, 6),
     grainStrength: clamp(settings.grainStrength, 0, 0.25),
     grainScale: clamp(settings.grainScale, 0.1, 8),
-    grainSpeed: clamp(settings.grainSpeed, 0, 6),
     colorTransitionSeconds: clamp(settings.colorTransitionSeconds, 0, 16),
   };
 }

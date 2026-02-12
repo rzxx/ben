@@ -7,6 +7,10 @@ import { backgroundShaderWGSL } from "./backgroundShaderWGSL";
 
 const uniformFloatCount = 48;
 const uniformBufferSize = uniformFloatCount * Float32Array.BYTES_PER_ELEMENT;
+const shaderMaxDpr = 1;
+const shaderRenderScale = 0.5;
+const shaderTargetFrameRate = 30;
+const shaderTargetFrameIntervalMs = 1000 / shaderTargetFrameRate;
 
 export function BackgroundShader() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -19,6 +23,7 @@ export function BackgroundShader() {
     (state) => state.transitionStartedAtMs,
   );
   const settings = useBackgroundShaderStore((state) => state.settings);
+  const grainTextureUrl = useMemo(() => createNoiseTextureDataURL(256), []);
 
   const fromColorsRef = useRef(fromColors);
   const toColorsRef = useRef(toColors);
@@ -52,6 +57,7 @@ export function BackgroundShader() {
     }
 
     let animationFrameId = 0;
+    let lastRenderAtMs = -shaderTargetFrameIntervalMs;
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
 
@@ -89,11 +95,11 @@ export function BackgroundShader() {
 
       uniformData[8] = settingsValue.warpStrength;
       uniformData[9] = settingsValue.blurRadius;
-      uniformData[10] = settingsValue.grainStrength;
-      uniformData[11] = settingsValue.grainScale;
+      uniformData[10] = 0;
+      uniformData[11] = 0;
 
-      uniformData[12] = settingsValue.grainSpeed;
-      uniformData[13] = transitionMix;
+      uniformData[12] = transitionMix;
+      uniformData[13] = 0;
       uniformData[14] = 0;
       uniformData[15] = 0;
 
@@ -110,9 +116,15 @@ export function BackgroundShader() {
     };
 
     const resizeCanvas = () => {
-      const dpr = window.devicePixelRatio || 1;
-      const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
-      const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
+      const dpr = Math.min(window.devicePixelRatio || 1, shaderMaxDpr);
+      const width = Math.max(
+        1,
+        Math.round(canvas.clientWidth * dpr * shaderRenderScale),
+      );
+      const height = Math.max(
+        1,
+        Math.round(canvas.clientHeight * dpr * shaderRenderScale),
+      );
 
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
@@ -124,6 +136,13 @@ export function BackgroundShader() {
       if (disposed) {
         return;
       }
+
+      if (time - lastRenderAtMs < shaderTargetFrameIntervalMs) {
+        animationFrameId = window.requestAnimationFrame(render);
+        return;
+      }
+
+      lastRenderAtMs = time;
 
       const { context, device, pipeline, bindGroup } = renderState;
       if (!context || !device || !pipeline || !bindGroup) {
@@ -264,6 +283,10 @@ export function BackgroundShader() {
     () => buildFallbackStyle(toColors, settings.opacity),
     [settings.opacity, toColors],
   );
+  const grainStyle = useMemo(
+    () => buildGrainStyle(settings, grainTextureUrl),
+    [grainTextureUrl, settings],
+  );
 
   return (
     <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
@@ -272,6 +295,7 @@ export function BackgroundShader() {
         ref={canvasRef}
         className={isUnsupported ? "hidden" : "absolute inset-0 h-full w-full"}
       />
+      <div className="absolute inset-0" style={grainStyle} />
     </div>
   );
 }
@@ -305,6 +329,56 @@ function buildFallbackStyle(
     backgroundImage: `radial-gradient(circle at 16% 20%, ${c0} 0%, transparent 48%), radial-gradient(circle at 84% 26%, ${c1} 0%, transparent 44%), radial-gradient(circle at 24% 88%, ${c2} 0%, transparent 40%), linear-gradient(140deg, ${c3} 0%, #07090d 92%)`,
     opacity: safeOpacity,
   };
+}
+
+function buildGrainStyle(
+  settings: {
+    grainStrength: number;
+    grainScale: number;
+  },
+  grainTextureUrl: string,
+): CSSProperties {
+  const textureScale = clamp(settings.grainScale, 0.1, 8);
+  const grainOpacity = clamp(settings.grainStrength * 4.4, 0, 0.38);
+  const grainTileSize = Math.max(32, Math.round(256 / textureScale));
+
+  return {
+    opacity: grainOpacity,
+    backgroundImage: grainTextureUrl ? `url(${grainTextureUrl})` : "none",
+    backgroundRepeat: "repeat",
+    backgroundSize: `${grainTileSize}px ${grainTileSize}px`,
+    mixBlendMode: "soft-light",
+  };
+}
+
+function createNoiseTextureDataURL(size: number): string {
+  if (typeof document === "undefined") {
+    return "";
+  }
+
+  const safeSize = Math.max(16, Math.floor(size));
+  const canvas = document.createElement("canvas");
+  canvas.width = safeSize;
+  canvas.height = safeSize;
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return "";
+  }
+
+  const imageData = context.createImageData(safeSize, safeSize);
+  const values = imageData.data;
+
+  for (let i = 0; i < values.length; i += 4) {
+    const grain = 96 + Math.floor(Math.random() * 64);
+    values[i] = grain;
+    values[i + 1] = grain;
+    values[i + 2] = grain;
+    values[i + 3] = 255;
+  }
+
+  context.putImageData(imageData, 0, 0);
+  return canvas.toDataURL("image/png");
 }
 
 function toCssColor(color: [number, number, number], alpha: number): string {

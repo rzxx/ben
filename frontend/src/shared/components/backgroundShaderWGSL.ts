@@ -119,13 +119,20 @@ fn fbm(point: vec2<f32>) -> f32 {
 }
 
 fn interpolatedPaletteColor(index: u32) -> vec3<f32> {
-  let mixAmount = smoothstep(0.0, 1.0, saturate(uniforms.paramsC.y));
+  let mixAmount = smoothstep(0.0, 1.0, saturate(uniforms.paramsC.x));
   let fromLab = srgbToOklab(uniforms.fromColors[index].xyz);
   let toLab = srgbToOklab(uniforms.toColors[index].xyz);
   return saturate3(oklabToSrgb(mix(fromLab, toLab, mixAmount)));
 }
 
-fn gradientField(uv: vec2<f32>, time: f32) -> vec3<f32> {
+fn gradientField(
+  uv: vec2<f32>,
+  time: f32,
+  c0: vec3<f32>,
+  c1: vec3<f32>,
+  c2: vec3<f32>,
+  c3: vec3<f32>
+) -> vec3<f32> {
   let noiseScale = max(0.1, uniforms.paramsA.z);
   let flowSpeed = uniforms.paramsA.w;
   let warpStrength = uniforms.paramsB.x;
@@ -146,43 +153,33 @@ fn gradientField(uv: vec2<f32>, time: f32) -> vec3<f32> {
   let sum = weights.x + weights.y + weights.z + weights.w;
   weights = weights / sum;
 
-  let c0 = interpolatedPaletteColor(0u);
-  let c1 = interpolatedPaletteColor(1u);
-  let c2 = interpolatedPaletteColor(2u);
-  let c3 = interpolatedPaletteColor(3u);
-
   return c0 * weights.x + c1 * weights.y + c2 * weights.z + c3 * weights.w;
 }
 
-fn blurredGradientField(uv: vec2<f32>, time: f32) -> vec3<f32> {
+fn blurredGradientField(
+  uv: vec2<f32>,
+  time: f32,
+  c0: vec3<f32>,
+  c1: vec3<f32>,
+  c2: vec3<f32>,
+  c3: vec3<f32>
+) -> vec3<f32> {
   let blurRadius = max(0.0, uniforms.paramsB.y);
   let invResolution = uniforms.resolution.zw;
 
   if (blurRadius <= 0.001) {
-    return gradientField(uv, time);
+    return gradientField(uv, time, c0, c1, c2, c3);
   }
 
   let offset = invResolution * blurRadius * 2.0;
-  var accum = gradientField(uv, time) * 0.24;
+  var accum = gradientField(uv, time, c0, c1, c2, c3) * 0.5;
 
-  accum += gradientField(uv + vec2<f32>(offset.x, 0.0), time) * 0.12;
-  accum += gradientField(uv + vec2<f32>(-offset.x, 0.0), time) * 0.12;
-  accum += gradientField(uv + vec2<f32>(0.0, offset.y), time) * 0.12;
-  accum += gradientField(uv + vec2<f32>(0.0, -offset.y), time) * 0.12;
-
-  accum += gradientField(uv + vec2<f32>(offset.x, offset.y), time) * 0.07;
-  accum += gradientField(uv + vec2<f32>(-offset.x, offset.y), time) * 0.07;
-  accum += gradientField(uv + vec2<f32>(offset.x, -offset.y), time) * 0.07;
-  accum += gradientField(uv + vec2<f32>(-offset.x, -offset.y), time) * 0.07;
+  accum += gradientField(uv + vec2<f32>(offset.x, 0.0), time, c0, c1, c2, c3) * 0.125;
+  accum += gradientField(uv + vec2<f32>(-offset.x, 0.0), time, c0, c1, c2, c3) * 0.125;
+  accum += gradientField(uv + vec2<f32>(0.0, offset.y), time, c0, c1, c2, c3) * 0.125;
+  accum += gradientField(uv + vec2<f32>(0.0, -offset.y), time, c0, c1, c2, c3) * 0.125;
 
   return accum;
-}
-
-fn grainValue(uv: vec2<f32>, time: f32) -> f32 {
-  let grainScale = max(0.1, uniforms.paramsB.w);
-  let grainSpeed = uniforms.paramsC.x;
-  let p = uv * uniforms.resolution.xy / 320.0 * grainScale * 18.0 + vec2<f32>(time * grainSpeed * 0.31, -time * grainSpeed * 0.27);
-  return perlinNoise(p * 3.1) - 0.5;
 }
 
 @vertex
@@ -202,9 +199,12 @@ fn fsMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
   let time = uniforms.paramsA.x;
   let opacity = saturate(uniforms.paramsA.y);
 
-  var color = blurredGradientField(uv, time);
-  let grain = grainValue(uv, time) * uniforms.paramsB.z;
-  color += vec3<f32>(grain);
+  let c0 = interpolatedPaletteColor(0u);
+  let c1 = interpolatedPaletteColor(1u);
+  let c2 = interpolatedPaletteColor(2u);
+  let c3 = interpolatedPaletteColor(3u);
+
+  var color = blurredGradientField(uv, time, c0, c1, c2, c3);
   color = saturate3(color);
 
   let baseColor = vec3<f32>(0.03, 0.035, 0.045);
