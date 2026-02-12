@@ -5,7 +5,7 @@ import {
 } from "../store/backgroundShaderStore";
 import { backgroundShaderWGSL } from "./backgroundShaderWGSL";
 
-const uniformFloatCount = 48;
+const uniformFloatCount = 56;
 const uniformBufferSize = uniformFloatCount * Float32Array.BYTES_PER_ELEMENT;
 const shaderMaxDpr = 1;
 const shaderRenderScale = 0.5;
@@ -104,7 +104,7 @@ export function BackgroundShader() {
       uniformData[15] = 0;
 
       writeColorSet(uniformData, 16, fromColorsRef.current);
-      writeColorSet(uniformData, 32, toColorsRef.current);
+      writeColorSet(uniformData, 36, toColorsRef.current);
 
       renderState.device?.queue.writeBuffer(
         renderState.uniformBuffer as GPUBuffer,
@@ -322,11 +322,12 @@ function buildFallbackStyle(
   const c1 = toCssColor(colors[1], 0.7);
   const c2 = toCssColor(colors[2], 0.68);
   const c3 = toCssColor(colors[3], 0.85);
+  const c4 = toCssColor(colors[4], 0.64);
   const safeOpacity = clamp(opacity, 0, 1);
 
   return {
     backgroundColor: "#07090d",
-    backgroundImage: `radial-gradient(circle at 16% 20%, ${c0} 0%, transparent 48%), radial-gradient(circle at 84% 26%, ${c1} 0%, transparent 44%), radial-gradient(circle at 24% 88%, ${c2} 0%, transparent 40%), linear-gradient(140deg, ${c3} 0%, #07090d 92%)`,
+    backgroundImage: `radial-gradient(circle at 16% 20%, ${c0} 0%, transparent 48%), radial-gradient(circle at 84% 26%, ${c1} 0%, transparent 44%), radial-gradient(circle at 24% 88%, ${c2} 0%, transparent 40%), radial-gradient(circle at 58% 62%, ${c4} 0%, transparent 46%), linear-gradient(140deg, ${c3} 0%, #07090d 92%)`,
     opacity: safeOpacity,
   };
 }

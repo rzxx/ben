@@ -2,7 +2,13 @@ import { create } from "zustand";
 import { ThemePalette } from "../../features/types";
 
 export type ShaderColor = [number, number, number];
-export type ShaderColorSet = [ShaderColor, ShaderColor, ShaderColor, ShaderColor];
+export type ShaderColorSet = [
+  ShaderColor,
+  ShaderColor,
+  ShaderColor,
+  ShaderColor,
+  ShaderColor,
+];
 
 export type BackgroundShaderSettings = {
   opacity: number;
@@ -29,6 +35,7 @@ const fallbackColors: ShaderColorSet = [
   [0.14, 0.17, 0.23],
   [0.1, 0.12, 0.18],
   [0.06, 0.08, 0.12],
+  [0.03, 0.05, 0.08],
 ];
 
 const defaultSettings: BackgroundShaderSettings = {
@@ -75,7 +82,7 @@ export const useBackgroundShaderStore = create<BackgroundShaderState>((set) => (
 function paletteToColorSet(palette: ThemePalette | null): ShaderColorSet {
   const colors = (palette?.gradient ?? [])
     .map((color) => [toUnitColor(color.r), toUnitColor(color.g), toUnitColor(color.b)])
-    .slice(0, 4) as ShaderColor[];
+    .slice(0, 5) as ShaderColor[];
 
   if (colors.length === 0) {
     return fallbackColors;
@@ -85,8 +92,9 @@ function paletteToColorSet(palette: ThemePalette | null): ShaderColorSet {
   const second = colors[1] ?? first;
   const third = colors[2] ?? second;
   const fourth = colors[3] ?? third;
+  const fifth = colors[4] ?? fourth;
 
-  return [first, second, third, fourth];
+  return [first, second, third, fourth, fifth];
 }
 
 function getLiveColorSet(state: BackgroundShaderState, now: number): ShaderColorSet {
@@ -107,6 +115,7 @@ function getLiveColorSet(state: BackgroundShaderState, now: number): ShaderColor
     mixColor(state.fromColors[1], state.toColors[1], mixAmount),
     mixColor(state.fromColors[2], state.toColors[2], mixAmount),
     mixColor(state.fromColors[3], state.toColors[3], mixAmount),
+    mixColor(state.fromColors[4], state.toColors[4], mixAmount),
   ];
 }
 
@@ -136,7 +145,7 @@ function toUnitColor(value: number): number {
 }
 
 function areColorSetsEqual(a: ShaderColorSet, b: ShaderColorSet): boolean {
-  for (let i = 0; i < 4; i += 1) {
+  for (let i = 0; i < 5; i += 1) {
     if (!areColorsEqual(a[i], b[i])) {
       return false;
     }
