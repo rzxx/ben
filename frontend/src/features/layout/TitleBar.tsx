@@ -47,7 +47,11 @@ export function TitleBar() {
           label={isMaximised ? "Restore" : "Maximise"}
           onClick={() => void onToggleMaximise()}
         >
-          {isMaximised ? <Copy size={12} /> : <Square size={12} />}
+          {isMaximised ? (
+            <Copy size={12} />
+          ) : (
+            <Square size={12} strokeWidth={1.5} />
+          )}
         </ControlButton>
 
         <ControlButton
