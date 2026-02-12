@@ -5,6 +5,44 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+export class AlbumStat {
+    "title": string;
+    "albumArtist": string;
+    "playedMs": number;
+    "playCount": number;
+    "trackCount": number;
+    "coverPath"?: string | null;
+
+    /** Creates a new AlbumStat instance. */
+    constructor($$source: Partial<AlbumStat> = {}) {
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("albumArtist" in $$source)) {
+            this["albumArtist"] = "";
+        }
+        if (!("playedMs" in $$source)) {
+            this["playedMs"] = 0;
+        }
+        if (!("playCount" in $$source)) {
+            this["playCount"] = 0;
+        }
+        if (!("trackCount" in $$source)) {
+            this["trackCount"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AlbumStat instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AlbumStat {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AlbumStat($$parsedSource as Partial<AlbumStat>);
+    }
+}
+
 export class ArtistStat {
     "name": string;
     "playedMs": number;
@@ -31,6 +69,388 @@ export class ArtistStat {
     static createFrom($$source: any = {}): ArtistStat {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new ArtistStat($$parsedSource as Partial<ArtistStat>);
+    }
+}
+
+export class Dashboard {
+    "range": string;
+    "windowStart"?: string | null;
+    "generatedAt": string;
+    "summary": DashboardSummary;
+    "quality": DashboardQuality;
+    "discovery": DashboardDiscovery;
+    "streak": ListeningStreak;
+    "heatmap": HeatmapDay[];
+    "topTracks": TrackStat[];
+    "topArtists": ArtistStat[];
+    "topAlbums": AlbumStat[];
+    "topGenres": GenreStat[];
+    "replayTracks": ReplayTrackStat[];
+    "hourlyProfile": HourStat[];
+    "weekdayProfile": WeekdayStat[];
+    "peakHour": number;
+    "peakWeekday": number;
+    "session": SessionStats;
+    "behaviorWindowDays": number;
+
+    /** Creates a new Dashboard instance. */
+    constructor($$source: Partial<Dashboard> = {}) {
+        if (!("range" in $$source)) {
+            this["range"] = "";
+        }
+        if (!("generatedAt" in $$source)) {
+            this["generatedAt"] = "";
+        }
+        if (!("summary" in $$source)) {
+            this["summary"] = (new DashboardSummary());
+        }
+        if (!("quality" in $$source)) {
+            this["quality"] = (new DashboardQuality());
+        }
+        if (!("discovery" in $$source)) {
+            this["discovery"] = (new DashboardDiscovery());
+        }
+        if (!("streak" in $$source)) {
+            this["streak"] = (new ListeningStreak());
+        }
+        if (!("heatmap" in $$source)) {
+            this["heatmap"] = [];
+        }
+        if (!("topTracks" in $$source)) {
+            this["topTracks"] = [];
+        }
+        if (!("topArtists" in $$source)) {
+            this["topArtists"] = [];
+        }
+        if (!("topAlbums" in $$source)) {
+            this["topAlbums"] = [];
+        }
+        if (!("topGenres" in $$source)) {
+            this["topGenres"] = [];
+        }
+        if (!("replayTracks" in $$source)) {
+            this["replayTracks"] = [];
+        }
+        if (!("hourlyProfile" in $$source)) {
+            this["hourlyProfile"] = [];
+        }
+        if (!("weekdayProfile" in $$source)) {
+            this["weekdayProfile"] = [];
+        }
+        if (!("peakHour" in $$source)) {
+            this["peakHour"] = 0;
+        }
+        if (!("peakWeekday" in $$source)) {
+            this["peakWeekday"] = 0;
+        }
+        if (!("session" in $$source)) {
+            this["session"] = (new SessionStats());
+        }
+        if (!("behaviorWindowDays" in $$source)) {
+            this["behaviorWindowDays"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Dashboard instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Dashboard {
+        const $$createField3_0 = $$createType0;
+        const $$createField4_0 = $$createType1;
+        const $$createField5_0 = $$createType2;
+        const $$createField6_0 = $$createType3;
+        const $$createField7_0 = $$createType5;
+        const $$createField8_0 = $$createType7;
+        const $$createField9_0 = $$createType9;
+        const $$createField10_0 = $$createType11;
+        const $$createField11_0 = $$createType13;
+        const $$createField12_0 = $$createType15;
+        const $$createField13_0 = $$createType17;
+        const $$createField14_0 = $$createType19;
+        const $$createField17_0 = $$createType20;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("summary" in $$parsedSource) {
+            $$parsedSource["summary"] = $$createField3_0($$parsedSource["summary"]);
+        }
+        if ("quality" in $$parsedSource) {
+            $$parsedSource["quality"] = $$createField4_0($$parsedSource["quality"]);
+        }
+        if ("discovery" in $$parsedSource) {
+            $$parsedSource["discovery"] = $$createField5_0($$parsedSource["discovery"]);
+        }
+        if ("streak" in $$parsedSource) {
+            $$parsedSource["streak"] = $$createField6_0($$parsedSource["streak"]);
+        }
+        if ("heatmap" in $$parsedSource) {
+            $$parsedSource["heatmap"] = $$createField7_0($$parsedSource["heatmap"]);
+        }
+        if ("topTracks" in $$parsedSource) {
+            $$parsedSource["topTracks"] = $$createField8_0($$parsedSource["topTracks"]);
+        }
+        if ("topArtists" in $$parsedSource) {
+            $$parsedSource["topArtists"] = $$createField9_0($$parsedSource["topArtists"]);
+        }
+        if ("topAlbums" in $$parsedSource) {
+            $$parsedSource["topAlbums"] = $$createField10_0($$parsedSource["topAlbums"]);
+        }
+        if ("topGenres" in $$parsedSource) {
+            $$parsedSource["topGenres"] = $$createField11_0($$parsedSource["topGenres"]);
+        }
+        if ("replayTracks" in $$parsedSource) {
+            $$parsedSource["replayTracks"] = $$createField12_0($$parsedSource["replayTracks"]);
+        }
+        if ("hourlyProfile" in $$parsedSource) {
+            $$parsedSource["hourlyProfile"] = $$createField13_0($$parsedSource["hourlyProfile"]);
+        }
+        if ("weekdayProfile" in $$parsedSource) {
+            $$parsedSource["weekdayProfile"] = $$createField14_0($$parsedSource["weekdayProfile"]);
+        }
+        if ("session" in $$parsedSource) {
+            $$parsedSource["session"] = $$createField17_0($$parsedSource["session"]);
+        }
+        return new Dashboard($$parsedSource as Partial<Dashboard>);
+    }
+}
+
+export class DashboardDiscovery {
+    "uniqueTracks": number;
+    "replayPlays": number;
+    "discoveryRatio": number;
+    "replayRatio": number;
+    "score": number;
+
+    /** Creates a new DashboardDiscovery instance. */
+    constructor($$source: Partial<DashboardDiscovery> = {}) {
+        if (!("uniqueTracks" in $$source)) {
+            this["uniqueTracks"] = 0;
+        }
+        if (!("replayPlays" in $$source)) {
+            this["replayPlays"] = 0;
+        }
+        if (!("discoveryRatio" in $$source)) {
+            this["discoveryRatio"] = 0;
+        }
+        if (!("replayRatio" in $$source)) {
+            this["replayRatio"] = 0;
+        }
+        if (!("score" in $$source)) {
+            this["score"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DashboardDiscovery instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DashboardDiscovery {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DashboardDiscovery($$parsedSource as Partial<DashboardDiscovery>);
+    }
+}
+
+export class DashboardQuality {
+    "score": number;
+
+    /** Creates a new DashboardQuality instance. */
+    constructor($$source: Partial<DashboardQuality> = {}) {
+        if (!("score" in $$source)) {
+            this["score"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DashboardQuality instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DashboardQuality {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DashboardQuality($$parsedSource as Partial<DashboardQuality>);
+    }
+}
+
+export class DashboardSummary {
+    "totalPlayedMs": number;
+    "totalPlays": number;
+    "tracksPlayed": number;
+    "artistsPlayed": number;
+    "albumsPlayed": number;
+    "completeCount": number;
+    "skipCount": number;
+    "partialCount": number;
+    "completionRate": number;
+    "skipRate": number;
+    "partialRate": number;
+    "completionScore": number;
+
+    /** Creates a new DashboardSummary instance. */
+    constructor($$source: Partial<DashboardSummary> = {}) {
+        if (!("totalPlayedMs" in $$source)) {
+            this["totalPlayedMs"] = 0;
+        }
+        if (!("totalPlays" in $$source)) {
+            this["totalPlays"] = 0;
+        }
+        if (!("tracksPlayed" in $$source)) {
+            this["tracksPlayed"] = 0;
+        }
+        if (!("artistsPlayed" in $$source)) {
+            this["artistsPlayed"] = 0;
+        }
+        if (!("albumsPlayed" in $$source)) {
+            this["albumsPlayed"] = 0;
+        }
+        if (!("completeCount" in $$source)) {
+            this["completeCount"] = 0;
+        }
+        if (!("skipCount" in $$source)) {
+            this["skipCount"] = 0;
+        }
+        if (!("partialCount" in $$source)) {
+            this["partialCount"] = 0;
+        }
+        if (!("completionRate" in $$source)) {
+            this["completionRate"] = 0;
+        }
+        if (!("skipRate" in $$source)) {
+            this["skipRate"] = 0;
+        }
+        if (!("partialRate" in $$source)) {
+            this["partialRate"] = 0;
+        }
+        if (!("completionScore" in $$source)) {
+            this["completionScore"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DashboardSummary instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DashboardSummary {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DashboardSummary($$parsedSource as Partial<DashboardSummary>);
+    }
+}
+
+export class GenreStat {
+    "genre": string;
+    "playedMs": number;
+    "playCount": number;
+    "trackCount": number;
+
+    /** Creates a new GenreStat instance. */
+    constructor($$source: Partial<GenreStat> = {}) {
+        if (!("genre" in $$source)) {
+            this["genre"] = "";
+        }
+        if (!("playedMs" in $$source)) {
+            this["playedMs"] = 0;
+        }
+        if (!("playCount" in $$source)) {
+            this["playCount"] = 0;
+        }
+        if (!("trackCount" in $$source)) {
+            this["trackCount"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GenreStat instance from a string or object.
+     */
+    static createFrom($$source: any = {}): GenreStat {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new GenreStat($$parsedSource as Partial<GenreStat>);
+    }
+}
+
+export class HeatmapDay {
+    "day": string;
+    "playedMs": number;
+    "playCount": number;
+
+    /** Creates a new HeatmapDay instance. */
+    constructor($$source: Partial<HeatmapDay> = {}) {
+        if (!("day" in $$source)) {
+            this["day"] = "";
+        }
+        if (!("playedMs" in $$source)) {
+            this["playedMs"] = 0;
+        }
+        if (!("playCount" in $$source)) {
+            this["playCount"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new HeatmapDay instance from a string or object.
+     */
+    static createFrom($$source: any = {}): HeatmapDay {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new HeatmapDay($$parsedSource as Partial<HeatmapDay>);
+    }
+}
+
+export class HourStat {
+    "hour": number;
+    "playedMs": number;
+    "share": number;
+
+    /** Creates a new HourStat instance. */
+    constructor($$source: Partial<HourStat> = {}) {
+        if (!("hour" in $$source)) {
+            this["hour"] = 0;
+        }
+        if (!("playedMs" in $$source)) {
+            this["playedMs"] = 0;
+        }
+        if (!("share" in $$source)) {
+            this["share"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new HourStat instance from a string or object.
+     */
+    static createFrom($$source: any = {}): HourStat {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new HourStat($$parsedSource as Partial<HourStat>);
+    }
+}
+
+export class ListeningStreak {
+    "currentDays": number;
+    "longestDays": number;
+    "lastActive"?: string | null;
+
+    /** Creates a new ListeningStreak instance. */
+    constructor($$source: Partial<ListeningStreak> = {}) {
+        if (!("currentDays" in $$source)) {
+            this["currentDays"] = 0;
+        }
+        if (!("longestDays" in $$source)) {
+            this["longestDays"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ListeningStreak instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ListeningStreak {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ListeningStreak($$parsedSource as Partial<ListeningStreak>);
     }
 }
 
@@ -74,8 +494,8 @@ export class Overview {
      * Creates a new Overview instance from a string or object.
      */
     static createFrom($$source: any = {}): Overview {
-        const $$createField5_0 = $$createType1;
-        const $$createField6_0 = $$createType3;
+        const $$createField5_0 = $$createType7;
+        const $$createField6_0 = $$createType9;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("topTracks" in $$parsedSource) {
             $$parsedSource["topTracks"] = $$createField5_0($$parsedSource["topTracks"]);
@@ -84,6 +504,89 @@ export class Overview {
             $$parsedSource["topArtists"] = $$createField6_0($$parsedSource["topArtists"]);
         }
         return new Overview($$parsedSource as Partial<Overview>);
+    }
+}
+
+export class ReplayTrackStat {
+    "trackId": number;
+    "title": string;
+    "artist": string;
+    "album": string;
+    "coverPath"?: string | null;
+    "playedMs": number;
+    "totalPlays": number;
+    "uniqueDays": number;
+    "playsPerDay": number;
+
+    /** Creates a new ReplayTrackStat instance. */
+    constructor($$source: Partial<ReplayTrackStat> = {}) {
+        if (!("trackId" in $$source)) {
+            this["trackId"] = 0;
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("artist" in $$source)) {
+            this["artist"] = "";
+        }
+        if (!("album" in $$source)) {
+            this["album"] = "";
+        }
+        if (!("playedMs" in $$source)) {
+            this["playedMs"] = 0;
+        }
+        if (!("totalPlays" in $$source)) {
+            this["totalPlays"] = 0;
+        }
+        if (!("uniqueDays" in $$source)) {
+            this["uniqueDays"] = 0;
+        }
+        if (!("playsPerDay" in $$source)) {
+            this["playsPerDay"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ReplayTrackStat instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ReplayTrackStat {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ReplayTrackStat($$parsedSource as Partial<ReplayTrackStat>);
+    }
+}
+
+export class SessionStats {
+    "sessionCount": number;
+    "totalPlayedMs": number;
+    "averagePlayedMs": number;
+    "longestPlayedMs": number;
+
+    /** Creates a new SessionStats instance. */
+    constructor($$source: Partial<SessionStats> = {}) {
+        if (!("sessionCount" in $$source)) {
+            this["sessionCount"] = 0;
+        }
+        if (!("totalPlayedMs" in $$source)) {
+            this["totalPlayedMs"] = 0;
+        }
+        if (!("averagePlayedMs" in $$source)) {
+            this["averagePlayedMs"] = 0;
+        }
+        if (!("longestPlayedMs" in $$source)) {
+            this["longestPlayedMs"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SessionStats instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SessionStats {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SessionStats($$parsedSource as Partial<SessionStats>);
     }
 }
 
@@ -137,8 +640,58 @@ export class TrackStat {
     }
 }
 
+export class WeekdayStat {
+    "weekday": number;
+    "label": string;
+    "playedMs": number;
+    "share": number;
+
+    /** Creates a new WeekdayStat instance. */
+    constructor($$source: Partial<WeekdayStat> = {}) {
+        if (!("weekday" in $$source)) {
+            this["weekday"] = 0;
+        }
+        if (!("label" in $$source)) {
+            this["label"] = "";
+        }
+        if (!("playedMs" in $$source)) {
+            this["playedMs"] = 0;
+        }
+        if (!("share" in $$source)) {
+            this["share"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WeekdayStat instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WeekdayStat {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new WeekdayStat($$parsedSource as Partial<WeekdayStat>);
+    }
+}
+
 // Private type creation functions
-const $$createType0 = TrackStat.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = ArtistStat.createFrom;
-const $$createType3 = $Create.Array($$createType2);
+const $$createType0 = DashboardSummary.createFrom;
+const $$createType1 = DashboardQuality.createFrom;
+const $$createType2 = DashboardDiscovery.createFrom;
+const $$createType3 = ListeningStreak.createFrom;
+const $$createType4 = HeatmapDay.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = TrackStat.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = ArtistStat.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = AlbumStat.createFrom;
+const $$createType11 = $Create.Array($$createType10);
+const $$createType12 = GenreStat.createFrom;
+const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = ReplayTrackStat.createFrom;
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = HourStat.createFrom;
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = WeekdayStat.createFrom;
+const $$createType19 = $Create.Array($$createType18);
+const $$createType20 = SessionStats.createFrom;

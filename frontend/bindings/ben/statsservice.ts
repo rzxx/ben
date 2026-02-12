@@ -9,11 +9,18 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // @ts-ignore: Unused imports
 import * as stats$0 from "./internal/stats/models.js";
 
-export function GetOverview(limit: number): $CancellablePromise<stats$0.Overview> {
-    return $Call.ByID(191675605, limit).then(($result: any) => {
+export function GetDashboard(rangeKey: string, limit: number): $CancellablePromise<stats$0.Dashboard> {
+    return $Call.ByID(1674425190, rangeKey, limit).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
+export function GetOverview(limit: number): $CancellablePromise<stats$0.Overview> {
+    return $Call.ByID(191675605, limit).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 // Private type creation functions
-const $$createType0 = stats$0.Overview.createFrom;
+const $$createType0 = stats$0.Dashboard.createFrom;
+const $$createType1 = stats$0.Overview.createFrom;

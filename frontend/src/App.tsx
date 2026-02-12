@@ -10,6 +10,10 @@ import { Redirect, Route, Router, Switch, useLocation } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { Call, Events } from "@wailsio/runtime";
 import { ScrollArea } from "@base-ui/react/scroll-area";
+import {
+  GetDashboard as getStatsDashboard,
+  GetOverview as getStatsOverview,
+} from "../bindings/ben/statsservice";
 import { LeftSidebar } from "./features/layout/LeftSidebar";
 import { RightSidebar } from "./features/layout/RightSidebar";
 import { TitleBar } from "./features/layout/TitleBar";
@@ -20,6 +24,7 @@ import { ArtistsGridView } from "./features/library/ArtistsGridView";
 import { TracksListView } from "./features/library/TracksListView";
 import { PlayerBar } from "./features/player/PlayerBar";
 import { SettingsView } from "./features/settings/SettingsView";
+import { StatsView } from "./features/stats/StatsView";
 import { BackgroundShader } from "./shared/components/BackgroundShader";
 import { useBackgroundShaderStore } from "./shared/store/backgroundShaderStore";
 import {
@@ -36,7 +41,9 @@ import {
   ScanProgress,
   ScanStatus,
   SelectedAlbum,
+  StatsDashboard,
   StatsOverview,
+  StatsRange,
   ThemeExtractOptions,
   ThemePalette,
   WatchedRoot,
@@ -47,7 +54,6 @@ const libraryService = "main.LibraryService";
 const scannerService = "main.ScannerService";
 const queueService = "main.QueueService";
 const playerService = "main.PlayerService";
-const statsService = "main.StatsService";
 const themeService = "main.ThemeService";
 
 const scanProgressEvent = "scanner:progress";
@@ -56,6 +62,7 @@ const playerStateEvent = "player:state";
 
 const browseLimit = 200;
 const detailLimit = 200;
+const statsRefreshIntervalMS = 30000;
 const appMemoryLocation = memoryLocation({ path: "/albums" });
 const maxThemePaletteCacheEntries = 48;
 
@@ -98,6 +105,58 @@ function createEmptyStatsOverview(): StatsOverview {
     partialCount: 0,
     topTracks: [],
     topArtists: [],
+  };
+}
+
+function createEmptyStatsDashboard(range: StatsRange): StatsDashboard {
+  return {
+    range,
+    generatedAt: "",
+    summary: {
+      totalPlayedMs: 0,
+      totalPlays: 0,
+      tracksPlayed: 0,
+      artistsPlayed: 0,
+      albumsPlayed: 0,
+      completeCount: 0,
+      skipCount: 0,
+      partialCount: 0,
+      completionRate: 0,
+      skipRate: 0,
+      partialRate: 0,
+      completionScore: 0,
+    },
+    quality: {
+      score: 0,
+    },
+    discovery: {
+      uniqueTracks: 0,
+      replayPlays: 0,
+      discoveryRatio: 0,
+      replayRatio: 0,
+      score: 0,
+    },
+    streak: {
+      currentDays: 0,
+      longestDays: 0,
+    },
+    heatmap: [],
+    topTracks: [],
+    topArtists: [],
+    topAlbums: [],
+    topGenres: [],
+    replayTracks: [],
+    hourlyProfile: [],
+    weekdayProfile: [],
+    peakHour: -1,
+    peakWeekday: -1,
+    session: {
+      sessionCount: 0,
+      totalPlayedMs: 0,
+      averagePlayedMs: 0,
+      longestPlayedMs: 0,
+    },
+    behaviorWindowDays: 30,
   };
 }
 
@@ -145,6 +204,7 @@ function normalizePagedResult<T>(
 
 function AppContent() {
   const [location, navigate] = useLocation();
+  const isStatsRoute = location.startsWith("/stats");
 
   const [watchedRoots, setWatchedRoots] = useState<WatchedRoot[]>([]);
   const [newRootPath, setNewRootPath] = useState("");
@@ -158,6 +218,10 @@ function AppContent() {
   );
   const [statsOverview, setStatsOverview] = useState<StatsOverview>(
     createEmptyStatsOverview(),
+  );
+  const [statsRange, setStatsRange] = useState<StatsRange>("short");
+  const [statsDashboard, setStatsDashboard] = useState<StatsDashboard>(
+    createEmptyStatsDashboard("short"),
   );
   const [themeOptions, setThemeOptions] = useState<ThemeExtractOptions>(
     createDefaultThemeExtractOptions(),
@@ -200,6 +264,14 @@ function AppContent() {
   );
 
   const statsRefreshKeyRef = useRef("");
+  const statsRangeRef = useRef<StatsRange>("short");
+  const statsRouteRef = useRef(false);
+  const statsOverviewRequestTokenRef = useRef(0);
+  const statsDashboardRequestTokenRef = useRef(0);
+  const statsOverviewRequestRef =
+    useRef<ReturnType<typeof getStatsOverview> | null>(null);
+  const statsDashboardRequestRef =
+    useRef<ReturnType<typeof getStatsDashboard> | null>(null);
   const seekRequestInFlightRef = useRef(false);
   const pendingSeekMSRef = useRef<number | null>(null);
   const themeRequestTokenRef = useRef(0);
@@ -227,8 +299,57 @@ function AppContent() {
   }, []);
 
   const loadStatsOverview = useCallback(async () => {
-    const overview = await Call.ByName(`${statsService}.GetOverview`, 5);
-    setStatsOverview((overview ?? createEmptyStatsOverview()) as StatsOverview);
+    statsOverviewRequestRef.current?.cancel();
+    const requestToken = statsOverviewRequestTokenRef.current + 1;
+    statsOverviewRequestTokenRef.current = requestToken;
+
+    const request = getStatsOverview(5);
+    statsOverviewRequestRef.current = request;
+
+    try {
+      const overview = await request;
+      if (requestToken !== statsOverviewRequestTokenRef.current) {
+        return;
+      }
+      setStatsOverview((overview ?? createEmptyStatsOverview()) as StatsOverview);
+    } catch (error) {
+      if (requestToken !== statsOverviewRequestTokenRef.current) {
+        return;
+      }
+      throw error;
+    } finally {
+      if (statsOverviewRequestRef.current === request) {
+        statsOverviewRequestRef.current = null;
+      }
+    }
+  }, []);
+
+  const loadStatsDashboard = useCallback(async (range: StatsRange) => {
+    statsDashboardRequestRef.current?.cancel();
+    const requestToken = statsDashboardRequestTokenRef.current + 1;
+    statsDashboardRequestTokenRef.current = requestToken;
+
+    const request = getStatsDashboard(range, 10);
+    statsDashboardRequestRef.current = request;
+
+    try {
+      const dashboard = await request;
+      if (requestToken !== statsDashboardRequestTokenRef.current) {
+        return;
+      }
+      setStatsDashboard(
+        (dashboard ?? createEmptyStatsDashboard(range)) as StatsDashboard,
+      );
+    } catch (error) {
+      if (requestToken !== statsDashboardRequestTokenRef.current) {
+        return;
+      }
+      throw error;
+    } finally {
+      if (statsDashboardRequestRef.current === request) {
+        statsDashboardRequestRef.current = null;
+      }
+    }
   }, []);
 
   const loadThemeDefaults = useCallback(async () => {
@@ -315,6 +436,9 @@ function AppContent() {
       if (refreshKey !== statsRefreshKeyRef.current) {
         statsRefreshKeyRef.current = refreshKey;
         void loadStatsOverview();
+        if (statsRouteRef.current) {
+          void loadStatsDashboard(statsRangeRef.current);
+        }
       }
     });
 
@@ -330,10 +454,36 @@ function AppContent() {
     loadPlayerState,
     loadQueueState,
     loadScanStatus,
+    loadStatsDashboard,
     loadStatsOverview,
     loadThemeDefaults,
     loadWatchedRoots,
   ]);
+
+  useEffect(() => {
+    statsRouteRef.current = isStatsRoute;
+  }, [isStatsRoute]);
+
+  useEffect(() => {
+    statsRangeRef.current = statsRange;
+  }, [statsRange]);
+
+  useEffect(() => {
+    if (!isStatsRoute) {
+      return;
+    }
+    void loadStatsOverview();
+    void loadStatsDashboard(statsRange);
+  }, [isStatsRoute, loadStatsDashboard, loadStatsOverview, statsRange]);
+
+  useEffect(() => {
+    return () => {
+      statsOverviewRequestTokenRef.current += 1;
+      statsDashboardRequestTokenRef.current += 1;
+      statsOverviewRequestRef.current?.cancel();
+      statsDashboardRequestRef.current?.cancel();
+    };
+  }, []);
 
   useEffect(() => {
     themeOptionsRef.current = themeOptions;
@@ -385,14 +535,19 @@ function AppContent() {
   }, [loadAlbumDetail, selectedAlbum]);
 
   useEffect(() => {
+    if (!isStatsRoute) {
+      return;
+    }
+
     const timer = window.setInterval(() => {
       void loadStatsOverview();
-    }, 12000);
+      void loadStatsDashboard(statsRangeRef.current);
+    }, statsRefreshIntervalMS);
 
     return () => {
       window.clearInterval(timer);
     };
-  }, [loadStatsOverview]);
+  }, [isStatsRoute, loadStatsDashboard, loadStatsOverview]);
 
   const onAddWatchedRoot = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -919,13 +1074,22 @@ function AppContent() {
                       />
                     </Route>
 
+                    <Route path="/stats">
+                      <StatsView
+                        dashboard={statsDashboard}
+                        range={statsRange}
+                        onRangeChange={setStatsRange}
+                        formatPlayedTime={formatPlayedTime}
+                      />
+                    </Route>
+
                     <Route path="*">
                       <section>
                         <h1 className="text-xl font-semibold text-neutral-100">
                           Not Found
                         </h1>
                         <p className="text-sm text-neutral-400">
-                          Choose Albums, Artists, Tracks, or Settings.
+                          Choose Albums, Artists, Tracks, Stats, or Settings.
                         </p>
                       </section>
                     </Route>

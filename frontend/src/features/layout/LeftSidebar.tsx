@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   Disc3,
   FolderSearch,
   Library,
@@ -19,6 +20,7 @@ const navItems = [
   { label: "Albums", path: "/albums", icon: Library },
   { label: "Artists", path: "/artists", icon: Users },
   { label: "Tracks", path: "/tracks", icon: Music2 },
+  { label: "Stats", path: "/stats", icon: BarChart3 },
   { label: "Settings", path: "/settings", icon: Settings2 },
 ];
 
