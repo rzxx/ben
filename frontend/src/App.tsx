@@ -268,10 +268,12 @@ function AppContent() {
   const statsRouteRef = useRef(false);
   const statsOverviewRequestTokenRef = useRef(0);
   const statsDashboardRequestTokenRef = useRef(0);
-  const statsOverviewRequestRef =
-    useRef<ReturnType<typeof getStatsOverview> | null>(null);
-  const statsDashboardRequestRef =
-    useRef<ReturnType<typeof getStatsDashboard> | null>(null);
+  const statsOverviewRequestRef = useRef<ReturnType<
+    typeof getStatsOverview
+  > | null>(null);
+  const statsDashboardRequestRef = useRef<ReturnType<
+    typeof getStatsDashboard
+  > | null>(null);
   const seekRequestInFlightRef = useRef(false);
   const pendingSeekMSRef = useRef<number | null>(null);
   const themeRequestTokenRef = useRef(0);
@@ -311,7 +313,9 @@ function AppContent() {
       if (requestToken !== statsOverviewRequestTokenRef.current) {
         return;
       }
-      setStatsOverview((overview ?? createEmptyStatsOverview()) as StatsOverview);
+      setStatsOverview(
+        (overview ?? createEmptyStatsOverview()) as StatsOverview,
+      );
     } catch (error) {
       if (requestToken !== statsOverviewRequestTokenRef.current) {
         return;
