@@ -10,8 +10,8 @@ type QueueViewProps = {
 
 export function QueueView(props: QueueViewProps) {
   return (
-    <section className="flex w-76 flex-col gap-3 px-3">
-      <div className="flex items-center justify-between">
+    <section className="flex w-76 flex-col gap-3 pl-3">
+      <div className="flex items-center justify-between px-2">
         <div>
           <p className="text-xs text-neutral-400">
             {props.queueState.total} tracks
@@ -51,7 +51,7 @@ export function QueueView(props: QueueViewProps) {
                   {track.title}
                 </p>
                 <p className="truncate text-xs text-neutral-400">
-                  {track.artist} - {track.album}
+                  {track.artist}
                 </p>
               </button>
               <button

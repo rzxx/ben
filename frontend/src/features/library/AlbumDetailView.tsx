@@ -37,39 +37,44 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
   const trackCountLabel = `${album.trackCount} ${album.trackCount === 1 ? "track" : "tracks"}`;
 
   return (
-    <section className="flex flex-col gap-5">
-      <button
-        type="button"
-        onClick={props.onBack}
-        className="inline-flex w-fit items-center gap-2 rounded-md px-1 py-1 text-sm text-neutral-400 transition-colors hover:text-neutral-200"
-      >
-        <ArrowLeft size={14} />
-        Back to albums
-      </button>
+    <section className="">
+      <div className="flex gap-6">
+        <aside className="sticky top-4 h-fit w-2/5">
+          <button
+            type="button"
+            onClick={props.onBack}
+            className="inline-flex w-fit items-center gap-2 rounded-md py-1 text-sm text-neutral-400 transition-colors hover:text-neutral-200"
+          >
+            <ArrowLeft size={14} />
+            Back to albums
+          </button>
+          <CoverArt
+            coverPath={album.coverPath}
+            alt={`${album.title} cover`}
+            className="mt-4 aspect-square w-full rounded-2xl border border-white/7"
+            loading="eager"
+          />
+          <div className="mt-4 space-y-2">
+            <h1 className="text-2xl font-bold text-neutral-100 lg:text-4xl">
+              {album.title}
+            </h1>
+            <p className="text-lg text-neutral-300">{album.albumArtist}</p>
+            <p className="text-sm text-neutral-500">
+              {releaseDateLabel} - {trackCountLabel}
+            </p>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)] lg:gap-8">
-        <aside className="rounded-2xl border border-neutral-800 bg-neutral-950/20 p-5 lg:sticky lg:top-4 lg:h-[calc(100dvh-9.25rem)] lg:self-start lg:p-6">
-          <div className="flex h-full flex-col gap-6">
-            <CoverArt
-              coverPath={album.coverPath}
-              alt={`${album.title} cover`}
-              className="aspect-square w-full rounded-xl"
-              loading="eager"
-            />
-            <div className="space-y-2">
-              <p className="text-xs tracking-wide text-neutral-400 uppercase">
-                Album
-              </p>
-              <h1 className="text-3xl leading-tight font-semibold text-neutral-100 lg:text-4xl">
-                {album.title}
-              </h1>
-              <p className="text-lg text-neutral-200">{album.albumArtist}</p>
-              <p className="text-sm text-neutral-400">
-                {releaseDateLabel} - {trackCountLabel}
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={() =>
+                void props.onPlayAlbum(album.title, album.albumArtist)
+              }
+              className="mt-2 inline-flex items-center gap-2 rounded-md bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-200"
+            >
+              <Play size={16} />
+              Play all tracks
+            </button>
 
-            <dl className="mt-auto grid grid-cols-2 gap-3 rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
+            <dl className="mt-2 grid grid-cols-2 gap-3 rounded-xl">
               <div>
                 <dt className="text-xs tracking-wide text-neutral-500 uppercase">
                   Length
@@ -90,26 +95,13 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
           </div>
         </aside>
 
-        <section className="min-w-0 space-y-3">
-          <div className="rounded-xl border border-neutral-800 bg-neutral-950/20 p-3">
-            <button
-              type="button"
-              onClick={() =>
-                void props.onPlayAlbum(album.title, album.albumArtist)
-              }
-              className="inline-flex items-center gap-2 rounded-md bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-200"
-            >
-              <Play size={16} />
-              Play all tracks
-            </button>
-          </div>
-
+        <section className="mt-8 w-3/5">
           {album.tracks.length === 0 ? (
-            <p className="text-sm text-neutral-400">
+            <p className="text-sm text-neutral-500">
               No tracks found in this album.
             </p>
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ul className="flex flex-col">
               {album.tracks.map((track) => (
                 <li key={track.id}>
                   <button
@@ -121,22 +113,22 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
                         track.id,
                       )
                     }
-                    className="group grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/15 px-4 py-3 text-left transition-colors hover:border-neutral-700 hover:bg-neutral-900/50"
+                    className="group flex w-full items-center rounded-2xl px-4 py-3 text-left transition-colors hover:bg-neutral-800"
                     aria-label={`Play ${track.title}`}
                   >
-                    <p className="w-12 shrink-0 text-xs text-neutral-500">
+                    <p className="w-10 text-xs text-neutral-500">
                       {track.discNo ? `${track.discNo}-` : ""}
                       {track.trackNo ?? "-"}
                     </p>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-neutral-100 group-hover:text-white">
+                      <p className="truncate font-medium text-neutral-100 group-hover:text-white">
                         {track.title}
                       </p>
-                      <p className="truncate text-xs text-neutral-400">
+                      <p className="truncate text-xs text-neutral-500">
                         {track.artist}
                       </p>
                     </div>
-                    <p className="w-14 shrink-0 text-right text-xs text-neutral-500">
+                    <p className="ml-auto pl-1 text-right text-xs text-neutral-300">
                       {props.formatDuration(track.durationMs)}
                     </p>
                   </button>

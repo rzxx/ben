@@ -1102,7 +1102,7 @@ function AppContent() {
               </ScrollArea.Content>
             </ScrollArea.Viewport>
             <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-white/7 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
-              <ScrollArea.Thumb className="w-full rounded bg-neutral-300" />
+              <ScrollArea.Thumb className="w-full rounded bg-neutral-300/50" />
             </ScrollArea.Scrollbar>
           </ScrollArea.Root>
         </main>

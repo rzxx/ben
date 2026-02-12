@@ -63,7 +63,7 @@ export function RightSidebar(props: RightSidebarProps) {
           </ScrollArea.Content>
         </ScrollArea.Viewport>
         <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-white/7 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
-          <ScrollArea.Thumb className="w-full rounded bg-neutral-300" />
+          <ScrollArea.Thumb className="w-full rounded bg-neutral-300/50" />
         </ScrollArea.Scrollbar>
       </ScrollArea.Root>
     </aside>
@@ -83,8 +83,10 @@ function TrackDetailsPanel(props: TrackDetailsPanelProps) {
   }
 
   return (
-    <section className="flex flex-col gap-2 text-sm">
-      <h2 className="text-sm font-semibold text-neutral-100">Current Track</h2>
+    <section className="flex flex-col gap-2 px-3 text-sm">
+      <h2 className="mb-3 px-2 text-sm font-medium text-neutral-300">
+        Current Track
+      </h2>
       <DetailRow label="Title" value={track.title} />
       <DetailRow label="Artist" value={track.artist} />
       <DetailRow label="Album" value={track.album} />
@@ -113,11 +115,9 @@ type DetailRowProps = {
 
 function DetailRow(props: DetailRowProps) {
   return (
-    <div className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5">
-      <p className="text-xs tracking-wide text-neutral-500 uppercase">
-        {props.label}
-      </p>
-      <p className="truncate text-neutral-200">{props.value}</p>
+    <div className="px-2 py-1">
+      <p className="text-xs text-neutral-500">{props.label}</p>
+      <p className="truncate text-neutral-100">{props.value}</p>
     </div>
   );
 }
