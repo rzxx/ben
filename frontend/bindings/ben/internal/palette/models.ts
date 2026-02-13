@@ -20,6 +20,12 @@ export class ExtractOptions {
     "targetChroma": number;
     "maxChroma": number;
     "minDelta": number;
+    "darkBaseLightness": number;
+    "lightBaseLightness": number;
+    "darkLightnessDeviation": number;
+    "lightLightnessDeviation": number;
+    "darkChromaScale": number;
+    "lightChromaScale": number;
     "workerCount": number;
 
     /** Creates a new ExtractOptions instance. */
@@ -65,6 +71,24 @@ export class ExtractOptions {
         }
         if (!("minDelta" in $$source)) {
             this["minDelta"] = 0;
+        }
+        if (!("darkBaseLightness" in $$source)) {
+            this["darkBaseLightness"] = 0;
+        }
+        if (!("lightBaseLightness" in $$source)) {
+            this["lightBaseLightness"] = 0;
+        }
+        if (!("darkLightnessDeviation" in $$source)) {
+            this["darkLightnessDeviation"] = 0;
+        }
+        if (!("lightLightnessDeviation" in $$source)) {
+            this["lightLightnessDeviation"] = 0;
+        }
+        if (!("darkChromaScale" in $$source)) {
+            this["darkChromaScale"] = 0;
+        }
+        if (!("lightChromaScale" in $$source)) {
+            this["lightChromaScale"] = 0;
         }
         if (!("workerCount" in $$source)) {
             this["workerCount"] = 0;

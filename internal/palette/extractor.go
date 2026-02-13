@@ -23,39 +23,51 @@ const (
 )
 
 var defaultExtractOptions = ExtractOptions{
-	MaxDimension:     220,
-	Quality:          2,
-	ColorCount:       5,
-	CandidateCount:   24,
-	QuantizationBits: 5,
-	AlphaThreshold:   16,
-	IgnoreNearWhite:  true,
-	IgnoreNearBlack:  false,
-	MinLuma:          0.02,
-	MaxLuma:          0.98,
-	MinChroma:        0.03,
-	TargetChroma:     0.14,
-	MaxChroma:        0.32,
-	MinDelta:         0.08,
-	WorkerCount:      0,
+	MaxDimension:            220,
+	Quality:                 2,
+	ColorCount:              5,
+	CandidateCount:          24,
+	QuantizationBits:        5,
+	AlphaThreshold:          16,
+	IgnoreNearWhite:         true,
+	IgnoreNearBlack:         false,
+	MinLuma:                 0.02,
+	MaxLuma:                 0.98,
+	MinChroma:               0.03,
+	TargetChroma:            0.14,
+	MaxChroma:               0.32,
+	MinDelta:                0.08,
+	DarkBaseLightness:       0.145,
+	LightBaseLightness:      0.968,
+	DarkLightnessDeviation:  0.045,
+	LightLightnessDeviation: 0.03,
+	DarkChromaScale:         0.6,
+	LightChromaScale:        0.35,
+	WorkerCount:             0,
 }
 
 type ExtractOptions struct {
-	MaxDimension     int     `json:"maxDimension"`
-	Quality          int     `json:"quality"`
-	ColorCount       int     `json:"colorCount"`
-	CandidateCount   int     `json:"candidateCount"`
-	QuantizationBits int     `json:"quantizationBits"`
-	AlphaThreshold   int     `json:"alphaThreshold"`
-	IgnoreNearWhite  bool    `json:"ignoreNearWhite"`
-	IgnoreNearBlack  bool    `json:"ignoreNearBlack"`
-	MinLuma          float64 `json:"minLuma"`
-	MaxLuma          float64 `json:"maxLuma"`
-	MinChroma        float64 `json:"minChroma"`
-	TargetChroma     float64 `json:"targetChroma"`
-	MaxChroma        float64 `json:"maxChroma"`
-	MinDelta         float64 `json:"minDelta"`
-	WorkerCount      int     `json:"workerCount"`
+	MaxDimension            int     `json:"maxDimension"`
+	Quality                 int     `json:"quality"`
+	ColorCount              int     `json:"colorCount"`
+	CandidateCount          int     `json:"candidateCount"`
+	QuantizationBits        int     `json:"quantizationBits"`
+	AlphaThreshold          int     `json:"alphaThreshold"`
+	IgnoreNearWhite         bool    `json:"ignoreNearWhite"`
+	IgnoreNearBlack         bool    `json:"ignoreNearBlack"`
+	MinLuma                 float64 `json:"minLuma"`
+	MaxLuma                 float64 `json:"maxLuma"`
+	MinChroma               float64 `json:"minChroma"`
+	TargetChroma            float64 `json:"targetChroma"`
+	MaxChroma               float64 `json:"maxChroma"`
+	MinDelta                float64 `json:"minDelta"`
+	DarkBaseLightness       float64 `json:"darkBaseLightness"`
+	LightBaseLightness      float64 `json:"lightBaseLightness"`
+	DarkLightnessDeviation  float64 `json:"darkLightnessDeviation"`
+	LightLightnessDeviation float64 `json:"lightLightnessDeviation"`
+	DarkChromaScale         float64 `json:"darkChromaScale"`
+	LightChromaScale        float64 `json:"lightChromaScale"`
+	WorkerCount             int     `json:"workerCount"`
 }
 
 type ThemePalette struct {
@@ -272,6 +284,39 @@ func (o ExtractOptions) normalized() ExtractOptions {
 		normalized.MinDelta = defaultExtractOptions.MinDelta
 	}
 	normalized.MinDelta = clampFloat(normalized.MinDelta, 0.01, 0.45)
+
+	if normalized.DarkBaseLightness <= 0 {
+		normalized.DarkBaseLightness = defaultExtractOptions.DarkBaseLightness
+	}
+	normalized.DarkBaseLightness = clampFloat(normalized.DarkBaseLightness, 0.02, 0.35)
+
+	if normalized.LightBaseLightness <= 0 {
+		normalized.LightBaseLightness = defaultExtractOptions.LightBaseLightness
+	}
+	normalized.LightBaseLightness = clampFloat(normalized.LightBaseLightness, 0.75, 0.99)
+	if normalized.LightBaseLightness < normalized.DarkBaseLightness+0.2 {
+		normalized.LightBaseLightness = minFloat(normalized.DarkBaseLightness+0.2, 0.99)
+	}
+
+	if normalized.DarkLightnessDeviation <= 0 {
+		normalized.DarkLightnessDeviation = defaultExtractOptions.DarkLightnessDeviation
+	}
+	normalized.DarkLightnessDeviation = clampFloat(normalized.DarkLightnessDeviation, 0.005, 0.3)
+
+	if normalized.LightLightnessDeviation <= 0 {
+		normalized.LightLightnessDeviation = defaultExtractOptions.LightLightnessDeviation
+	}
+	normalized.LightLightnessDeviation = clampFloat(normalized.LightLightnessDeviation, 0.005, 0.2)
+
+	if normalized.DarkChromaScale <= 0 {
+		normalized.DarkChromaScale = defaultExtractOptions.DarkChromaScale
+	}
+	normalized.DarkChromaScale = clampFloat(normalized.DarkChromaScale, 0.05, 1.4)
+
+	if normalized.LightChromaScale <= 0 {
+		normalized.LightChromaScale = defaultExtractOptions.LightChromaScale
+	}
+	normalized.LightChromaScale = clampFloat(normalized.LightChromaScale, 0.05, 1.2)
 
 	if normalized.WorkerCount <= 0 {
 		defaultWorkers := runtime.GOMAXPROCS(0) - 1
@@ -910,32 +955,11 @@ func resolveThemeSelection(candidates []swatch, selected []swatch, broadCandidat
 		chosen = append(chosen, accent)
 	}
 
-	if dark, ok := bestDistinctSwatch(supportCandidates, chosen, options.MinDelta*0.46, func(candidate swatch) float64 {
-		if candidate.lightness > 0.45 {
-			return -1
-		}
-		lightnessFit := 1 - math.Abs(candidate.lightness-0.27)
-		popFit := float64(candidate.population) / float64(supportCandidates[0].population)
-		return 0.72*lightnessFit + 0.28*popFit
-	}); ok {
-		selection.dark = swatchPointer(dark)
-		chosen = append(chosen, dark)
-	} else if darkFallback, ok := extremeLightnessFallback(supportCandidates, true); ok {
-		selection.dark = swatchPointer(darkFallback)
-		chosen = append(chosen, darkFallback)
-	}
-
-	if light, ok := bestDistinctSwatch(supportCandidates, chosen, options.MinDelta*0.46, func(candidate swatch) float64 {
-		if candidate.lightness < 0.62 {
-			return -1
-		}
-		lightnessFit := 1 - math.Abs(candidate.lightness-0.82)
-		popFit := float64(candidate.population) / float64(supportCandidates[0].population)
-		return 0.72*lightnessFit + 0.28*popFit
-	}); ok {
-		selection.light = swatchPointer(light)
-	} else if lightFallback, ok := extremeLightnessFallback(supportCandidates, false); ok {
-		selection.light = swatchPointer(lightFallback)
+	anchoredDark, anchoredLight := buildAnchoredDarkAndLight(primary, supportCandidates, options)
+	selection.dark = anchoredDark
+	selection.light = anchoredLight
+	if anchoredDark != nil {
+		chosen = append(chosen, *anchoredDark)
 	}
 
 	gradientCandidates := mergeSwatchPools(candidates, supportCandidates, maxFloat(options.MinDelta*0.3, 0.008))
@@ -999,6 +1023,57 @@ func mergeSwatchPools(primary []swatch, secondary []swatch, threshold float64) [
 		return nil
 	}
 	return deduplicateSwatches(combined, threshold)
+}
+
+func buildAnchoredDarkAndLight(seed swatch, candidates []swatch, options ExtractOptions) (*swatch, *swatch) {
+	darkLightness := anchoredRoleLightness(candidates, options.DarkBaseLightness, options.DarkLightnessDeviation, true)
+	lightLightness := anchoredRoleLightness(candidates, options.LightBaseLightness, options.LightLightnessDeviation, false)
+	if lightLightness <= darkLightness {
+		lightLightness = minFloat(0.99, darkLightness+0.2)
+	}
+
+	darkMaxChroma := minFloat(options.MaxChroma*0.55, options.TargetChroma*0.85)
+	if darkMaxChroma <= 0 {
+		darkMaxChroma = 0.08
+	}
+	lightMaxChroma := minFloat(options.MaxChroma*0.45, options.TargetChroma*0.7)
+	if lightMaxChroma <= 0 {
+		lightMaxChroma = 0.06
+	}
+
+	dark := oklchToSwatch(
+		darkLightness,
+		anchoredRoleChroma(seed.chroma, options.DarkChromaScale, darkMaxChroma),
+		seed.hue,
+		seed.population,
+	)
+	light := oklchToSwatch(
+		lightLightness,
+		anchoredRoleChroma(seed.chroma, options.LightChromaScale, lightMaxChroma),
+		seed.hue,
+		seed.population,
+	)
+
+	return swatchPointer(dark), swatchPointer(light)
+}
+
+func anchoredRoleLightness(candidates []swatch, baseLightness float64, deviation float64, preferDark bool) float64 {
+	target := baseLightness
+	if reference, ok := extremeLightnessFallback(candidates, preferDark); ok {
+		target = baseLightness + clampFloat(reference.lightness-baseLightness, -deviation, deviation)
+	}
+	return clampFloat(target, 0, 1)
+}
+
+func anchoredRoleChroma(seedChroma float64, scale float64, maxChroma float64) float64 {
+	if seedChroma <= 0 || scale <= 0 || maxChroma <= 0 {
+		return 0
+	}
+	target := seedChroma * scale
+	if target > maxChroma {
+		target = maxChroma
+	}
+	return clampFloat(target, 0, 0.5)
 }
 
 func extremeLightnessFallback(candidates []swatch, preferDark bool) (swatch, bool) {
@@ -1207,12 +1282,74 @@ func rgbToOKLab(red uint8, green uint8, blue uint8) (float64, float64, float64) 
 	return okL, okA, okB
 }
 
+func oklchToSwatch(lightness float64, chroma float64, hue float64, population int) swatch {
+	radians := hue * (math.Pi / 180)
+	okA := chroma * math.Cos(radians)
+	okB := chroma * math.Sin(radians)
+
+	red, green, blue := okLabToSRGB8(lightness, okA, okB)
+	actualL, actualA, actualB := rgbToOKLab(red, green, blue)
+	actualChroma := math.Sqrt(actualA*actualA + actualB*actualB)
+	actualHue := math.Atan2(actualB, actualA) * (180 / math.Pi)
+	if actualHue < 0 {
+		actualHue += 360
+	}
+
+	return swatch{
+		r:          red,
+		g:          green,
+		b:          blue,
+		population: population,
+		lightness:  actualL,
+		chroma:     actualChroma,
+		hue:        actualHue,
+		okL:        actualL,
+		okA:        actualA,
+		okB:        actualB,
+	}
+}
+
+func okLabToSRGB8(okL float64, okA float64, okB float64) (uint8, uint8, uint8) {
+	lPrime := okL + 0.3963377774*okA + 0.2158037573*okB
+	mPrime := okL - 0.1055613458*okA - 0.0638541728*okB
+	sPrime := okL - 0.0894841775*okA - 1.2914855480*okB
+
+	l := lPrime * lPrime * lPrime
+	m := mPrime * mPrime * mPrime
+	s := sPrime * sPrime * sPrime
+
+	linearR := 4.0767416621*l - 3.3077115913*m + 0.2309699292*s
+	linearG := -1.2684380046*l + 2.6097574011*m - 0.3413193965*s
+	linearB := -0.0041960863*l - 0.7034186147*m + 1.7076147010*s
+
+	return linearToSRGB8(linearR), linearToSRGB8(linearG), linearToSRGB8(linearB)
+}
+
 func srgb8ToLinear(channel uint8) float64 {
 	scaled := float64(channel) / 255
 	if scaled <= 0.04045 {
 		return scaled / 12.92
 	}
 	return math.Pow((scaled+0.055)/1.055, 2.4)
+}
+
+func linearToSRGB8(channel float64) uint8 {
+	if channel <= 0 {
+		return 0
+	}
+	if channel >= 1 {
+		return 255
+	}
+
+	var encoded float64
+	if channel <= 0.0031308 {
+		encoded = channel * 12.92
+	} else {
+		encoded = 1.055*math.Pow(channel, 1.0/2.4) - 0.055
+	}
+
+	encoded = clampFloat(encoded, 0, 1)
+	return uint8(math.Round(encoded * 255))
 }
 
 func splitRange(length int, workers int, workerIndex int) (int, int) {

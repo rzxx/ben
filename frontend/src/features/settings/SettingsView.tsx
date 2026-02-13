@@ -334,6 +334,84 @@ export function SettingsView(props: SettingsViewProps) {
             }
           />
           <NumericSetting
+            label="Dark Base Lightness"
+            value={props.themeOptions.darkBaseLightness}
+            min={0.02}
+            max={0.35}
+            step={0.005}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                darkBaseLightness: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Light Base Lightness"
+            value={props.themeOptions.lightBaseLightness}
+            min={0.75}
+            max={0.99}
+            step={0.005}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                lightBaseLightness: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Dark Lightness Deviation"
+            value={props.themeOptions.darkLightnessDeviation}
+            min={0.005}
+            max={0.3}
+            step={0.005}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                darkLightnessDeviation: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Light Lightness Deviation"
+            value={props.themeOptions.lightLightnessDeviation}
+            min={0.005}
+            max={0.2}
+            step={0.005}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                lightLightnessDeviation: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Dark Chroma Scale"
+            value={props.themeOptions.darkChromaScale}
+            min={0.05}
+            max={1.4}
+            step={0.01}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                darkChromaScale: next,
+              })
+            }
+          />
+          <NumericSetting
+            label="Light Chroma Scale"
+            value={props.themeOptions.lightChromaScale}
+            min={0.05}
+            max={1.2}
+            step={0.01}
+            onChange={(next) =>
+              props.onThemeOptionsChange({
+                ...props.themeOptions,
+                lightChromaScale: next,
+              })
+            }
+          />
+          <NumericSetting
             label="Workers"
             value={props.themeOptions.workerCount}
             min={0}

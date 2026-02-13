@@ -276,6 +276,12 @@ export type ThemeExtractOptions = {
   targetChroma: number;
   maxChroma: number;
   minDelta: number;
+  darkBaseLightness: number;
+  lightBaseLightness: number;
+  darkLightnessDeviation: number;
+  lightLightnessDeviation: number;
+  darkChromaScale: number;
+  lightChromaScale: number;
   workerCount: number;
 };
 

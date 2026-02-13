@@ -176,6 +176,12 @@ function createDefaultThemeExtractOptions(): ThemeExtractOptions {
     targetChroma: 0.14,
     maxChroma: 0.32,
     minDelta: 0.08,
+    darkBaseLightness: 0.145,
+    lightBaseLightness: 0.968,
+    darkLightnessDeviation: 0.045,
+    lightLightnessDeviation: 0.03,
+    darkChromaScale: 0.6,
+    lightChromaScale: 0.35,
     workerCount: 0,
   };
 }

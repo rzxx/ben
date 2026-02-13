@@ -72,7 +72,7 @@ func (s *ThemeService) GenerateFromCover(coverPath string, options palette.Extra
 
 func buildThemeCacheKey(path string, options palette.ExtractOptions) string {
 	return fmt.Sprintf(
-		"%s|md:%d|q:%d|cc:%d|cand:%d|qb:%d|at:%d|iw:%t|ib:%t|minl:%0.4f|maxl:%0.4f|minc:%0.4f|tc:%0.4f|maxc:%0.4f|mind:%0.4f|w:%d",
+		"%s|md:%d|q:%d|cc:%d|cand:%d|qb:%d|at:%d|iw:%t|ib:%t|minl:%0.4f|maxl:%0.4f|minc:%0.4f|tc:%0.4f|maxc:%0.4f|mind:%0.4f|dbl:%0.4f|lbl:%0.4f|dld:%0.4f|lld:%0.4f|dcs:%0.4f|lcs:%0.4f|w:%d",
 		path,
 		options.MaxDimension,
 		options.Quality,
@@ -88,6 +88,12 @@ func buildThemeCacheKey(path string, options palette.ExtractOptions) string {
 		options.TargetChroma,
 		options.MaxChroma,
 		options.MinDelta,
+		options.DarkBaseLightness,
+		options.LightBaseLightness,
+		options.DarkLightnessDeviation,
+		options.LightLightnessDeviation,
+		options.DarkChromaScale,
+		options.LightChromaScale,
 		options.WorkerCount,
 	)
 }
