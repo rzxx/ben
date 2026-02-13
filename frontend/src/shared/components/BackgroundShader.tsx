@@ -9,10 +9,11 @@ import { createBackgroundShaderRenderer } from "./backgroundShaderRenderer";
 
 export function BackgroundShader() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const webgpuAvailable =
-    typeof navigator !== "undefined" && "gpu" in navigator;
+  const webgl2Available =
+    typeof window !== "undefined" &&
+    typeof WebGL2RenderingContext !== "undefined";
 
-  const [isUnsupported, setIsUnsupported] = useState(!webgpuAvailable);
+  const [isUnsupported, setIsUnsupported] = useState(!webgl2Available);
   const [diagnosticMessage, setDiagnosticMessage] = useState<string | null>(
     null,
   );
@@ -48,13 +49,13 @@ export function BackgroundShader() {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !webgpuAvailable) {
+    if (!canvas || !webgl2Available) {
       return;
     }
 
     const renderer = createBackgroundShaderRenderer({
       canvas,
-      webgpuAvailable,
+      webgl2Available,
       getFromColors: () => fromColorsRef.current,
       getToColors: () => toColorsRef.current,
       getTransitionStartedAtMs: () => transitionStartedAtMsRef.current,
@@ -69,7 +70,7 @@ export function BackgroundShader() {
     return () => {
       renderer.dispose();
     };
-  }, [webgpuAvailable]);
+  }, [webgl2Available]);
 
   const fallbackStyle = useMemo(
     () => buildFallbackStyle(toColors, settings.opacity),

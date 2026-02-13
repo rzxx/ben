@@ -1,25 +1,18 @@
 import { BackgroundShaderSettings } from "../store/backgroundShaderStore";
-import {
-  CachedBindGroupKeyPart,
-  RenderTarget,
-} from "./backgroundShaderRuntimeTypes";
+import { RenderTarget } from "./backgroundShaderRuntimeTypes";
 import { clamp } from "./backgroundShaderRuntimeUtils";
-
-type BindGroupGetter = (
-  keyParts: CachedBindGroupKeyPart[],
-  factory: () => GPUBindGroup,
-) => GPUBindGroup;
-
-type RenderPassStarter = (
-  encoder: GPUCommandEncoder,
-  view: GPUTextureView,
-) => GPURenderPassEncoder;
 
 type TemporalUniformWriter = (
   settingsValue: BackgroundShaderSettings,
   enabled: boolean,
   historyBlendScale: number,
 ) => void;
+
+type TemporalProgram = {
+  program: WebGLProgram;
+  currentTexture: WebGLUniformLocation | null;
+  historyTexture: WebGLUniformLocation | null;
+};
 
 export type TemporalState = {
   historyReadIndex: number;
@@ -28,18 +21,14 @@ export type TemporalState = {
 };
 
 type TemporalResolveArgs = {
-  encoder: GPUCommandEncoder;
+  gl: WebGL2RenderingContext;
+  vao: WebGLVertexArrayObject;
   settings: BackgroundShaderSettings;
   outputTarget: RenderTarget;
   historyTargets: [RenderTarget | null, RenderTarget | null];
-  temporalPipeline: GPURenderPipeline;
-  sampler: GPUSampler;
-  device: GPUDevice;
-  temporalUniformBuffer: GPUBuffer;
+  temporalProgram: TemporalProgram;
   temporalState: TemporalState;
   writeTemporalUniforms: TemporalUniformWriter;
-  beginPass: RenderPassStarter;
-  getCachedBindGroup: BindGroupGetter;
 };
 
 export function runTemporalResolve(args: TemporalResolveArgs): {
@@ -60,9 +49,9 @@ export function runTemporalResolve(args: TemporalResolveArgs): {
     };
   }
 
-  const historySourceView = args.temporalState.historyValid
-    ? historyRead.view
-    : args.outputTarget.view;
+  const historySourceTexture = args.temporalState.historyValid
+    ? historyRead.texture
+    : args.outputTarget.texture;
   const historyBlendScale = args.temporalState.historyValid
     ? clamp(args.temporalState.historyFrameCount / 10, 0, 1)
     : 0;
@@ -73,50 +62,34 @@ export function runTemporalResolve(args: TemporalResolveArgs): {
     historyBlendScale,
   );
 
-  const temporalBindGroup = args.getCachedBindGroup(
-    [
-      "temporal",
-      args.temporalPipeline,
-      args.sampler,
-      args.outputTarget.view,
-      historySourceView,
-      args.temporalUniformBuffer,
-    ],
-    () =>
-      args.device.createBindGroup({
-        layout: args.temporalPipeline.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: args.sampler },
-          { binding: 1, resource: args.outputTarget.view },
-          {
-            binding: 2,
-            resource: historySourceView,
-          },
-          {
-            binding: 3,
-            resource: {
-              buffer: args.temporalUniformBuffer,
-            },
-          },
-        ],
-      }),
-  );
+  const { gl } = args;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, historyWrite.framebuffer);
+  gl.viewport(0, 0, historyWrite.width, historyWrite.height);
+  gl.useProgram(args.temporalProgram.program);
 
-  const temporalPass = args.beginPass(args.encoder, historyWrite.view);
-  temporalPass.setPipeline(args.temporalPipeline);
-  temporalPass.setBindGroup(0, temporalBindGroup);
-  temporalPass.draw(3, 1, 0, 0);
-  temporalPass.end();
+  bindTexture(gl, 0, args.outputTarget.texture);
+  bindTexture(gl, 1, historySourceTexture);
+  gl.uniform1i(args.temporalProgram.currentTexture, 0);
+  gl.uniform1i(args.temporalProgram.historyTexture, 1);
+
+  gl.bindVertexArray(args.vao);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
 
   return {
     outputTarget: historyWrite,
     temporalState: {
       historyReadIndex: 1 - args.temporalState.historyReadIndex,
       historyValid: true,
-      historyFrameCount: Math.min(
-        args.temporalState.historyFrameCount + 1,
-        120,
-      ),
+      historyFrameCount: Math.min(args.temporalState.historyFrameCount + 1, 120),
     },
   };
+}
+
+function bindTexture(
+  gl: WebGL2RenderingContext,
+  unit: number,
+  texture: WebGLTexture,
+) {
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
 }

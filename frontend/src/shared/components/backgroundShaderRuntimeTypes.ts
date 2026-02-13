@@ -1,13 +1,11 @@
 export type RenderTarget = {
-  texture: GPUTexture;
-  view: GPUTextureView;
+  texture: WebGLTexture;
+  framebuffer: WebGLFramebuffer;
   width: number;
   height: number;
 };
 
 export type BlurModule = "none" | "dualKawase" | "mipPyramid";
-
-export type CachedBindGroupKeyPart = string | number | object;
 
 export type TargetConfig = {
   width: number;

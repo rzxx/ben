@@ -1,4 +1,4 @@
-export function composeWGSL(chunks: readonly string[]): string {
+export function composeGLSL(chunks: readonly string[]): string {
   return chunks
     .map((chunk) => chunk.trim())
     .filter((chunk) => chunk.length > 0)

@@ -6,23 +6,91 @@ import {
 } from "./backgroundShaderRuntimeTypes";
 
 export function createRenderTarget(
-  device: GPUDevice,
+  gl: WebGL2RenderingContext,
   width: number,
   height: number,
-  format: GPUTextureFormat,
 ): RenderTarget {
-  const texture = device.createTexture({
-    size: { width, height },
-    format,
-    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-  });
+  const supportsColorBufferFloat = Boolean(gl.getExtension("EXT_color_buffer_float"));
+  const candidates = supportsColorBufferFloat
+    ? [
+        {
+          internalFormat: gl.RGBA16F,
+          format: gl.RGBA,
+          type: gl.HALF_FLOAT,
+        },
+        {
+          internalFormat: gl.RGBA8,
+          format: gl.RGBA,
+          type: gl.UNSIGNED_BYTE,
+        },
+      ]
+    : [
+        {
+          internalFormat: gl.RGBA8,
+          format: gl.RGBA,
+          type: gl.UNSIGNED_BYTE,
+        },
+      ];
 
-  return {
-    texture,
-    view: texture.createView(),
-    width,
-    height,
-  };
+  for (const candidate of candidates) {
+    const texture = gl.createTexture();
+    const framebuffer = gl.createFramebuffer();
+
+    if (!texture || !framebuffer) {
+      if (texture) {
+        gl.deleteTexture(texture);
+      }
+      if (framebuffer) {
+        gl.deleteFramebuffer(framebuffer);
+      }
+      throw new Error("Failed to allocate WebGL render target resources.");
+    }
+
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      candidate.internalFormat,
+      width,
+      height,
+      0,
+      candidate.format,
+      candidate.type,
+      null,
+    );
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      texture,
+      0,
+    );
+
+    const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    if (status === gl.FRAMEBUFFER_COMPLETE) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      return {
+        texture,
+        framebuffer,
+        width,
+        height,
+      };
+    }
+
+    gl.deleteFramebuffer(framebuffer);
+    gl.deleteTexture(texture);
+  }
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  throw new Error("Render target framebuffer is incomplete for all tested formats.");
 }
 
 export function buildBlurDimensions(
@@ -166,24 +234,24 @@ export function shouldApplyMipBlur(
 
 export function resolveMipViews(
   mipTargets: RenderTarget[],
-  fallbackView: GPUTextureView,
+  fallbackTexture: WebGLTexture,
 ): [
-  GPUTextureView,
-  GPUTextureView,
-  GPUTextureView,
-  GPUTextureView,
-  GPUTextureView,
+  WebGLTexture,
+  WebGLTexture,
+  WebGLTexture,
+  WebGLTexture,
+  WebGLTexture,
 ] {
   const fallback =
     mipTargets.length > 0
-      ? mipTargets[mipTargets.length - 1].view
-      : fallbackView;
+      ? mipTargets[mipTargets.length - 1].texture
+      : fallbackTexture;
   return [
-    mipTargets[0]?.view ?? fallback,
-    mipTargets[1]?.view ?? fallback,
-    mipTargets[2]?.view ?? fallback,
-    mipTargets[3]?.view ?? fallback,
-    mipTargets[4]?.view ?? fallback,
+    mipTargets[0]?.texture ?? fallback,
+    mipTargets[1]?.texture ?? fallback,
+    mipTargets[2]?.texture ?? fallback,
+    mipTargets[3]?.texture ?? fallback,
+    mipTargets[4]?.texture ?? fallback,
   ];
 }
 
