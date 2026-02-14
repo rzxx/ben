@@ -971,8 +971,14 @@ func resolveThemeSelection(candidates []swatch, selected []swatch, broadCandidat
 		gradientChosen = append(gradientChosen, tertiary)
 	}
 
+	gradientCandidates := mergeSwatchPools(candidates, supportCandidates, maxFloat(options.MinDelta*0.3, 0.008))
+	if len(gradientCandidates) == 0 {
+		gradientCandidates = append([]swatch(nil), candidates...)
+	}
+	provisionalGradient := buildGradientSwatches(selection, gradientCandidates, options.MinDelta)
+
 	monochromePalette := isMonochromePalette(supportCandidates, options)
-	if accent, ok := chooseAccentSwatch(primary, supportCandidates, options); ok {
+	if accent, ok := chooseAccentSwatch(primary, supportCandidates, options, provisionalGradient); ok {
 		if monochromePalette {
 			selection.accent = swatchPointer(primary)
 		} else {
@@ -992,10 +998,6 @@ func resolveThemeSelection(candidates []swatch, selected []swatch, broadCandidat
 		selection.accentScale = buildAccentScaleSwatches(selection, options)
 	}
 
-	gradientCandidates := mergeSwatchPools(candidates, supportCandidates, maxFloat(options.MinDelta*0.3, 0.008))
-	if len(gradientCandidates) == 0 {
-		gradientCandidates = append([]swatch(nil), candidates...)
-	}
 	selection.gradient = buildGradientSwatches(selection, gradientCandidates, options.MinDelta)
 	return selection
 }
@@ -1422,7 +1424,7 @@ func nearestLightnessDistance(selected []swatch, candidate swatch) float64 {
 	return best
 }
 
-func chooseAccentSwatch(primary swatch, candidates []swatch, options ExtractOptions) (swatch, bool) {
+func chooseAccentSwatch(primary swatch, candidates []swatch, options ExtractOptions, preferredGradient []swatch) (swatch, bool) {
 	if len(candidates) == 0 {
 		return swatch{}, false
 	}
@@ -1471,19 +1473,23 @@ func chooseAccentSwatch(primary swatch, candidates []swatch, options ExtractOpti
 		chromaScore := 1 - math.Abs(candidate.chroma-targetChroma)/maxFloat(targetChroma, 0.001)
 		chromaScore = clampFloat(chromaScore, 0, 1)
 		populationScore := clampFloat(float64(candidate.population)/maxPopulation, 0, 1)
+		gradientScore := accentGradientAffinity(candidate, preferredGradient, options)
 
 		penalty := 1.0
 		if hueDelta < 24 {
 			penalty *= 0.65
 		}
 		if candidate.chroma < 0.05 && hueDelta > 45 {
-			penalty *= 0.6
+			penalty *= lowChromaFarHuePenalty(primary.chroma)
 		}
 		if candidate.chroma > options.MaxChroma*1.2 {
 			penalty *= maxFloat(0.35, 1.0-(candidate.chroma-options.MaxChroma*1.2)*3.8)
 		}
+		if len(preferredGradient) > 0 && gradientScore < 0.2 {
+			penalty *= 0.84
+		}
 
-		score := (0.34*hueTargetScore + 0.22*hueContrastScore + 0.2*distanceScore + 0.16*chromaScore + 0.08*populationScore) * penalty
+		score := (0.27*hueTargetScore + 0.17*hueContrastScore + 0.18*distanceScore + 0.14*chromaScore + 0.08*populationScore + 0.16*gradientScore) * penalty
 		if !found || score > bestScore {
 			best = candidate
 			bestScore = score
@@ -1496,6 +1502,26 @@ func chooseAccentSwatch(primary swatch, candidates []swatch, options ExtractOpti
 	}
 
 	return best, true
+}
+
+func accentGradientAffinity(candidate swatch, preferredGradient []swatch, options ExtractOptions) float64 {
+	if len(preferredGradient) == 0 {
+		return 0
+	}
+
+	distance := nearestOKLabDistance(preferredGradient, candidate)
+	distanceTarget := maxFloat(options.MinDelta*0.95, 0.05)
+	distanceScore := 1 - clampFloat(distance/maxFloat(distanceTarget, 0.001), 0, 1)
+
+	hueDistance := nearestHueDistance(preferredGradient, candidate)
+	hueScore := 1 - clampFloat(hueDistance/55, 0, 1)
+
+	return clampFloat(0.72*distanceScore+0.28*hueScore, 0, 1)
+}
+
+func lowChromaFarHuePenalty(primaryChroma float64) float64 {
+	neutrality := 1 - clampFloat(primaryChroma/0.07, 0, 1)
+	return clampFloat(0.6+0.3*neutrality, 0.6, 0.9)
 }
 
 func firstDistinctSwatch(candidates []swatch, selected []swatch, minDelta float64) (swatch, bool) {

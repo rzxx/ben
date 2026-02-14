@@ -277,7 +277,7 @@ func TestChooseAccentSwatchPrefersContrastiveHue(t *testing.T) {
 	orange := makeTestSwatch(230, 124, 42, 920)
 	yellow := makeTestSwatch(222, 190, 40, 650)
 
-	accent, ok := chooseAccentSwatch(primary, []swatch{primary, orange, yellow}, DefaultExtractOptions())
+	accent, ok := chooseAccentSwatch(primary, []swatch{primary, orange, yellow}, DefaultExtractOptions(), nil)
 	if !ok {
 		t.Fatal("expected accent candidate")
 	}
@@ -293,7 +293,7 @@ func TestChooseAccentSwatchSkipsLowChromaMutedOutlier(t *testing.T) {
 	mutedTeal := makeTestSwatch(132, 155, 146, 980) // #849B92
 	vividGold := makeTestSwatch(222, 190, 40, 840)
 
-	accent, ok := chooseAccentSwatch(primary, []swatch{primary, mutedTeal, vividGold}, DefaultExtractOptions())
+	accent, ok := chooseAccentSwatch(primary, []swatch{primary, mutedTeal, vividGold}, DefaultExtractOptions(), nil)
 	if !ok {
 		t.Fatal("expected accent candidate")
 	}
@@ -309,12 +309,58 @@ func TestChooseAccentSwatchPenalizesLowChromaFarHue(t *testing.T) {
 	lowChromaFarHue := oklchToSwatch(0.62, 0.045, 170, 1200)
 	balanced := oklchToSwatch(0.62, 0.06, 84, 1200)
 
-	accent, ok := chooseAccentSwatch(primary, []swatch{primary, lowChromaFarHue, balanced}, DefaultExtractOptions())
+	accent, ok := chooseAccentSwatch(primary, []swatch{primary, lowChromaFarHue, balanced}, DefaultExtractOptions(), nil)
 	if !ok {
 		t.Fatal("expected accent candidate")
 	}
 	if !sameRGB(accent, balanced) {
 		t.Fatalf("expected low-chroma far-hue accent penalty to avoid surprising muted hue shift: got %#v want %#v", accent, balanced)
+	}
+}
+
+func TestChooseAccentSwatchPrefersGradientGroundedCandidate(t *testing.T) {
+	t.Parallel()
+
+	options := DefaultExtractOptions()
+	options.MinDelta = 0.08
+
+	primary := makeTestSwatch(56, 114, 208, 1200)
+	gradientAligned := makeTestSwatch(222, 124, 42, 980)
+	outlier := makeTestSwatch(214, 52, 160, 980)
+
+	gradient := []swatch{
+		primary,
+		gradientAligned,
+		makeTestSwatch(240, 176, 52, 760),
+	}
+
+	accent, ok := chooseAccentSwatch(primary, []swatch{primary, outlier, gradientAligned}, options, gradient)
+	if !ok {
+		t.Fatal("expected accent candidate")
+	}
+	if !sameRGB(accent, gradientAligned) {
+		t.Fatalf("expected accent to prefer gradient-grounded candidate: got %#v want %#v", accent, gradientAligned)
+	}
+}
+
+func TestChooseAccentSwatchAllowsMutedFarHueWhenPrimaryIsNearNeutral(t *testing.T) {
+	t.Parallel()
+
+	options := DefaultExtractOptions()
+	options.MinDelta = 0.08
+
+	primary := makeTestSwatch(0xE3, 0xDB, 0xC4, 1200)
+	brown := makeTestSwatch(0x9F, 0x6B, 0x3C, 980)
+	blue := makeTestSwatch(0x6B, 0x98, 0x9A, 980)
+
+	gradient := []swatch{primary, brown, blue}
+
+	accent, ok := chooseAccentSwatch(primary, []swatch{primary, brown, blue}, options, gradient)
+	if !ok {
+		t.Fatal("expected accent candidate")
+	}
+	if !sameRGB(accent, blue) {
+		t.Fatalf("expected near-neutral primary to allow muted far-hue accent: got %#v want %#v", accent, blue)
 	}
 }
 
