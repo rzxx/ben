@@ -138,6 +138,7 @@ export function createBackgroundShaderRenderer(
   let lastTemporalDetailSpeed = Number.NaN;
   let lastTemporalColorDrift = Number.NaN;
   let lastTemporalLumaAnchor = Number.NaN;
+  let lastTemporalLumaRemapStrength = Number.NaN;
   let lastTemporalBlurRadius = Number.NaN;
   let lastTemporalStrength = Number.NaN;
   let lastTemporalResponse = Number.NaN;
@@ -234,7 +235,7 @@ export function createBackgroundShaderRenderer(
     uniformData[12] = settingsValue.sceneVariant === "legacyFeedback" ? 1 : 0;
     uniformData[13] = settingsValue.colorDrift;
     uniformData[14] = settingsValue.lumaAnchor;
-    uniformData[15] = 0;
+    uniformData[15] = settingsValue.lumaRemapStrength;
 
     writeColorSet(uniformData, 16, options.getFromColors());
     writeColorSet(uniformData, 36, options.getToColors());
@@ -335,6 +336,7 @@ export function createBackgroundShaderRenderer(
       lastTemporalDetailSpeed === settingsValue.detailSpeed &&
       lastTemporalColorDrift === settingsValue.colorDrift &&
       lastTemporalLumaAnchor === settingsValue.lumaAnchor &&
+      lastTemporalLumaRemapStrength === settingsValue.lumaRemapStrength &&
       lastTemporalBlurRadius === settingsValue.blurRadius &&
       lastTemporalStrength === settingsValue.temporalStrength &&
       lastTemporalResponse === settingsValue.temporalResponse &&
@@ -354,6 +356,7 @@ export function createBackgroundShaderRenderer(
     lastTemporalDetailSpeed = settingsValue.detailSpeed;
     lastTemporalColorDrift = settingsValue.colorDrift;
     lastTemporalLumaAnchor = settingsValue.lumaAnchor;
+    lastTemporalLumaRemapStrength = settingsValue.lumaRemapStrength;
     lastTemporalBlurRadius = settingsValue.blurRadius;
     lastTemporalStrength = settingsValue.temporalStrength;
     lastTemporalResponse = settingsValue.temporalResponse;

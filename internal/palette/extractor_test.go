@@ -96,17 +96,6 @@ func TestExtractFromImageCapturesDarkAndLightOnHighContrastCover(t *testing.T) {
 	if len(palette.Gradient) != 5 {
 		t.Fatalf("expected 5 gradient colors, got %d", len(palette.Gradient))
 	}
-
-	hasDarkGradient := false
-	for _, gradientColor := range palette.Gradient {
-		if gradientColor.Lightness <= 0.18 {
-			hasDarkGradient = true
-			break
-		}
-	}
-	if !hasDarkGradient {
-		t.Fatal("expected at least one dark gradient anchor")
-	}
 	if len(palette.ThemeScale) != 11 {
 		t.Fatalf("expected 11 theme scale colors, got %d", len(palette.ThemeScale))
 	}
@@ -242,6 +231,45 @@ func TestAccentFallsBackToPrimaryForMonochromeCover(t *testing.T) {
 	}
 }
 
+func TestMonochromeCoverKeepsAccentScaleNearNeutral(t *testing.T) {
+	t.Parallel()
+
+	img := image.NewNRGBA(image.Rect(0, 0, 220, 220))
+	fillRect(img, img.Bounds(), color.NRGBA{R: 182, G: 178, B: 168, A: 255})
+	fillRect(img, image.Rect(18, 22, 200, 84), color.NRGBA{R: 206, G: 202, B: 192, A: 255})
+	fillRect(img, image.Rect(28, 118, 210, 188), color.NRGBA{R: 132, G: 128, B: 119, A: 255})
+
+	extractor := NewExtractor()
+	palette, err := extractor.ExtractFromImage(img, ExtractOptions{})
+	if err != nil {
+		t.Fatalf("extract palette: %v", err)
+	}
+
+	if palette.Primary == nil {
+		t.Fatal("expected primary color")
+	}
+	if palette.Accent == nil {
+		t.Fatal("expected accent color")
+	}
+	if palette.Accent.Hex != palette.Primary.Hex {
+		t.Fatalf("expected monochrome accent to match primary: primary=%s accent=%s", palette.Primary.Hex, palette.Accent.Hex)
+	}
+	if len(palette.ThemeScale) != 11 || len(palette.AccentScale) != 11 {
+		t.Fatalf("expected 11-tone scales, got theme=%d accent=%d", len(palette.ThemeScale), len(palette.AccentScale))
+	}
+
+	for index := range palette.ThemeScale {
+		if palette.ThemeScale[index].Color.Hex != palette.AccentScale[index].Color.Hex {
+			t.Fatalf(
+				"expected monochrome accent scale to mirror theme scale at tone %d: theme=%s accent=%s",
+				palette.ThemeScale[index].Tone,
+				palette.ThemeScale[index].Color.Hex,
+				palette.AccentScale[index].Color.Hex,
+			)
+		}
+	}
+}
+
 func TestChooseAccentSwatchPrefersContrastiveHue(t *testing.T) {
 	t.Parallel()
 
@@ -258,6 +286,38 @@ func TestChooseAccentSwatchPrefersContrastiveHue(t *testing.T) {
 	}
 }
 
+func TestChooseAccentSwatchSkipsLowChromaMutedOutlier(t *testing.T) {
+	t.Parallel()
+
+	primary := makeTestSwatch(68, 134, 157, 1200)   // #44869D
+	mutedTeal := makeTestSwatch(132, 155, 146, 980) // #849B92
+	vividGold := makeTestSwatch(222, 190, 40, 840)
+
+	accent, ok := chooseAccentSwatch(primary, []swatch{primary, mutedTeal, vividGold}, DefaultExtractOptions())
+	if !ok {
+		t.Fatal("expected accent candidate")
+	}
+	if !sameRGB(accent, vividGold) {
+		t.Fatalf("expected accent to reject low-chroma muted outlier: got %#v want %#v", accent, vividGold)
+	}
+}
+
+func TestChooseAccentSwatchPenalizesLowChromaFarHue(t *testing.T) {
+	t.Parallel()
+
+	primary := oklchToSwatch(0.58, 0.076, 223, 1200)
+	lowChromaFarHue := oklchToSwatch(0.62, 0.045, 170, 1200)
+	balanced := oklchToSwatch(0.62, 0.06, 84, 1200)
+
+	accent, ok := chooseAccentSwatch(primary, []swatch{primary, lowChromaFarHue, balanced}, DefaultExtractOptions())
+	if !ok {
+		t.Fatal("expected accent candidate")
+	}
+	if !sameRGB(accent, balanced) {
+		t.Fatalf("expected low-chroma far-hue accent penalty to avoid surprising muted hue shift: got %#v want %#v", accent, balanced)
+	}
+}
+
 func TestBuildGradientSwatchesDoesNotSeedAccent(t *testing.T) {
 	t.Parallel()
 
@@ -267,6 +327,30 @@ func TestBuildGradientSwatchesDoesNotSeedAccent(t *testing.T) {
 	result := buildGradientSwatches(themeSelection{
 		primary: swatchPointer(primary),
 		accent:  swatchPointer(accent),
+	}, nil, 0.08)
+
+	if len(result) != 5 {
+		t.Fatalf("expected 5 gradient colors, got %d", len(result))
+	}
+	if !sameRGB(result[0], primary) {
+		t.Fatalf("expected first gradient color to keep primary, got %#v", result[0])
+	}
+	if !sameRGB(result[1], primary) {
+		t.Fatalf("expected gradient padding to repeat primary when no gradient seeds exist, got %#v", result[1])
+	}
+}
+
+func TestBuildGradientSwatchesDoesNotSeedDarkAndLight(t *testing.T) {
+	t.Parallel()
+
+	primary := makeTestSwatch(210, 78, 72, 1200)
+	dark := makeTestSwatch(14, 16, 20, 500)
+	light := makeTestSwatch(242, 243, 248, 500)
+
+	result := buildGradientSwatches(themeSelection{
+		primary: swatchPointer(primary),
+		dark:    swatchPointer(dark),
+		light:   swatchPointer(light),
 	}, nil, 0.08)
 
 	if len(result) != 5 {
@@ -302,6 +386,60 @@ func TestBuildGradientSwatchesRepeatsExistingOrderWhenPadding(t *testing.T) {
 	}
 	if !sameRGB(result[3], secondary) {
 		t.Fatalf("expected padded gradient to cycle existing colors, got %#v", result[3])
+	}
+}
+
+func TestBestGradientCandidateMildlyBiasesAwayFromNeutral(t *testing.T) {
+	t.Parallel()
+
+	primary := makeTestSwatch(208, 56, 72, 1200)
+	neutral := makeTestSwatch(132, 134, 138, 1100)
+	vivid := makeTestSwatch(40, 136, 246, 1050)
+
+	candidate, ok := bestGradientCandidate([]swatch{neutral, vivid}, []swatch{primary}, 0.08)
+	if !ok {
+		t.Fatal("expected gradient candidate")
+	}
+	if !sameRGB(candidate, vivid) {
+		t.Fatalf("expected non-neutral candidate to win mild chroma bias: got %#v want %#v", candidate, vivid)
+	}
+}
+
+func TestSelectPaletteSwatchesDemotesVeryDarkPrimaryWhenColorfulAlternativeExists(t *testing.T) {
+	t.Parallel()
+
+	options := DefaultExtractOptions()
+	options.ColorCount = 1
+
+	dark := makeTestSwatch(4, 12, 28, 1200)     // #040C1C
+	orange := makeTestSwatch(219, 121, 22, 520) // #DB7916
+	blue := makeTestSwatch(57, 137, 196, 430)   // #3989C4
+
+	selected := selectPaletteSwatches([]swatch{dark, orange, blue}, options)
+	if len(selected) != 1 {
+		t.Fatalf("expected 1 selected swatch, got %d", len(selected))
+	}
+	if sameRGB(selected[0], dark) {
+		t.Fatalf("expected dark background color to be demoted when a substantial colorful alternative exists: selected=%#v", selected[0])
+	}
+}
+
+func TestSelectPaletteSwatchesKeepsVeryDarkPrimaryWhenNoColorfulAlternativeExists(t *testing.T) {
+	t.Parallel()
+
+	options := DefaultExtractOptions()
+	options.ColorCount = 1
+
+	dark := makeTestSwatch(4, 12, 28, 1200)          // #040C1C
+	mutedMid := makeTestSwatch(101, 108, 114, 520)   // low-chroma mid tone
+	mutedLight := makeTestSwatch(148, 152, 158, 430) // low-chroma light tone
+
+	selected := selectPaletteSwatches([]swatch{dark, mutedMid, mutedLight}, options)
+	if len(selected) != 1 {
+		t.Fatalf("expected 1 selected swatch, got %d", len(selected))
+	}
+	if !sameRGB(selected[0], dark) {
+		t.Fatalf("expected dark color to stay primary when no substantial colorful alternative exists: got %#v want %#v", selected[0], dark)
 	}
 }
 

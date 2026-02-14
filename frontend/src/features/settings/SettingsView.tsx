@@ -739,6 +739,46 @@ export function SettingsView(props: SettingsViewProps) {
             onChange={(next) => setShaderSettings({ lumaAnchor: next })}
           />
           <NumericSetting
+            label="Luma Remap Strength"
+            value={shaderSettings.lumaRemapStrength}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(next) =>
+              setShaderSettings({ lumaRemapStrength: next })
+            }
+          />
+          <NumericSetting
+            label="Light Tint Lightness"
+            value={shaderSettings.lightThemeTintLightness}
+            min={0.72}
+            max={0.96}
+            step={0.005}
+            onChange={(next) =>
+              setShaderSettings({ lightThemeTintLightness: next })
+            }
+          />
+          <NumericSetting
+            label="Light Tint Min Chroma"
+            value={shaderSettings.lightThemeTintMinChroma}
+            min={0}
+            max={0.25}
+            step={0.005}
+            onChange={(next) =>
+              setShaderSettings({ lightThemeTintMinChroma: next })
+            }
+          />
+          <NumericSetting
+            label="Light Tint Max Chroma"
+            value={shaderSettings.lightThemeTintMaxChroma}
+            min={0}
+            max={0.35}
+            step={0.005}
+            onChange={(next) =>
+              setShaderSettings({ lightThemeTintMaxChroma: next })
+            }
+          />
+          <NumericSetting
             label="Blur Radius"
             value={shaderSettings.blurRadius}
             min={0}

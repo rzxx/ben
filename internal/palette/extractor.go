@@ -799,10 +799,11 @@ func selectPaletteSwatches(swatches []swatch, options ExtractOptions) []swatch {
 	}
 
 	maxPopulation := float64(swatches[0].population)
+	hasColorfulAlternative := hasSubstantialColorfulAlternative(swatches, maxPopulation)
 	ranked := append([]swatch(nil), swatches...)
 	sort.Slice(ranked, func(i, j int) bool {
-		left := scoreSwatch(ranked[i], maxPopulation, options)
-		right := scoreSwatch(ranked[j], maxPopulation, options)
+		left := scoreSwatch(ranked[i], maxPopulation, options, hasColorfulAlternative)
+		right := scoreSwatch(ranked[j], maxPopulation, options, hasColorfulAlternative)
 		if left == right {
 			return ranked[i].population > ranked[j].population
 		}
@@ -862,7 +863,28 @@ func buildBroadCandidateSwatches(img *image.NRGBA, options ExtractOptions) []swa
 	return deduplicateSwatches(swatches, maxFloat(options.MinDelta*0.55, 0.01))
 }
 
-func scoreSwatch(candidate swatch, maxPopulation float64, options ExtractOptions) float64 {
+func hasSubstantialColorfulAlternative(swatches []swatch, maxPopulation float64) bool {
+	if len(swatches) == 0 || maxPopulation <= 0 {
+		return false
+	}
+
+	for _, candidate := range swatches {
+		if candidate.lightness < 0.35 || candidate.lightness > 0.82 {
+			continue
+		}
+		if candidate.chroma <= 0.10 {
+			continue
+		}
+		if float64(candidate.population) < maxPopulation*0.35 {
+			continue
+		}
+		return true
+	}
+
+	return false
+}
+
+func scoreSwatch(candidate swatch, maxPopulation float64, options ExtractOptions, hasColorfulAlternative bool) float64 {
 	popScore := float64(candidate.population) / maxPopulation
 	lightnessScore := 1 - math.Abs(candidate.lightness-0.58)
 	if lightnessScore < 0 {
@@ -877,6 +899,9 @@ func scoreSwatch(candidate swatch, maxPopulation float64, options ExtractOptions
 	if candidate.chroma > options.MaxChroma {
 		excess := candidate.chroma - options.MaxChroma
 		neonPenalty = maxFloat(0.2, 1.0-excess*4.5)
+	}
+	if hasColorfulAlternative && candidate.lightness < 0.24 && candidate.chroma < 0.07 {
+		neonPenalty *= 0.75
 	}
 
 	return (0.52*popScore + 0.33*chromaScore + 0.15*lightnessScore) * neonPenalty
@@ -946,8 +971,13 @@ func resolveThemeSelection(candidates []swatch, selected []swatch, broadCandidat
 		gradientChosen = append(gradientChosen, tertiary)
 	}
 
+	monochromePalette := isMonochromePalette(supportCandidates, options)
 	if accent, ok := chooseAccentSwatch(primary, supportCandidates, options); ok {
-		selection.accent = swatchPointer(accent)
+		if monochromePalette {
+			selection.accent = swatchPointer(primary)
+		} else {
+			selection.accent = swatchPointer(accent)
+		}
 	} else {
 		selection.accent = swatchPointer(primary)
 	}
@@ -956,7 +986,11 @@ func resolveThemeSelection(candidates []swatch, selected []swatch, broadCandidat
 	selection.dark = anchoredDark
 	selection.light = anchoredLight
 	selection.themeScale = buildThemeScaleSwatches(selection, options)
-	selection.accentScale = buildAccentScaleSwatches(selection, options)
+	if monochromePalette {
+		selection.accentScale = cloneSwatchSlice(selection.themeScale)
+	} else {
+		selection.accentScale = buildAccentScaleSwatches(selection, options)
+	}
 
 	gradientCandidates := mergeSwatchPools(candidates, supportCandidates, maxFloat(options.MinDelta*0.3, 0.008))
 	if len(gradientCandidates) == 0 {
@@ -964,6 +998,86 @@ func resolveThemeSelection(candidates []swatch, selected []swatch, broadCandidat
 	}
 	selection.gradient = buildGradientSwatches(selection, gradientCandidates, options.MinDelta)
 	return selection
+}
+
+func isMonochromePalette(candidates []swatch, options ExtractOptions) bool {
+	if len(candidates) == 0 {
+		return false
+	}
+
+	totalPopulation := 0.0
+	weightedChroma := 0.0
+	maxChroma := 0.0
+
+	for _, candidate := range candidates {
+		population := float64(maxInt(candidate.population, 1))
+		totalPopulation += population
+		weightedChroma += candidate.chroma * population
+		if candidate.chroma > maxChroma {
+			maxChroma = candidate.chroma
+		}
+	}
+
+	if totalPopulation <= 0 {
+		return false
+	}
+
+	averageChroma := weightedChroma / totalPopulation
+	percentile90 := weightedChromaPercentile(candidates, 0.90)
+
+	averageThreshold := maxFloat(options.MinChroma*0.95, 0.028)
+	percentileThreshold := maxFloat(options.MinChroma*1.15, 0.035)
+	maxThreshold := maxFloat(options.TargetChroma*0.55, 0.085)
+
+	return averageChroma <= averageThreshold && percentile90 <= percentileThreshold && maxChroma <= maxThreshold
+}
+
+func weightedChromaPercentile(candidates []swatch, percentile float64) float64 {
+	if len(candidates) == 0 {
+		return 0
+	}
+
+	clampedPercentile := clampFloat(percentile, 0, 1)
+	ordered := append([]swatch(nil), candidates...)
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].chroma == ordered[j].chroma {
+			return ordered[i].population > ordered[j].population
+		}
+		return ordered[i].chroma < ordered[j].chroma
+	})
+
+	totalWeight := 0.0
+	for _, candidate := range ordered {
+		totalWeight += float64(maxInt(candidate.population, 1))
+	}
+	if totalWeight <= 0 {
+		return ordered[len(ordered)-1].chroma
+	}
+
+	targetWeight := totalWeight * clampedPercentile
+	if targetWeight <= 0 {
+		return ordered[0].chroma
+	}
+
+	cumulativeWeight := 0.0
+	for _, candidate := range ordered {
+		cumulativeWeight += float64(maxInt(candidate.population, 1))
+		if cumulativeWeight >= targetWeight {
+			return candidate.chroma
+		}
+	}
+
+	return ordered[len(ordered)-1].chroma
+}
+
+func cloneSwatchSlice(values []swatch) []swatch {
+	if len(values) == 0 {
+		return nil
+	}
+
+	clone := make([]swatch, len(values))
+	copy(clone, values)
+	return clone
 }
 
 func buildGradientSwatches(selection themeSelection, candidates []swatch, minDelta float64) []swatch {
@@ -981,8 +1095,6 @@ func buildGradientSwatches(selection themeSelection, candidates []swatch, minDel
 	addSeed(selection.primary, minDelta*0.45)
 	addSeed(selection.secondary, minDelta*0.42)
 	addSeed(selection.tertiary, minDelta*0.4)
-	addSeed(selection.dark, minDelta*0.28)
-	addSeed(selection.light, minDelta*0.28)
 
 	for len(ordered) < 5 {
 		candidate, ok := bestGradientCandidate(candidates, ordered, minDelta)
@@ -1242,6 +1354,7 @@ func bestGradientCandidate(candidates []swatch, selected []swatch, minDelta floa
 		chromaScore := clampFloat(candidate.chroma/0.34, 0, 1)
 
 		candidateScore := 0.30*popScore + 0.26*distanceScore + 0.2*hueScore + 0.14*lightnessScore + 0.1*chromaScore
+		candidateScore *= gradientNeutralPenalty(candidate.chroma)
 		if !found || candidateScore > bestScore {
 			best = candidate
 			bestScore = candidateScore
@@ -1250,6 +1363,15 @@ func bestGradientCandidate(candidates []swatch, selected []swatch, minDelta floa
 	}
 
 	return best, found
+}
+
+func gradientNeutralPenalty(chroma float64) float64 {
+	const neutralPivot = 0.032
+	if chroma >= neutralPivot {
+		return 1
+	}
+	ratio := clampFloat(chroma/maxFloat(neutralPivot, 0.0001), 0, 1)
+	return 0.78 + 0.22*ratio
 }
 
 func nearestOKLabDistance(selected []swatch, candidate swatch) float64 {
@@ -1315,6 +1437,7 @@ func chooseAccentSwatch(primary swatch, candidates []swatch, options ExtractOpti
 		maxFloat(options.MinChroma, 0.02),
 		0.42,
 	)
+	accentMinChroma := maxFloat(maxFloat(options.MinChroma*1.1, 0.04), maxFloat(options.MinChroma*0.7, 0.012))
 	minDistance := maxFloat(options.MinDelta*0.52, 0.045)
 
 	best := swatch{}
@@ -1328,7 +1451,7 @@ func chooseAccentSwatch(primary swatch, candidates []swatch, options ExtractOpti
 		if candidate.lightness < 0.20 || candidate.lightness > 0.84 {
 			continue
 		}
-		if candidate.chroma < maxFloat(options.MinChroma*0.7, 0.012) {
+		if candidate.chroma < accentMinChroma {
 			continue
 		}
 
@@ -1352,6 +1475,9 @@ func chooseAccentSwatch(primary swatch, candidates []swatch, options ExtractOpti
 		penalty := 1.0
 		if hueDelta < 24 {
 			penalty *= 0.65
+		}
+		if candidate.chroma < 0.05 && hueDelta > 45 {
+			penalty *= 0.6
 		}
 		if candidate.chroma > options.MaxChroma*1.2 {
 			penalty *= maxFloat(0.35, 1.0-(candidate.chroma-options.MaxChroma*1.2)*3.8)

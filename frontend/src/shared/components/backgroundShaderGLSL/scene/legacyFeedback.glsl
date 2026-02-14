@@ -10,6 +10,8 @@ vec3 legacyFeedbackColorField(
   float noiseScale = max(0.1, uniforms.paramsA.y);
   float flowSpeed = uniforms.paramsA.z;
   float warpStrength = uniforms.paramsA.w;
+  float lumaAnchor = uniforms.paramsC.z;
+  float lumaRemapStrength = saturate(uniforms.paramsC.w);
 
   float aspect = uniforms.resolution.x / max(uniforms.resolution.y, 1.0);
   vec2 centered = vec2((uv.x - 0.5) * aspect, uv.y - 0.5);
@@ -71,6 +73,12 @@ vec3 legacyFeedbackColorField(
 
   float highlight = smoothstep(0.7, 0.98, interference) * (0.22 + ribbon * 0.52);
   color += (paletteB - paletteA) * highlight * 0.3;
+
+  if (lumaRemapStrength > 0.0001) {
+    float currentY = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    float targetY = mix(currentY, 0.18 + lumaAnchor * 0.64, lumaRemapStrength);
+    color *= targetY / max(0.001, currentY);
+  }
 
   return saturate3(color);
 }

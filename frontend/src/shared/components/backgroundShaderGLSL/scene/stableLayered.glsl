@@ -15,6 +15,7 @@ vec3 stableLayeredColorField(
   float detailSpeed = uniforms.paramsB.w;
   float colorDrift = uniforms.paramsC.y;
   float lumaAnchor = uniforms.paramsC.z;
+  float lumaRemapStrength = saturate(uniforms.paramsC.w);
 
   float aspect = uniforms.resolution.x / max(uniforms.resolution.y, 1.0);
   vec2 centered = vec2((uv.x - 0.5) * aspect, uv.y - 0.5);
@@ -61,9 +62,11 @@ vec3 stableLayeredColorField(
   color = mix(color, detailPalette, detailDrive * 0.24 + ribbon * detailDrive * 0.08);
   color += (detailPalette - basePaletteA) * (sheen * (0.04 + detailDrive * 0.18));
 
-  float currentY = dot(color, vec3(0.2126, 0.7152, 0.0722));
-  float targetY = mix(currentY, 0.18 + lumaAnchor * 0.64, 0.48);
-  color *= targetY / max(0.001, currentY);
+  if (lumaRemapStrength > 0.0001) {
+    float currentY = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    float targetY = mix(currentY, 0.18 + lumaAnchor * 0.64, lumaRemapStrength);
+    color *= targetY / max(0.001, currentY);
+  }
 
   float vignette = 1.0 - smoothstep(0.42, 1.08, length(centered)) * 0.24;
   color *= vignette;

@@ -35,7 +35,7 @@ export function PlayerBar(props: PlayerBarProps) {
   const RepeatIcon = props.queueState.repeatMode === "one" ? Repeat1 : Repeat;
 
   return (
-    <footer className="dark:bg-theme-900/25 border-theme-500/15 fixed inset-x-24 bottom-4 z-40 rounded-2xl border bg-neutral-100/90 px-8 py-4 shadow-xl shadow-black/7 backdrop-blur-lg backdrop-saturate-150 dark:border-white/7 dark:shadow-black/35 dark:backdrop-blur-xl dark:backdrop-brightness-75">
+    <footer className="dark:bg-theme-900/25 border-theme-500/15 fixed inset-x-24 bottom-4 z-40 rounded-2xl border bg-neutral-100/85 px-8 py-4 shadow-xl shadow-black/7 backdrop-blur-lg backdrop-saturate-150 dark:border-white/7 dark:shadow-black/35 dark:backdrop-blur-xl dark:backdrop-brightness-75">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
         <div className="flex min-w-0 items-center gap-3 lg:w-72 lg:shrink-0">
           <CoverArt

@@ -29,6 +29,10 @@ export type BackgroundShaderSettings = {
   detailSpeed: number;
   colorDrift: number;
   lumaAnchor: number;
+  lumaRemapStrength: number;
+  lightThemeTintLightness: number;
+  lightThemeTintMinChroma: number;
+  lightThemeTintMaxChroma: number;
   blurRadius: number;
   blurRadiusStep: number;
   blurPasses: number;
@@ -45,6 +49,8 @@ export type BackgroundShaderSettings = {
 };
 
 type BackgroundShaderState = {
+  themeMode: ShaderThemeMode;
+  sourceColors: ShaderColorSet;
   fromColors: ShaderColorSet;
   toColors: ShaderColorSet;
   baseColor: ShaderColor;
@@ -53,6 +59,11 @@ type BackgroundShaderState = {
   setThemePalette: (palette: ThemePalette | null) => void;
   setThemeMode: (mode: ShaderThemeMode) => void;
   setSettings: (patch: Partial<BackgroundShaderSettings>) => void;
+};
+
+type HueVectorResult = {
+  hue: [number, number];
+  hasVivid: boolean;
 };
 
 const fallbackColors: ShaderColorSet = [
@@ -81,6 +92,10 @@ const defaultSettings: BackgroundShaderSettings = {
   detailSpeed: 0.58,
   colorDrift: 0.2,
   lumaAnchor: 0.45,
+  lumaRemapStrength: 0.48,
+  lightThemeTintLightness: 0.86,
+  lightThemeTintMinChroma: 0.035,
+  lightThemeTintMaxChroma: 0.16,
   blurRadius: 1.2,
   blurRadiusStep: 0.75,
   blurPasses: 4,
@@ -98,16 +113,26 @@ const defaultSettings: BackgroundShaderSettings = {
 
 export const useBackgroundShaderStore = create<BackgroundShaderState>(
   (set) => ({
+    themeMode: "dark",
+    sourceColors: fallbackColors,
     fromColors: fallbackColors,
     toColors: fallbackColors,
     baseColor: darkBaseColor,
     transitionStartedAtMs: nowMs(),
     settings: defaultSettings,
     setThemePalette: (palette) => {
-      const nextColors = paletteToColorSet(palette);
+      const sourceColors = paletteToColorSet(palette);
 
       set((state) => {
-        if (areColorSetsEqual(state.toColors, nextColors)) {
+        const nextColors = mapColorSetForThemeMode(
+          sourceColors,
+          state.themeMode,
+          state.settings,
+        );
+        if (
+          areColorSetsEqual(state.sourceColors, sourceColors) &&
+          areColorSetsEqual(state.toColors, nextColors)
+        ) {
           return state;
         }
 
@@ -115,6 +140,7 @@ export const useBackgroundShaderStore = create<BackgroundShaderState>(
         const liveColors = getLiveColorSet(state, now);
 
         return {
+          sourceColors,
           fromColors: liveColors,
           toColors: nextColors,
           transitionStartedAtMs: now,
@@ -124,19 +150,60 @@ export const useBackgroundShaderStore = create<BackgroundShaderState>(
     setThemeMode: (mode) => {
       const nextBaseColor = mode === "light" ? lightBaseColor : darkBaseColor;
       set((state) => {
-        if (areColorsEqual(state.baseColor, nextBaseColor)) {
+        const modeUnchanged = state.themeMode === mode;
+        const baseColorUnchanged = areColorsEqual(state.baseColor, nextBaseColor);
+        const nextColors = mapColorSetForThemeMode(
+          state.sourceColors,
+          mode,
+          state.settings,
+        );
+        const paletteUnchanged = areColorSetsEqual(state.toColors, nextColors);
+        if (modeUnchanged && baseColorUnchanged && paletteUnchanged) {
           return state;
         }
 
+        const now = nowMs();
+        const liveColors = getLiveColorSet(state, now);
+
         return {
+          themeMode: mode,
           baseColor: nextBaseColor,
+          fromColors: liveColors,
+          toColors: nextColors,
+          transitionStartedAtMs: now,
         };
       });
     },
     setSettings: (patch) => {
-      set((state) => ({
-        settings: sanitizeSettings({ ...state.settings, ...patch }),
-      }));
+      set((state) => {
+        const nextSettings = sanitizeSettings({ ...state.settings, ...patch });
+        const nextColors = mapColorSetForThemeMode(
+          state.sourceColors,
+          state.themeMode,
+          nextSettings,
+        );
+
+        const settingsUnchanged = areSettingsEqual(state.settings, nextSettings);
+        const colorsUnchanged = areColorSetsEqual(state.toColors, nextColors);
+        if (settingsUnchanged && colorsUnchanged) {
+          return state;
+        }
+
+        if (colorsUnchanged) {
+          return {
+            settings: nextSettings,
+          };
+        }
+
+        const now = nowMs();
+        const liveColors = getLiveColorSet(state, now);
+        return {
+          settings: nextSettings,
+          fromColors: liveColors,
+          toColors: nextColors,
+          transitionStartedAtMs: now,
+        };
+      });
     },
   }),
 );
@@ -265,6 +332,13 @@ function linearToSrgb(value: number): number {
 function sanitizeSettings(
   settings: BackgroundShaderSettings,
 ): BackgroundShaderSettings {
+  const lightThemeTintMinChroma = clamp(settings.lightThemeTintMinChroma, 0, 0.25);
+  const lightThemeTintMaxChroma = clamp(
+    settings.lightThemeTintMaxChroma,
+    lightThemeTintMinChroma,
+    0.35,
+  );
+
   return {
     sceneVariant:
       settings.sceneVariant === "legacyFeedback"
@@ -288,6 +362,10 @@ function sanitizeSettings(
     detailSpeed: clamp(settings.detailSpeed, 0, 4),
     colorDrift: clamp(settings.colorDrift, 0, 1),
     lumaAnchor: clamp(settings.lumaAnchor, 0, 1),
+    lumaRemapStrength: clamp(settings.lumaRemapStrength, 0, 1),
+    lightThemeTintLightness: clamp(settings.lightThemeTintLightness, 0.72, 0.96),
+    lightThemeTintMinChroma,
+    lightThemeTintMaxChroma,
     blurRadius: clamp(settings.blurRadius, 0, 8),
     blurRadiusStep: clamp(settings.blurRadiusStep, 0, 3),
     blurPasses: Math.round(clamp(settings.blurPasses, 0, 8)),
@@ -306,6 +384,133 @@ function sanitizeSettings(
 
 function toUnitColor(value: number): number {
   return clamp(value / 255, 0, 1);
+}
+
+function mapColorSetForThemeMode(
+  colors: ShaderColorSet,
+  mode: ShaderThemeMode,
+  settings: BackgroundShaderSettings,
+): ShaderColorSet {
+  if (mode !== "light") {
+    return colors;
+  }
+
+  const fallbackHue = dominantVividHueVector(colors);
+
+  return [
+    normalizeColorForLightTheme(colors[0], settings, fallbackHue),
+    normalizeColorForLightTheme(colors[1], settings, fallbackHue),
+    normalizeColorForLightTheme(colors[2], settings, fallbackHue),
+    normalizeColorForLightTheme(colors[3], settings, fallbackHue),
+    normalizeColorForLightTheme(colors[4], settings, fallbackHue),
+  ];
+}
+
+function normalizeColorForLightTheme(
+  color: ShaderColor,
+  settings: BackgroundShaderSettings,
+  fallbackHue: HueVectorResult,
+): ShaderColor {
+  const lab = srgbToOklab(color);
+  const sourceChroma = Math.sqrt(lab[1] * lab[1] + lab[2] * lab[2]);
+  const neutralThreshold = 0.02;
+
+  const minChroma =
+    !fallbackHue.hasVivid && sourceChroma <= neutralThreshold
+      ? 0
+      : settings.lightThemeTintMinChroma;
+  const targetChroma = clamp(
+    sourceChroma * 0.9,
+    minChroma,
+    settings.lightThemeTintMaxChroma,
+  );
+
+  const hasStableHue = sourceChroma > neutralThreshold;
+  const hueA = hasStableHue ? lab[1] / sourceChroma : fallbackHue.hue[0];
+  const hueB = hasStableHue ? lab[2] / sourceChroma : fallbackHue.hue[1];
+
+  return fitOklabColorToSrgb(
+    settings.lightThemeTintLightness,
+    hueA * targetChroma,
+    hueB * targetChroma,
+  );
+}
+
+function dominantVividHueVector(colors: ShaderColorSet): HueVectorResult {
+  const vividThreshold = 0.02;
+  let bestA = 1;
+  let bestB = 0;
+  let bestScore = -1;
+
+  for (let i = 0; i < colors.length; i += 1) {
+    const lab = srgbToOklab(colors[i]);
+    const chroma = Math.sqrt(lab[1] * lab[1] + lab[2] * lab[2]);
+    if (chroma <= vividThreshold) {
+      continue;
+    }
+
+    if (chroma > bestScore) {
+      bestScore = chroma;
+      bestA = lab[1] / chroma;
+      bestB = lab[2] / chroma;
+    }
+  }
+
+  return {
+    hue: [bestA, bestB],
+    hasVivid: bestScore > 0,
+  };
+}
+
+function areSettingsEqual(
+  a: BackgroundShaderSettings,
+  b: BackgroundShaderSettings,
+): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function fitOklabColorToSrgb(lightness: number, a: number, b: number): ShaderColor {
+  const initial = oklabToSrgb([lightness, a, b]);
+  if (isInSrgbGamut(initial)) {
+    return [
+      clamp(initial[0], 0, 1),
+      clamp(initial[1], 0, 1),
+      clamp(initial[2], 0, 1),
+    ];
+  }
+
+  let low = 0;
+  let high = 1;
+  let best = [lightness, 0, 0] as [number, number, number];
+
+  for (let i = 0; i < 14; i += 1) {
+    const scale = (low + high) * 0.5;
+    const candidateLab: [number, number, number] = [
+      lightness,
+      a * scale,
+      b * scale,
+    ];
+    const candidateRgb = oklabToSrgb(candidateLab);
+    if (isInSrgbGamut(candidateRgb)) {
+      low = scale;
+      best = candidateRgb;
+      continue;
+    }
+    high = scale;
+  }
+
+  return [clamp(best[0], 0, 1), clamp(best[1], 0, 1), clamp(best[2], 0, 1)];
+}
+
+function isInSrgbGamut(color: [number, number, number]): boolean {
+  return (
+    color[0] >= 0 &&
+    color[0] <= 1 &&
+    color[1] >= 0 &&
+    color[1] <= 1 &&
+    color[2] >= 0 &&
+    color[2] <= 1
+  );
 }
 
 function areColorSetsEqual(a: ShaderColorSet, b: ShaderColorSet): boolean {
