@@ -46,6 +46,7 @@ import {
   StatsRange,
   ThemeExtractOptions,
   ThemePalette,
+  ThemePaletteTone,
   WatchedRoot,
 } from "./features/types";
 
@@ -65,6 +66,12 @@ const detailLimit = 200;
 const statsRefreshIntervalMS = 30000;
 const appMemoryLocation = memoryLocation({ path: "/albums" });
 const maxThemePaletteCacheEntries = 48;
+const dynamicTailwindThemeStyleID = "dynamic-tailwind-theme";
+const tailwindThemeTones = [
+  50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950,
+] as const;
+
+type TailwindThemeScale = "theme" | "accent";
 
 function createEmptyPage(limit: number, offset: number): PageInfo {
   return {
@@ -206,6 +213,66 @@ function normalizePagedResult<T>(
   }
 
   return parsed;
+}
+
+function applyTailwindThemePaletteVariables(
+  palette: ThemePalette | null,
+  doc: Document = document,
+) {
+  const styleElement = ensureDynamicTailwindThemeStyleElement(doc);
+  const cssText = buildTailwindThemeOverrideCSS(palette);
+  if (!cssText) {
+    styleElement.remove();
+    return;
+  }
+  styleElement.textContent = cssText;
+}
+
+function ensureDynamicTailwindThemeStyleElement(doc: Document): HTMLStyleElement {
+  const existing = doc.getElementById(dynamicTailwindThemeStyleID);
+  if (existing instanceof HTMLStyleElement) {
+    return existing;
+  }
+
+  const styleElement = doc.createElement("style");
+  styleElement.id = dynamicTailwindThemeStyleID;
+  doc.head.append(styleElement);
+  return styleElement;
+}
+
+function buildTailwindThemeOverrideCSS(palette: ThemePalette | null): string {
+  const declarations = [
+    ...buildPaletteScaleVariableDeclarations("theme", palette?.themeScale ?? []),
+    ...buildPaletteScaleVariableDeclarations("accent", palette?.accentScale ?? []),
+  ];
+  if (declarations.length === 0) {
+    return "";
+  }
+
+  return `:root {\n${declarations.join("\n")}\n}`;
+}
+
+function buildPaletteScaleVariableDeclarations(
+  scale: TailwindThemeScale,
+  tones: ThemePaletteTone[],
+): string[] {
+  const toneByValue = new Map<number, string>();
+  for (const tone of tones) {
+    const hex = tone.color?.hex?.trim();
+    if (hex) {
+      toneByValue.set(tone.tone, hex);
+    }
+  }
+
+  const declarations: string[] = [];
+  for (const tone of tailwindThemeTones) {
+    const hex = toneByValue.get(tone);
+    if (!hex) {
+      continue;
+    }
+    declarations.push(`  --color-${scale}-${tone}: ${hex};`);
+  }
+  return declarations;
 }
 
 function AppContent() {
@@ -502,6 +569,10 @@ function AppContent() {
   useEffect(() => {
     setBackgroundThemePalette(generatedThemePalette);
   }, [generatedThemePalette, setBackgroundThemePalette]);
+
+  useEffect(() => {
+    applyTailwindThemePaletteVariables(generatedThemePalette);
+  }, [generatedThemePalette]);
 
   useEffect(() => {
     setThemeErrorMessage(null);
