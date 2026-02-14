@@ -1071,7 +1071,6 @@ func buildThemeScaleSwatches(selection themeSelection, options ExtractOptions) [
 	if seedChroma <= 0 {
 		seedChroma = options.TargetChroma
 	}
-	peakChroma := clampFloat(maxFloat(seedChroma, options.TargetChroma*0.85), 0.01, options.MaxChroma)
 
 	scale := make([]swatch, 0, len(paletteScaleTones))
 	for _, tone := range paletteScaleTones {
@@ -1086,9 +1085,7 @@ func buildThemeScaleSwatches(selection themeSelection, options ExtractOptions) [
 			t := float64(tone-100) / float64(950-100)
 			lightness := lightAnchor.lightness + (darkAnchor.lightness-lightAnchor.lightness)*t
 			endChroma := lightAnchor.chroma + (darkAnchor.chroma-lightAnchor.chroma)*t
-			centerWeight := math.Sin(math.Pi * t)
-			centerWeight *= centerWeight
-			chroma := endChroma + (peakChroma-endChroma)*centerWeight
+			chroma := endChroma
 			chroma = clampFloat(chroma, 0, options.MaxChroma)
 			scale = append(scale, oklchToSwatch(lightness, chroma, seed.hue, seed.population))
 		}

@@ -41,7 +41,7 @@ export function LeftSidebar(props: LeftSidebarProps) {
               onClick={() => props.onNavigate(item.path)}
               className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
                 isActive
-                  ? "bg-accent-100 text-accent-900"
+                  ? "bg-theme-100 text-theme-900"
                   : "text-theme-200 hover:bg-theme-800"
               }`}
             >

@@ -23,7 +23,7 @@ export function RightSidebar(props: RightSidebarProps) {
           onClick={() => props.onTabChange("queue")}
           className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
             props.tab === "queue"
-              ? "bg-accent-100 text-accent-900"
+              ? "bg-theme-100 text-theme-900"
               : "text-theme-200 hover:bg-theme-800"
           }`}
         >
@@ -35,7 +35,7 @@ export function RightSidebar(props: RightSidebarProps) {
           onClick={() => props.onTabChange("details")}
           className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
             props.tab === "details"
-              ? "bg-accent-100 text-accent-900"
+              ? "bg-theme-100 text-theme-900"
               : "text-theme-200 hover:bg-theme-800"
           }`}
         >

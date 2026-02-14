@@ -68,7 +68,7 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
               onClick={() =>
                 void props.onPlayAlbum(album.title, album.albumArtist)
               }
-              className="bg-theme-100 text-theme-900 hover:bg-theme-200 mt-2 inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors"
+              className="bg-accent-100 text-accent-900 hover:bg-accent-200 mt-2 inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors"
             >
               <Play size={16} />
               Play all tracks

@@ -34,10 +34,10 @@ export function QueueView(props: QueueViewProps) {
           {props.queueState.entries.map((track, index) => (
             <li
               key={`${track.id}-${index}`}
-              className={`group flex min-w-0 items-center gap-2 rounded-md border p-2 transition-colors ${
+              className={`group flex min-w-0 items-center gap-2 rounded-md p-2 transition-colors ${
                 index === props.queueState.currentIndex
-                  ? "border-white/7"
-                  : "hover:bg-theme-800 border-transparent"
+                  ? ""
+                  : "hover:bg-theme-800"
               }`}
             >
               <button
@@ -47,7 +47,9 @@ export function QueueView(props: QueueViewProps) {
                   void props.onSelectQueueIndex(index);
                 }}
               >
-                <p className="text-theme-100 truncate text-sm font-medium">
+                <p
+                  className={`truncate text-sm font-medium ${index === props.queueState.currentIndex ? "text-accent-300" : "text-theme-100"}`}
+                >
                   {track.title}
                 </p>
                 <p className="text-theme-400 truncate text-xs">
@@ -59,7 +61,7 @@ export function QueueView(props: QueueViewProps) {
                 onClick={() => {
                   void props.onRemoveQueueTrack(index);
                 }}
-                className="text-theme-400/ group-hover:text-theme-400 hover:text-theme-200 rounded p-1 transition-colors not-group-hover:hidden"
+                className="group-hover:text-accent-400 hover:text-accent-200 rounded p-1 transition-colors not-group-hover:hidden"
                 aria-label="Remove track from queue"
               >
                 <X size={14} />
