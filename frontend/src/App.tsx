@@ -228,7 +228,9 @@ function applyTailwindThemePaletteVariables(
   styleElement.textContent = cssText;
 }
 
-function ensureDynamicTailwindThemeStyleElement(doc: Document): HTMLStyleElement {
+function ensureDynamicTailwindThemeStyleElement(
+  doc: Document,
+): HTMLStyleElement {
   const existing = doc.getElementById(dynamicTailwindThemeStyleID);
   if (existing instanceof HTMLStyleElement) {
     return existing;
@@ -242,8 +244,14 @@ function ensureDynamicTailwindThemeStyleElement(doc: Document): HTMLStyleElement
 
 function buildTailwindThemeOverrideCSS(palette: ThemePalette | null): string {
   const declarations = [
-    ...buildPaletteScaleVariableDeclarations("theme", palette?.themeScale ?? []),
-    ...buildPaletteScaleVariableDeclarations("accent", palette?.accentScale ?? []),
+    ...buildPaletteScaleVariableDeclarations(
+      "theme",
+      palette?.themeScale ?? [],
+    ),
+    ...buildPaletteScaleVariableDeclarations(
+      "accent",
+      palette?.accentScale ?? [],
+    ),
   ];
   if (declarations.length === 0) {
     return "";
@@ -1179,7 +1187,7 @@ function AppContent() {
               </ScrollArea.Content>
             </ScrollArea.Viewport>
             <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-white/7 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
-              <ScrollArea.Thumb className="w-full rounded bg-neutral-300/50" />
+              <ScrollArea.Thumb className="bg-theme-300/50 w-full rounded" />
             </ScrollArea.Scrollbar>
           </ScrollArea.Root>
         </main>

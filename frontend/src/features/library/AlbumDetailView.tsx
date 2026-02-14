@@ -43,7 +43,7 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
           <button
             type="button"
             onClick={props.onBack}
-            className="text-theme-400 hover:text-theme-200 inline-flex w-fit items-center gap-2 rounded-md py-1 text-sm transition-colors"
+            className="text-accent-400 hover:text-accent-200 inline-flex w-fit items-center gap-2 rounded-md py-1 text-sm transition-colors"
           >
             <ArrowLeft size={14} />
             Back to albums
