@@ -48,6 +48,9 @@ type Service struct {
 	currentIndex int
 	repeatMode   string
 	shuffle      bool
+	shuffleOrder []int
+	shuffleTrail []int
+	lastShuffle  []int
 	updatedAt    time.Time
 	emit         Emitter
 	onChange     ChangeListener
@@ -115,7 +118,16 @@ func (s *Service) SetRepeatMode(mode string) (State, error) {
 
 func (s *Service) SetShuffle(enabled bool) State {
 	s.mu.Lock()
-	s.shuffle = enabled
+	if s.shuffle != enabled {
+		s.shuffle = enabled
+		if enabled {
+			s.resetShuffleSessionLocked()
+		} else {
+			s.shuffleOrder = nil
+			s.shuffleTrail = nil
+			s.lastShuffle = nil
+		}
+	}
 	s.touchLocked()
 	state := s.snapshotLocked()
 	s.mu.Unlock()
@@ -133,6 +145,7 @@ func (s *Service) SetQueue(trackIDs []int64, startIndex int) (State, error) {
 	s.mu.Lock()
 	s.entries = tracks
 	s.currentIndex = normalizeCurrentIndex(len(tracks), startIndex)
+	s.syncShuffleAfterQueueMutationLocked()
 	s.touchLocked()
 	state := s.snapshotLocked()
 	s.mu.Unlock()
@@ -152,6 +165,7 @@ func (s *Service) AppendTracks(trackIDs []int64) (State, error) {
 	if s.currentIndex < 0 && len(s.entries) > 0 {
 		s.currentIndex = 0
 	}
+	s.syncShuffleAfterQueueMutationLocked()
 	s.touchLocked()
 	state := s.snapshotLocked()
 	s.mu.Unlock()
@@ -176,6 +190,7 @@ func (s *Service) RemoveTrack(index int) (State, error) {
 	} else if s.currentIndex >= len(s.entries) {
 		s.currentIndex = len(s.entries) - 1
 	}
+	s.syncShuffleAfterQueueMutationLocked()
 
 	s.touchLocked()
 	state := s.snapshotLocked()
@@ -199,6 +214,7 @@ func (s *Service) SetCurrentIndex(index int) (State, error) {
 	}
 
 	s.currentIndex = index
+	s.syncShuffleAfterDirectJumpLocked(index)
 	s.touchLocked()
 	state := s.snapshotLocked()
 	s.mu.Unlock()
@@ -211,6 +227,9 @@ func (s *Service) Clear() State {
 	s.mu.Lock()
 	s.entries = nil
 	s.currentIndex = -1
+	s.shuffleOrder = nil
+	s.shuffleTrail = nil
+	s.lastShuffle = nil
 	s.touchLocked()
 	state := s.snapshotLocked()
 	s.mu.Unlock()
@@ -267,7 +286,21 @@ func (s *Service) resolveNextIndexLocked(mode nextMode) (int, bool) {
 			return 0, true
 		}
 
-		return s.randomIndexLocked(total, s.currentIndex), true
+		s.ensureShuffleSessionLocked()
+		if len(s.shuffleOrder) == 0 {
+			if s.repeatMode != RepeatModeAll {
+				return -1, false
+			}
+			s.refillShuffleOrderLocked()
+			if len(s.shuffleOrder) == 0 {
+				return -1, false
+			}
+		}
+
+		nextIndex := s.shuffleOrder[0]
+		s.shuffleOrder = s.shuffleOrder[1:]
+		s.recordShuffleVisitLocked(nextIndex)
+		return nextIndex, true
 	}
 
 	if s.currentIndex < total-1 {
@@ -281,22 +314,32 @@ func (s *Service) resolveNextIndexLocked(mode nextMode) (int, bool) {
 	return -1, false
 }
 
-func (s *Service) randomIndexLocked(total int, exclude int) int {
-	if s.rng == nil {
-		s.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-	}
-
-	next := s.rng.Intn(total - 1)
-	if next >= exclude {
-		next++
-	}
-
-	return next
-}
-
 func (s *Service) Previous() (State, bool) {
 	s.mu.Lock()
-	if len(s.entries) == 0 || s.currentIndex == 0 {
+	if len(s.entries) == 0 {
+		state := s.snapshotLocked()
+		s.mu.Unlock()
+		return state, false
+	}
+
+	if s.shuffle {
+		s.ensureShuffleSessionLocked()
+		if len(s.shuffleTrail) > 1 {
+			current := s.shuffleTrail[len(s.shuffleTrail)-1]
+			s.shuffleTrail = s.shuffleTrail[:len(s.shuffleTrail)-1]
+			previous := s.shuffleTrail[len(s.shuffleTrail)-1]
+			s.currentIndex = previous
+			s.prependShuffleOrderLocked(current)
+			s.touchLocked()
+			state := s.snapshotLocked()
+			s.mu.Unlock()
+
+			s.afterMutation(state)
+			return state, true
+		}
+	}
+
+	if s.currentIndex == 0 {
 		state := s.snapshotLocked()
 		s.mu.Unlock()
 		return state, false
@@ -564,8 +607,589 @@ func (s *Service) loadSnapshot() {
 	s.currentIndex = currentIndex
 	s.repeatMode = newRepeatMode
 	s.shuffle = shuffleInt.Valid && shuffleInt.Int64 == 1
+	if s.shuffle {
+		s.resetShuffleSessionLocked()
+	}
 	s.updatedAt = loadedAt
 	s.mu.Unlock()
+}
+
+func (s *Service) syncShuffleAfterQueueMutationLocked() {
+	if !s.shuffle {
+		s.shuffleOrder = nil
+		s.shuffleTrail = nil
+		s.lastShuffle = nil
+		return
+	}
+
+	s.lastShuffle = nil
+	s.resetShuffleSessionLocked()
+}
+
+func (s *Service) syncShuffleAfterDirectJumpLocked(index int) {
+	if !s.shuffle {
+		return
+	}
+
+	s.ensureShuffleSessionLocked()
+	if len(s.shuffleTrail) == 0 || s.shuffleTrail[len(s.shuffleTrail)-1] != index {
+		s.recordShuffleVisitLocked(index)
+	}
+	s.removeFromShuffleOrderLocked(index)
+}
+
+func (s *Service) ensureShuffleSessionLocked() {
+	if !s.shuffle {
+		return
+	}
+	if len(s.entries) == 0 {
+		s.shuffleOrder = nil
+		s.shuffleTrail = nil
+		s.lastShuffle = nil
+		return
+	}
+
+	if len(s.shuffleTrail) == 0 {
+		s.resetShuffleSessionLocked()
+		return
+	}
+
+	last := s.shuffleTrail[len(s.shuffleTrail)-1]
+	if last != s.currentIndex || last < 0 || last >= len(s.entries) {
+		s.resetShuffleSessionLocked()
+	}
+}
+
+func (s *Service) resetShuffleSessionLocked() {
+	total := len(s.entries)
+	if total == 0 {
+		s.shuffleOrder = nil
+		s.shuffleTrail = nil
+		s.lastShuffle = nil
+		return
+	}
+
+	if s.currentIndex < 0 || s.currentIndex >= total {
+		s.currentIndex = 0
+	}
+
+	s.shuffleTrail = []int{s.currentIndex}
+	s.refillShuffleOrderLocked()
+}
+
+func (s *Service) refillShuffleOrderLocked() {
+	total := len(s.entries)
+	if total <= 1 {
+		s.shuffleOrder = nil
+		s.lastShuffle = nil
+		return
+	}
+
+	candidates := make([]int, 0, total-1)
+	for index := range s.entries {
+		if index == s.currentIndex {
+			continue
+		}
+		candidates = append(candidates, index)
+	}
+
+	if len(candidates) == 0 {
+		s.shuffleOrder = nil
+		s.lastShuffle = nil
+		return
+	}
+
+	order := s.buildShuffleOrderWithCycleDistanceLocked(candidates)
+	s.shuffleOrder = order
+	s.lastShuffle = append([]int(nil), order...)
+}
+
+func (s *Service) buildShuffleOrderWithCycleDistanceLocked(candidates []int) []int {
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	previous := append([]int(nil), s.lastShuffle...)
+	if !s.sameMembersLocked(previous, candidates) {
+		previous = nil
+	}
+
+	attempts := s.shuffleCycleRetryCountLocked(len(candidates), len(previous) > 0)
+	bestOrder := make([]int, len(candidates))
+	copy(bestOrder, candidates)
+	bestScore := int(^uint(0) >> 1)
+
+	for attempt := 0; attempt < attempts; attempt++ {
+		order := make([]int, len(candidates))
+		copy(order, candidates)
+		s.fisherYatesShuffleLocked(order)
+		s.ruleBasedShuffleCorrectionsLocked(order)
+
+		score, stats := s.shuffleCycleClosenessScoreLocked(previous, order)
+		if score < bestScore {
+			bestScore = score
+			copy(bestOrder, order)
+		}
+
+		if s.shuffleCycleAcceptedLocked(previous, order, stats) {
+			copy(bestOrder, order)
+			break
+		}
+	}
+
+	return bestOrder
+}
+
+func (s *Service) fisherYatesShuffleLocked(values []int) {
+	if len(values) <= 1 {
+		return
+	}
+	if s.rng == nil {
+		s.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+	}
+
+	for i := len(values) - 1; i > 0; i-- {
+		j := s.rng.Intn(i + 1)
+		values[i], values[j] = values[j], values[i]
+	}
+}
+
+func (s *Service) ruleBasedShuffleCorrectionsLocked(order []int) {
+	if len(order) <= 1 {
+		return
+	}
+
+	prefix := s.shufflePrefixLocked()
+	s.breakAlbumTriplesLocked(order, prefix)
+
+	attempts := len(order) * 30
+	if attempts < 220 {
+		attempts = 220
+	}
+	if attempts > 900 {
+		attempts = 900
+	}
+
+	bestScore := s.shuffleOrderPenaltyLocked(prefix, order)
+	for attempt := 0; attempt < attempts; attempt++ {
+		i := s.rng.Intn(len(order))
+		j := s.rng.Intn(len(order))
+		if i == j {
+			continue
+		}
+
+		order[i], order[j] = order[j], order[i]
+		score := s.shuffleOrderPenaltyLocked(prefix, order)
+		if score <= bestScore {
+			bestScore = score
+			continue
+		}
+
+		order[i], order[j] = order[j], order[i]
+	}
+
+	s.breakAlbumTriplesLocked(order, prefix)
+}
+
+type shuffleCycleStats struct {
+	samePosition int
+	nearPosition int
+	samePairs    int
+	headTail     int
+	firstEqual   bool
+	prefixEqual  bool
+	suffixEqual  bool
+}
+
+func (s *Service) shuffleCycleRetryCountLocked(size int, hasPrevious bool) int {
+	if !hasPrevious {
+		return 1
+	}
+
+	attempts := size * 2
+	if attempts < 8 {
+		attempts = 8
+	}
+	if attempts > 14 {
+		attempts = 14
+	}
+
+	return attempts
+}
+
+func (s *Service) shuffleCycleAcceptedLocked(previous []int, current []int, stats shuffleCycleStats) bool {
+	if len(previous) == 0 || len(previous) != len(current) {
+		return true
+	}
+
+	n := len(current)
+	if n < 5 {
+		return !stats.prefixEqual
+	}
+
+	maxSamePosition := maxInt(1, n/10)
+	maxSamePairs := n / 12
+
+	if stats.firstEqual {
+		return false
+	}
+	if stats.prefixEqual || stats.suffixEqual {
+		return false
+	}
+	if stats.samePosition > maxSamePosition {
+		return false
+	}
+	if stats.samePairs > maxSamePairs {
+		return false
+	}
+
+	return true
+}
+
+func (s *Service) shuffleCycleClosenessScoreLocked(previous []int, current []int) (int, shuffleCycleStats) {
+	stats := shuffleCycleStats{}
+	if len(previous) == 0 || len(previous) != len(current) {
+		return 0, stats
+	}
+
+	n := len(current)
+	positionByTrack := make(map[int]int, n)
+	for i, index := range previous {
+		positionByTrack[index] = i
+	}
+
+	pairs := make(map[[2]int]struct{}, n)
+	for i := 0; i < n-1; i++ {
+		pairs[[2]int{previous[i], previous[i+1]}] = struct{}{}
+	}
+
+	for i, index := range current {
+		previousPos, ok := positionByTrack[index]
+		if !ok {
+			continue
+		}
+		delta := previousPos - i
+		if delta < 0 {
+			delta = -delta
+		}
+		if delta == 0 {
+			stats.samePosition++
+		}
+		if delta <= 2 {
+			stats.nearPosition++
+		}
+	}
+
+	for i := 0; i < n-1; i++ {
+		if _, ok := pairs[[2]int{current[i], current[i+1]}]; ok {
+			stats.samePairs++
+		}
+	}
+
+	headCount := 2
+	if n < headCount {
+		headCount = n
+	}
+	tailCount := 2
+	if n < tailCount {
+		tailCount = n
+	}
+
+	for i := 0; i < headCount; i++ {
+		if previous[i] == current[i] {
+			stats.headTail++
+		}
+	}
+	for i := 0; i < tailCount; i++ {
+		if previous[n-1-i] == current[n-1-i] {
+			stats.headTail++
+		}
+	}
+
+	stats.firstEqual = previous[0] == current[0]
+	if n >= 2 {
+		stats.prefixEqual = previous[0] == current[0] && previous[1] == current[1]
+		stats.suffixEqual = previous[n-1] == current[n-1] && previous[n-2] == current[n-2]
+	} else {
+		stats.prefixEqual = stats.firstEqual
+		stats.suffixEqual = stats.firstEqual
+	}
+
+	score := 0
+	score += stats.samePosition * 4
+	score += stats.nearPosition * 2
+	score += stats.samePairs * 5
+	score += stats.headTail * 3
+	if stats.firstEqual {
+		score += 40
+	}
+	if stats.prefixEqual {
+		score += 50
+	}
+	if stats.suffixEqual {
+		score += 30
+	}
+
+	return score, stats
+}
+
+func (s *Service) sameMembersLocked(left []int, right []int) bool {
+	if len(left) != len(right) {
+		return false
+	}
+
+	counts := make(map[int]int, len(left))
+	for _, index := range left {
+		counts[index]++
+	}
+
+	for _, index := range right {
+		count, ok := counts[index]
+		if !ok || count == 0 {
+			return false
+		}
+		counts[index] = count - 1
+	}
+
+	for _, count := range counts {
+		if count != 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (s *Service) breakAlbumTriplesLocked(order []int, prefix []int) {
+	if len(order) < 3 {
+		return
+	}
+
+	for i := 0; i < len(order); i++ {
+		if !s.createsAlbumTripleLocked(prefix, order, i) {
+			continue
+		}
+
+		swapIndex := -1
+		for j := i + 1; j < len(order); j++ {
+			order[i], order[j] = order[j], order[i]
+			if !s.createsAlbumTripleLocked(prefix, order, i) {
+				swapIndex = j
+				order[i], order[j] = order[j], order[i]
+				break
+			}
+			order[i], order[j] = order[j], order[i]
+		}
+
+		if swapIndex >= 0 {
+			order[i], order[swapIndex] = order[swapIndex], order[i]
+		}
+	}
+}
+
+func (s *Service) createsAlbumTripleLocked(prefix []int, order []int, index int) bool {
+	if index < 0 || index >= len(order) {
+		return false
+	}
+
+	current := order[index]
+	firstPrevious, okFirst := s.sequenceValue(prefix, order, index-1)
+	secondPrevious, okSecond := s.sequenceValue(prefix, order, index-2)
+	if !okFirst || !okSecond {
+		return false
+	}
+
+	return s.sameAlbumLocked(current, firstPrevious) && s.sameAlbumLocked(current, secondPrevious)
+}
+
+func (s *Service) shufflePrefixLocked() []int {
+	if len(s.shuffleTrail) == 0 {
+		if s.currentIndex >= 0 && s.currentIndex < len(s.entries) {
+			return []int{s.currentIndex}
+		}
+		return nil
+	}
+
+	window := 4
+	start := 0
+	if len(s.shuffleTrail) > window {
+		start = len(s.shuffleTrail) - window
+	}
+
+	prefix := make([]int, len(s.shuffleTrail[start:]))
+	copy(prefix, s.shuffleTrail[start:])
+	return prefix
+}
+
+func (s *Service) shuffleOrderPenaltyLocked(prefix []int, order []int) int {
+	if len(order) == 0 {
+		return 0
+	}
+
+	artistWindow := 2
+	artistNearPenalty := []int{0, 12, 7}
+	totalPenalty := 0
+	combinedLength := len(prefix) + len(order)
+
+	for absolute := len(prefix); absolute < combinedLength; absolute++ {
+		current := s.sequenceAt(prefix, order, absolute)
+
+		for distance := 1; distance <= artistWindow; distance++ {
+			previousAbsolute := absolute - distance
+			if previousAbsolute < 0 {
+				break
+			}
+			previous := s.sequenceAt(prefix, order, previousAbsolute)
+			if s.sameArtistLocked(current, previous) {
+				totalPenalty += artistNearPenalty[distance]
+			}
+		}
+
+		if absolute-1 >= 0 {
+			previous := s.sequenceAt(prefix, order, absolute-1)
+			if s.sameAlbumLocked(current, previous) {
+				totalPenalty += 14
+			}
+			if s.isAlbumAscendingPairLocked(previous, current) {
+				totalPenalty += 34
+			}
+			if current == previous+1 {
+				totalPenalty += 8
+			}
+		}
+
+		if absolute-2 >= 0 {
+			previous := s.sequenceAt(prefix, order, absolute-1)
+			beforePrevious := s.sequenceAt(prefix, order, absolute-2)
+			if s.sameAlbumLocked(current, previous) && s.sameAlbumLocked(current, beforePrevious) {
+				totalPenalty += 40
+			}
+		}
+	}
+
+	return totalPenalty
+}
+
+func (s *Service) sequenceAt(prefix []int, order []int, absolute int) int {
+	if absolute < len(prefix) {
+		return prefix[absolute]
+	}
+
+	return order[absolute-len(prefix)]
+}
+
+func (s *Service) sequenceValue(prefix []int, order []int, relative int) (int, bool) {
+	if relative >= 0 {
+		return order[relative], true
+	}
+
+	prefixIndex := len(prefix) + relative
+	if prefixIndex < 0 || prefixIndex >= len(prefix) {
+		return 0, false
+	}
+
+	return prefix[prefixIndex], true
+}
+
+func (s *Service) sameArtistLocked(left int, right int) bool {
+	if !s.validIndexLocked(left) || !s.validIndexLocked(right) {
+		return false
+	}
+
+	leftArtist := strings.ToLower(strings.TrimSpace(s.entries[left].Artist))
+	rightArtist := strings.ToLower(strings.TrimSpace(s.entries[right].Artist))
+	if leftArtist == "" || rightArtist == "" {
+		return false
+	}
+
+	return leftArtist == rightArtist
+}
+
+func (s *Service) sameAlbumLocked(left int, right int) bool {
+	if !s.validIndexLocked(left) || !s.validIndexLocked(right) {
+		return false
+	}
+
+	leftAlbum := strings.ToLower(strings.TrimSpace(s.entries[left].Album))
+	rightAlbum := strings.ToLower(strings.TrimSpace(s.entries[right].Album))
+	if leftAlbum == "" || rightAlbum == "" {
+		return false
+	}
+
+	return leftAlbum == rightAlbum
+}
+
+func (s *Service) isAlbumAscendingPairLocked(left int, right int) bool {
+	if !s.sameAlbumLocked(left, right) {
+		return false
+	}
+
+	leftTrack, leftOK := s.trackOrderKeyLocked(left)
+	rightTrack, rightOK := s.trackOrderKeyLocked(right)
+	if !leftOK || !rightOK {
+		return false
+	}
+
+	return rightTrack == leftTrack+1
+}
+
+func (s *Service) trackOrderKeyLocked(index int) (int, bool) {
+	if !s.validIndexLocked(index) {
+		return 0, false
+	}
+
+	track := s.entries[index]
+	if track.TrackNo == nil {
+		return 0, false
+	}
+
+	disc := 1
+	if track.DiscNo != nil && *track.DiscNo > 0 {
+		disc = *track.DiscNo
+	}
+
+	if *track.TrackNo <= 0 {
+		return 0, false
+	}
+
+	return disc*1000 + *track.TrackNo, true
+}
+
+func (s *Service) validIndexLocked(index int) bool {
+	return index >= 0 && index < len(s.entries)
+}
+
+func (s *Service) prependShuffleOrderLocked(index int) {
+	if !s.validIndexLocked(index) || index == s.currentIndex {
+		return
+	}
+
+	s.removeFromShuffleOrderLocked(index)
+	s.shuffleOrder = append([]int{index}, s.shuffleOrder...)
+}
+
+func (s *Service) removeFromShuffleOrderLocked(index int) {
+	for i, value := range s.shuffleOrder {
+		if value != index {
+			continue
+		}
+		s.shuffleOrder = append(s.shuffleOrder[:i], s.shuffleOrder[i+1:]...)
+		return
+	}
+}
+
+func (s *Service) recordShuffleVisitLocked(index int) {
+	if !s.validIndexLocked(index) {
+		return
+	}
+	if len(s.shuffleTrail) > 0 && s.shuffleTrail[len(s.shuffleTrail)-1] == index {
+		return
+	}
+
+	s.shuffleTrail = append(s.shuffleTrail, index)
+	if len(s.shuffleTrail) > len(s.entries)*2 {
+		s.shuffleTrail = s.shuffleTrail[len(s.shuffleTrail)-len(s.entries)*2:]
+	}
 }
 
 func (s *Service) persistSnapshot(state State) {
@@ -658,6 +1282,14 @@ func boolToInt(value bool) int {
 	}
 
 	return 0
+}
+
+func maxInt(left int, right int) int {
+	if left > right {
+		return left
+	}
+
+	return right
 }
 
 func normalizeCurrentIndex(total int, startIndex int) int {
