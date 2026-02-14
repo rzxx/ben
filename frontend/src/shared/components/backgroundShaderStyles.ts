@@ -4,6 +4,7 @@ import { clamp } from "./backgroundShaderRuntimeUtils";
 
 export function buildFallbackStyle(
   colors: ShaderColorSet,
+  baseColor: [number, number, number],
   opacity: number,
 ): CSSProperties {
   const c0 = toCssColor(colors[0], 0.75);
@@ -11,11 +12,12 @@ export function buildFallbackStyle(
   const c2 = toCssColor(colors[2], 0.68);
   const c3 = toCssColor(colors[3], 0.85);
   const c4 = toCssColor(colors[4], 0.64);
+  const baseHex = toCssHex(baseColor);
   const safeOpacity = clamp(opacity, 0, 1);
 
   return {
-    backgroundColor: "#07090d",
-    backgroundImage: `radial-gradient(circle at 16% 20%, ${c0} 0%, transparent 48%), radial-gradient(circle at 84% 26%, ${c1} 0%, transparent 44%), radial-gradient(circle at 24% 88%, ${c2} 0%, transparent 40%), radial-gradient(circle at 58% 62%, ${c4} 0%, transparent 46%), linear-gradient(140deg, ${c3} 0%, #07090d 92%)`,
+    backgroundColor: baseHex,
+    backgroundImage: `radial-gradient(circle at 16% 20%, ${c0} 0%, transparent 48%), radial-gradient(circle at 84% 26%, ${c1} 0%, transparent 44%), radial-gradient(circle at 24% 88%, ${c2} 0%, transparent 40%), radial-gradient(circle at 58% 62%, ${c4} 0%, transparent 46%), linear-gradient(140deg, ${c3} 0%, ${baseHex} 92%)`,
     opacity: safeOpacity,
   };
 }
@@ -75,4 +77,17 @@ function toCssColor(color: [number, number, number], alpha: number): string {
   const g = Math.round(clamp(color[1], 0, 1) * 255);
   const b = Math.round(clamp(color[2], 0, 1) * 255);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function toCssHex(color: [number, number, number]): string {
+  const r = Math.round(clamp(color[0], 0, 1) * 255)
+    .toString(16)
+    .padStart(2, "0");
+  const g = Math.round(clamp(color[1], 0, 1) * 255)
+    .toString(16)
+    .padStart(2, "0");
+  const b = Math.round(clamp(color[2], 0, 1) * 255)
+    .toString(16)
+    .padStart(2, "0");
+  return `#${r}${g}${b}`;
 }

@@ -10,7 +10,9 @@ export function createRenderTarget(
   width: number,
   height: number,
 ): RenderTarget {
-  const supportsColorBufferFloat = Boolean(gl.getExtension("EXT_color_buffer_float"));
+  const supportsColorBufferFloat = Boolean(
+    gl.getExtension("EXT_color_buffer_float"),
+  );
   const candidates = supportsColorBufferFloat
     ? [
         {
@@ -90,7 +92,9 @@ export function createRenderTarget(
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.bindTexture(gl.TEXTURE_2D, null);
-  throw new Error("Render target framebuffer is incomplete for all tested formats.");
+  throw new Error(
+    "Render target framebuffer is incomplete for all tested formats.",
+  );
 }
 
 export function buildBlurDimensions(
@@ -235,13 +239,7 @@ export function shouldApplyMipBlur(
 export function resolveMipViews(
   mipTargets: RenderTarget[],
   fallbackTexture: WebGLTexture,
-): [
-  WebGLTexture,
-  WebGLTexture,
-  WebGLTexture,
-  WebGLTexture,
-  WebGLTexture,
-] {
+): [WebGLTexture, WebGLTexture, WebGLTexture, WebGLTexture, WebGLTexture] {
   const fallback =
     mipTargets.length > 0
       ? mipTargets[mipTargets.length - 1].texture

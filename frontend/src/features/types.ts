@@ -315,3 +315,5 @@ export type ThemePalette = {
   sampleHeight: number;
   options: ThemeExtractOptions;
 };
+
+export type ThemeModePreference = "system" | "light" | "dark";

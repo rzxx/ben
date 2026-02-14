@@ -35,7 +35,10 @@ export const passVertexGLSL = composeGLSL([
   fullscreenTriangleVertexGLSL,
 ]);
 
-export const sceneVertexGLSL = composeGLSL([vertexPrelude, sceneEntryVertexGLSL]);
+export const sceneVertexGLSL = composeGLSL([
+  vertexPrelude,
+  sceneEntryVertexGLSL,
+]);
 
 export const sceneFragmentGLSL = composeGLSL([
   fragmentPrelude,

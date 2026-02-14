@@ -20,6 +20,7 @@ export function BackgroundShader() {
 
   const fromColors = useBackgroundShaderStore((state) => state.fromColors);
   const toColors = useBackgroundShaderStore((state) => state.toColors);
+  const baseColor = useBackgroundShaderStore((state) => state.baseColor);
   const transitionStartedAtMs = useBackgroundShaderStore(
     (state) => state.transitionStartedAtMs,
   );
@@ -28,6 +29,7 @@ export function BackgroundShader() {
 
   const fromColorsRef = useRef(fromColors);
   const toColorsRef = useRef(toColors);
+  const baseColorRef = useRef(baseColor);
   const transitionStartedAtMsRef = useRef(transitionStartedAtMs);
   const settingsRef = useRef(settings);
 
@@ -38,6 +40,10 @@ export function BackgroundShader() {
   useEffect(() => {
     toColorsRef.current = toColors;
   }, [toColors]);
+
+  useEffect(() => {
+    baseColorRef.current = baseColor;
+  }, [baseColor]);
 
   useEffect(() => {
     transitionStartedAtMsRef.current = transitionStartedAtMs;
@@ -58,6 +64,7 @@ export function BackgroundShader() {
       webgl2Available,
       getFromColors: () => fromColorsRef.current,
       getToColors: () => toColorsRef.current,
+      getBaseColor: () => baseColorRef.current,
       getTransitionStartedAtMs: () => transitionStartedAtMsRef.current,
       getSettings: () => settingsRef.current,
       onUnsupportedChange: setIsUnsupported,
@@ -73,8 +80,8 @@ export function BackgroundShader() {
   }, [webgl2Available]);
 
   const fallbackStyle = useMemo(
-    () => buildFallbackStyle(toColors, settings.opacity),
-    [settings.opacity, toColors],
+    () => buildFallbackStyle(toColors, baseColor, settings.opacity),
+    [baseColor, settings.opacity, toColors],
   );
   const grainStyle = useMemo(
     () => buildGrainStyle(settings, grainTextureUrl),

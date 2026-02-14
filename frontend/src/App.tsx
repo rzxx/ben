@@ -45,8 +45,8 @@ import {
   StatsOverview,
   StatsRange,
   ThemeExtractOptions,
+  ThemeModePreference,
   ThemePalette,
-  ThemePaletteTone,
   WatchedRoot,
 } from "./features/types";
 
@@ -66,12 +66,30 @@ const detailLimit = 200;
 const statsRefreshIntervalMS = 30000;
 const appMemoryLocation = memoryLocation({ path: "/albums" });
 const maxThemePaletteCacheEntries = 48;
-const dynamicTailwindThemeStyleID = "dynamic-tailwind-theme";
 const tailwindThemeTones = [
   50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950,
 ] as const;
-
+const themeModeStorageKey = "ben.theme-mode";
+const darkColorSchemeMediaQuery = "(prefers-color-scheme: dark)";
+type ResolvedThemeMode = "light" | "dark";
 type TailwindThemeScale = "theme" | "accent";
+
+function parseThemeModePreference(value: string | null): ThemeModePreference {
+  if (value === "light" || value === "dark" || value === "system") {
+    return value;
+  }
+  return "system";
+}
+
+function resolveThemeMode(
+  preference: ThemeModePreference,
+  mediaQueryList?: MediaQueryList,
+): ResolvedThemeMode {
+  if (preference === "light" || preference === "dark") {
+    return preference;
+  }
+  return mediaQueryList?.matches ? "dark" : "light";
+}
 
 function createEmptyPage(limit: number, offset: number): PageInfo {
   return {
@@ -217,53 +235,17 @@ function normalizePagedResult<T>(
 
 function applyTailwindThemePaletteVariables(
   palette: ThemePalette | null,
-  doc: Document = document,
+  root: HTMLElement = document.documentElement,
 ) {
-  const styleElement = ensureDynamicTailwindThemeStyleElement(doc);
-  const cssText = buildTailwindThemeOverrideCSS(palette);
-  if (!cssText) {
-    styleElement.remove();
-    return;
-  }
-  styleElement.textContent = cssText;
+  applyPaletteScaleVariables(root, "theme", palette?.themeScale ?? []);
+  applyPaletteScaleVariables(root, "accent", palette?.accentScale ?? []);
 }
 
-function ensureDynamicTailwindThemeStyleElement(
-  doc: Document,
-): HTMLStyleElement {
-  const existing = doc.getElementById(dynamicTailwindThemeStyleID);
-  if (existing instanceof HTMLStyleElement) {
-    return existing;
-  }
-
-  const styleElement = doc.createElement("style");
-  styleElement.id = dynamicTailwindThemeStyleID;
-  doc.head.append(styleElement);
-  return styleElement;
-}
-
-function buildTailwindThemeOverrideCSS(palette: ThemePalette | null): string {
-  const declarations = [
-    ...buildPaletteScaleVariableDeclarations(
-      "theme",
-      palette?.themeScale ?? [],
-    ),
-    ...buildPaletteScaleVariableDeclarations(
-      "accent",
-      palette?.accentScale ?? [],
-    ),
-  ];
-  if (declarations.length === 0) {
-    return "";
-  }
-
-  return `:root {\n${declarations.join("\n")}\n}`;
-}
-
-function buildPaletteScaleVariableDeclarations(
+function applyPaletteScaleVariables(
+  root: HTMLElement,
   scale: TailwindThemeScale,
-  tones: ThemePaletteTone[],
-): string[] {
+  tones: ThemePalette["themeScale"],
+) {
   const toneByValue = new Map<number, string>();
   for (const tone of tones) {
     const hex = tone.color?.hex?.trim();
@@ -272,15 +254,15 @@ function buildPaletteScaleVariableDeclarations(
     }
   }
 
-  const declarations: string[] = [];
   for (const tone of tailwindThemeTones) {
+    const cssVariable = `--color-${scale}-${tone}`;
     const hex = toneByValue.get(tone);
-    if (!hex) {
+    if (hex) {
+      root.style.setProperty(cssVariable, hex);
       continue;
     }
-    declarations.push(`  --color-${scale}-${tone}: ${hex};`);
+    root.style.removeProperty(cssVariable);
   }
-  return declarations;
 }
 
 function AppContent() {
@@ -313,6 +295,10 @@ function AppContent() {
   const [themeErrorMessage, setThemeErrorMessage] = useState<string | null>(
     null,
   );
+  const [themeModePreference, setThemeModePreference] =
+    useState<ThemeModePreference>("system");
+  const [resolvedThemeMode, setResolvedThemeMode] =
+    useState<ResolvedThemeMode>("dark");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [transportBusy, setTransportBusy] = useState(false);
 
@@ -342,6 +328,9 @@ function AppContent() {
 
   const setBackgroundThemePalette = useBackgroundShaderStore(
     (state) => state.setThemePalette,
+  );
+  const setBackgroundThemeMode = useBackgroundShaderStore(
+    (state) => state.setThemeMode,
   );
 
   const statsRefreshKeyRef = useRef("");
@@ -575,12 +564,53 @@ function AppContent() {
   }, [themeOptions]);
 
   useEffect(() => {
+    const storedPreference = parseThemeModePreference(
+      window.localStorage.getItem(themeModeStorageKey),
+    );
+    setThemeModePreference(storedPreference);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(themeModeStorageKey, themeModePreference);
+  }, [themeModePreference]);
+
+  useEffect(() => {
+    const mediaQueryList = window.matchMedia(darkColorSchemeMediaQuery);
+
+    const applyThemeMode = () => {
+      const nextResolvedTheme = resolveThemeMode(
+        themeModePreference,
+        mediaQueryList,
+      );
+      setResolvedThemeMode(nextResolvedTheme);
+      const root = document.documentElement;
+      root.classList.toggle("dark", nextResolvedTheme === "dark");
+      root.dataset.theme = nextResolvedTheme;
+    };
+
+    applyThemeMode();
+
+    if (themeModePreference !== "system") {
+      return;
+    }
+
+    mediaQueryList.addEventListener("change", applyThemeMode);
+    return () => {
+      mediaQueryList.removeEventListener("change", applyThemeMode);
+    };
+  }, [themeModePreference]);
+
+  useEffect(() => {
     setBackgroundThemePalette(generatedThemePalette);
   }, [generatedThemePalette, setBackgroundThemePalette]);
 
   useEffect(() => {
     applyTailwindThemePaletteVariables(generatedThemePalette);
   }, [generatedThemePalette]);
+
+  useEffect(() => {
+    setBackgroundThemeMode(resolvedThemeMode);
+  }, [resolvedThemeMode, setBackgroundThemeMode]);
 
   useEffect(() => {
     setThemeErrorMessage(null);
@@ -1051,7 +1081,7 @@ function AppContent() {
   );
 
   return (
-    <div className="relative isolate flex h-dvh flex-col overflow-hidden bg-neutral-950 text-neutral-100">
+    <div className="bg-theme-50 text-theme-900 dark:bg-theme-950 dark:text-theme-100 relative isolate flex h-dvh flex-col overflow-hidden">
       <BackgroundShader />
 
       <TitleBar />
@@ -1160,6 +1190,9 @@ function AppContent() {
                         onRemoveWatchedRoot={onRemoveWatchedRoot}
                         onThemeOptionsChange={setThemeOptions}
                         onGenerateThemePalette={onGenerateThemePalette}
+                        themeModePreference={themeModePreference}
+                        resolvedThemeMode={resolvedThemeMode}
+                        onThemeModePreferenceChange={setThemeModePreference}
                       />
                     </Route>
 
@@ -1174,10 +1207,10 @@ function AppContent() {
 
                     <Route path="*">
                       <section>
-                        <h1 className="text-xl font-semibold text-neutral-100">
+                        <h1 className="text-theme-900 dark:text-theme-100 text-xl font-semibold">
                           Not Found
                         </h1>
-                        <p className="text-sm text-neutral-400">
+                        <p className="text-theme-600 dark:text-theme-400 text-sm">
                           Choose Albums, Artists, Tracks, Stats, or Settings.
                         </p>
                       </section>
@@ -1186,7 +1219,7 @@ function AppContent() {
                 </div>
               </ScrollArea.Content>
             </ScrollArea.Viewport>
-            <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-white/7 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
+            <ScrollArea.Scrollbar className="bg-theme-300/20 dark:bg-theme-300/50 pointer-events-none m-2 flex w-1 justify-center rounded opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
               <ScrollArea.Thumb className="bg-theme-300/50 w-full rounded" />
             </ScrollArea.Scrollbar>
           </ScrollArea.Root>

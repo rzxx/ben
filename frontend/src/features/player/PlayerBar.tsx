@@ -35,7 +35,7 @@ export function PlayerBar(props: PlayerBarProps) {
   const RepeatIcon = props.queueState.repeatMode === "one" ? Repeat1 : Repeat;
 
   return (
-    <footer className="bg-theme-900/25 fixed inset-x-24 bottom-4 z-40 rounded-2xl border border-white/7 px-8 py-4 shadow-xl shadow-black/35 backdrop-blur-xl backdrop-brightness-75 backdrop-saturate-150">
+    <footer className="dark:bg-theme-900/25 border-theme-500/15 fixed inset-x-24 bottom-4 z-40 rounded-2xl border bg-neutral-100/90 px-8 py-4 shadow-xl shadow-black/7 backdrop-blur-lg backdrop-saturate-150 dark:border-white/7 dark:shadow-black/35 dark:backdrop-blur-xl dark:backdrop-brightness-75">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
         <div className="flex min-w-0 items-center gap-3 lg:w-72 lg:shrink-0">
           <CoverArt
@@ -49,10 +49,10 @@ export function PlayerBar(props: PlayerBarProps) {
             loading="eager"
           />
           <div className="min-w-0">
-            <p className="text-theme-100 truncate text-sm font-medium">
+            <p className="text-theme-900 dark:text-theme-100 truncate text-sm font-medium">
               {props.currentTrack?.title ?? "No track selected"}
             </p>
-            <p className="text-theme-400 truncate text-xs">
+            <p className="text-theme-600 dark:text-theme-400 truncate text-xs">
               {props.currentTrack
                 ? props.currentTrack.artist
                 : "Select a track to start playback"}
@@ -67,8 +67,8 @@ export function PlayerBar(props: PlayerBarProps) {
               onClick={() => void props.onToggleShuffle()}
               className={`cursor-pointer rounded p-2 transition-colors ${
                 props.queueState.shuffle
-                  ? "text-accent-200 hover:text-accent-100"
-                  : "text-theme-500 hover:text-theme-200"
+                  ? "text-accent-600 hover:text-accent-700 dark:text-accent-200 dark:hover:text-accent-100"
+                  : "text-theme-400 hover:text-theme-700 dark:text-theme-500 dark:hover:text-theme-200"
               }`}
               aria-label="Toggle shuffle"
             >
@@ -79,7 +79,7 @@ export function PlayerBar(props: PlayerBarProps) {
               type="button"
               onClick={() => void props.onPreviousTrack()}
               disabled={!props.hasCurrentTrack || props.transportBusy}
-              className="text-accent-200 hover:text-accent-100 disabled:text-accent-600 cursor-pointer rounded p-2 transition-colors disabled:cursor-not-allowed"
+              className="text-accent-700 hover:text-accent-600 disabled:text-accent-400 dark:text-accent-200 dark:hover:text-accent-100 dark:disabled:text-accent-600 cursor-pointer rounded p-2 transition-colors disabled:cursor-not-allowed"
               aria-label="Previous track"
             >
               <SkipBack size={16} fill="currentColor" />
@@ -89,7 +89,7 @@ export function PlayerBar(props: PlayerBarProps) {
               type="button"
               onClick={() => void props.onTogglePlayback()}
               disabled={props.queueState.total === 0 || props.transportBusy}
-              className="bg-accent-100 text-accent-900 hover:bg-accent-300 cursor-pointer rounded-full bg-linear-to-b from-white/21 to-black/21 p-3 shadow-md shadow-black/25 transition hover:scale-105 active:scale-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="bg-accent-700 text-accent-50 hover:bg-accent-600 dark:bg-accent-100 dark:text-accent-900 dark:hover:bg-accent-300 cursor-pointer rounded-full bg-linear-to-b from-white/21 to-black/21 p-3 shadow-md shadow-black/25 transition hover:scale-105 active:scale-90 disabled:cursor-not-allowed disabled:opacity-50"
               aria-label={isPlaying ? "Pause" : "Play"}
             >
               {isPlaying ? (
@@ -103,7 +103,7 @@ export function PlayerBar(props: PlayerBarProps) {
               type="button"
               onClick={() => void props.onNextTrack()}
               disabled={!props.hasCurrentTrack || props.transportBusy}
-              className="text-accent-200 hover:text-accent-100 disabled:text-accent-600 cursor-pointer rounded p-2 transition-colors disabled:cursor-not-allowed"
+              className="text-accent-700 hover:text-accent-600 disabled:text-accent-400 dark:text-accent-200 dark:hover:text-accent-100 dark:disabled:text-accent-600 cursor-pointer rounded p-2 transition-colors disabled:cursor-not-allowed"
               aria-label="Next track"
             >
               <SkipForward size={16} fill="currentColor" />
@@ -114,8 +114,8 @@ export function PlayerBar(props: PlayerBarProps) {
               onClick={() => void props.onCycleRepeat()}
               className={`cursor-pointer rounded p-2 transition-colors ${
                 props.queueState.repeatMode === "off"
-                  ? "text-theme-500 hover:text-theme-200"
-                  : "text-accent-200 hover:text-accent-100"
+                  ? "text-theme-400 hover:text-theme-700 dark:text-theme-500 dark:hover:text-theme-200"
+                  : "text-accent-600 hover:text-accent-700 dark:text-accent-200 dark:hover:text-accent-100"
               }`}
               aria-label="Cycle repeat mode"
             >
@@ -124,7 +124,7 @@ export function PlayerBar(props: PlayerBarProps) {
           </div>
 
           <div className="flex items-center justify-center gap-3">
-            <span className="text-theme-300 -mt-0.5 w-10 shrink-0 text-right text-xs">
+            <span className="text-theme-700 dark:text-theme-300 -mt-0.5 w-10 shrink-0 text-right text-xs">
               {props.formatDuration(props.playerState.positionMs)}
             </span>
             <span className="max-w-2/3 flex-1">
@@ -140,14 +140,14 @@ export function PlayerBar(props: PlayerBarProps) {
                 }}
               />
             </span>
-            <span className="text-theme-400 -mt-0.5 w-10 shrink-0 text-xs">
+            <span className="text-theme-600 dark:text-theme-400 -mt-0.5 w-10 shrink-0 text-xs">
               {props.formatDuration(props.playerState.durationMs)}
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-2 lg:w-56 lg:shrink-0">
-          <Volume2 size={16} className="text-theme-300" />
+          <Volume2 size={16} className="text-theme-700 dark:text-theme-300" />
           <SingleValueSlider
             ariaLabel="Volume"
             min={0}
@@ -194,11 +194,11 @@ function SingleValueSlider(props: SingleValueSliderProps) {
       className="flex w-full min-w-0 items-center"
     >
       <Slider.Control className="flex h-4 w-full items-center">
-        <Slider.Track className="relative h-1.5 w-full rounded-full bg-black/50">
-          <Slider.Indicator className="bg-theme-300 absolute h-full rounded-full bg-linear-to-b from-white/7 to-black/7" />
+        <Slider.Track className="bg-theme-300 relative h-1.5 w-full rounded-full dark:bg-black/50">
+          <Slider.Indicator className="bg-theme-600 dark:bg-theme-300 absolute h-full rounded-full bg-linear-to-b from-white/7 to-black/7" />
           <Slider.Thumb
             aria-label={props.ariaLabel}
-            className="bg-theme-100 block h-4 w-4 rounded-full border border-black/28 bg-linear-to-b from-white/15 to-black/15 shadow-md"
+            className="bg-theme-900 border-theme-700 dark:bg-theme-100 block h-4 w-4 rounded-full border bg-linear-to-b from-white/15 to-black/15 shadow-md dark:border-black/28"
           />
         </Slider.Track>
       </Slider.Control>

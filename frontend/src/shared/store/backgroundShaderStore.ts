@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { ThemePalette } from "../../features/types";
 
 export type ShaderColor = [number, number, number];
+export type ShaderThemeMode = "light" | "dark";
 export type ShaderColorSet = [
   ShaderColor,
   ShaderColor,
@@ -46,9 +47,11 @@ export type BackgroundShaderSettings = {
 type BackgroundShaderState = {
   fromColors: ShaderColorSet;
   toColors: ShaderColorSet;
+  baseColor: ShaderColor;
   transitionStartedAtMs: number;
   settings: BackgroundShaderSettings;
   setThemePalette: (palette: ThemePalette | null) => void;
+  setThemeMode: (mode: ShaderThemeMode) => void;
   setSettings: (patch: Partial<BackgroundShaderSettings>) => void;
 };
 
@@ -59,6 +62,9 @@ const fallbackColors: ShaderColorSet = [
   [0.06, 0.08, 0.12],
   [0.03, 0.05, 0.08],
 ];
+
+const darkBaseColor: ShaderColor = [10 / 255, 10 / 255, 10 / 255];
+const lightBaseColor: ShaderColor = [245 / 255, 245 / 255, 245 / 255];
 
 const defaultSettings: BackgroundShaderSettings = {
   sceneVariant: "stableLayered",
@@ -94,6 +100,7 @@ export const useBackgroundShaderStore = create<BackgroundShaderState>(
   (set) => ({
     fromColors: fallbackColors,
     toColors: fallbackColors,
+    baseColor: darkBaseColor,
     transitionStartedAtMs: nowMs(),
     settings: defaultSettings,
     setThemePalette: (palette) => {
@@ -111,6 +118,18 @@ export const useBackgroundShaderStore = create<BackgroundShaderState>(
           fromColors: liveColors,
           toColors: nextColors,
           transitionStartedAtMs: now,
+        };
+      });
+    },
+    setThemeMode: (mode) => {
+      const nextBaseColor = mode === "light" ? lightBaseColor : darkBaseColor;
+      set((state) => {
+        if (areColorsEqual(state.baseColor, nextBaseColor)) {
+          return state;
+        }
+
+        return {
+          baseColor: nextBaseColor,
         };
       });
     },

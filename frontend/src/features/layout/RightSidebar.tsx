@@ -16,15 +16,15 @@ type RightSidebarProps = {
 
 export function RightSidebar(props: RightSidebarProps) {
   return (
-    <aside className="flex h-full min-h-0 w-80 shrink-0 flex-col border-l border-white/3 pt-4">
+    <aside className="border-theme-300/7 flex h-full min-h-0 w-80 shrink-0 flex-col border-l pt-4 dark:border-white/3">
       <div className="flex gap-2 px-3">
         <button
           type="button"
           onClick={() => props.onTabChange("queue")}
           className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
             props.tab === "queue"
-              ? "bg-theme-100 text-theme-900"
-              : "text-theme-200 hover:bg-theme-800"
+              ? "bg-theme-900 text-theme-100 dark:bg-theme-100 dark:text-theme-900"
+              : "text-theme-700 hover:bg-theme-200 dark:text-theme-200 dark:hover:bg-theme-800"
           }`}
         >
           <ListMusic size={14} />
@@ -35,8 +35,8 @@ export function RightSidebar(props: RightSidebarProps) {
           onClick={() => props.onTabChange("details")}
           className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
             props.tab === "details"
-              ? "bg-theme-100 text-theme-900"
-              : "text-theme-200 hover:bg-theme-800"
+              ? "bg-theme-900 text-theme-100 dark:bg-theme-100 dark:text-theme-900"
+              : "text-theme-700 hover:bg-theme-200 dark:text-theme-200 dark:hover:bg-theme-800"
           }`}
         >
           <Rows4 size={14} />
@@ -62,7 +62,7 @@ export function RightSidebar(props: RightSidebarProps) {
             )}
           </ScrollArea.Content>
         </ScrollArea.Viewport>
-        <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-white/7 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
+        <ScrollArea.Scrollbar className="bg-theme-300/20 pointer-events-none m-2 flex w-1 justify-center rounded opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0 dark:bg-white/7">
           <ScrollArea.Thumb className="bg-theme-300/50 w-full rounded" />
         </ScrollArea.Scrollbar>
       </ScrollArea.Root>
@@ -79,12 +79,16 @@ function TrackDetailsPanel(props: TrackDetailsPanelProps) {
   const track = props.playerState.currentTrack;
 
   if (!track) {
-    return <p className="text-theme-400 text-sm">No track selected.</p>;
+    return (
+      <p className="text-theme-600 dark:text-theme-400 text-sm">
+        No track selected.
+      </p>
+    );
   }
 
   return (
     <section className="flex flex-col gap-2 px-3 text-sm">
-      <h2 className="text-theme-300 mb-3 px-2 text-sm font-medium">
+      <h2 className="text-theme-700 dark:text-theme-300 mb-3 px-2 text-sm font-medium">
         Current Track
       </h2>
       <DetailRow label="Title" value={track.title} />
@@ -116,8 +120,12 @@ type DetailRowProps = {
 function DetailRow(props: DetailRowProps) {
   return (
     <div className="px-2 py-1">
-      <p className="text-theme-500 text-xs">{props.label}</p>
-      <p className="text-theme-100 truncate">{props.value}</p>
+      <p className="text-theme-600 dark:text-theme-500 text-xs">
+        {props.label}
+      </p>
+      <p className="text-theme-900 dark:text-theme-100 truncate">
+        {props.value}
+      </p>
     </div>
   );
 }

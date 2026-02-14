@@ -52,7 +52,8 @@ export function runDualKawaseBlur(args: DualKawaseBlurArgs): void {
 
   for (let i = 0; i < args.blurTargets.length; i += 1) {
     const target = args.blurTargets[i];
-    const passOffset = args.settings.blurRadius + args.settings.blurRadiusStep * i;
+    const passOffset =
+      args.settings.blurRadius + args.settings.blurRadiusStep * i;
 
     args.writeBlurUniforms(
       1 / Math.max(1, sourceTarget.width),
@@ -67,7 +68,8 @@ export function runDualKawaseBlur(args: DualKawaseBlurArgs): void {
   let upSourceTarget = sourceTarget;
   for (let i = args.blurTargets.length - 2; i >= 0; i -= 1) {
     const target = args.blurTargets[i];
-    const passOffset = args.settings.blurRadius + args.settings.blurRadiusStep * i;
+    const passOffset =
+      args.settings.blurRadius + args.settings.blurRadiusStep * i;
 
     args.writeBlurUniforms(
       1 / Math.max(1, upSourceTarget.width),
@@ -134,10 +136,18 @@ export function runMipPyramidBlur(args: MipPyramidBlurArgs): void {
     activeMipLevels,
   );
 
-  const mipTextures = resolveMipViews(args.mipTargets, args.sceneTarget.texture);
+  const mipTextures = resolveMipViews(
+    args.mipTargets,
+    args.sceneTarget.texture,
+  );
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, args.destinationTarget.framebuffer);
-  gl.viewport(0, 0, args.destinationTarget.width, args.destinationTarget.height);
+  gl.viewport(
+    0,
+    0,
+    args.destinationTarget.width,
+    args.destinationTarget.height,
+  );
   gl.useProgram(args.compositeProgram.program);
 
   bindTexture(gl, 0, args.sceneTarget.texture);

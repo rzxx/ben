@@ -1,5 +1,6 @@
 import {
   BackgroundShaderSettings,
+  ShaderColor,
   ShaderColorSet,
 } from "../store/backgroundShaderStore";
 import {
@@ -18,7 +19,11 @@ import {
   runMipPyramidBlur,
 } from "./backgroundShaderBlurModules";
 import { runTemporalResolve } from "./backgroundShaderTemporalModule";
-import { BlurModule, RenderTarget, TargetConfig } from "./backgroundShaderRuntimeTypes";
+import {
+  BlurModule,
+  RenderTarget,
+  TargetConfig,
+} from "./backgroundShaderRuntimeTypes";
 import {
   areTargetConfigsEqual,
   buildBlurDimensions,
@@ -47,7 +52,6 @@ const compositeUniformBufferSize =
   compositeUniformFloatCount * Float32Array.BYTES_PER_ELEMENT;
 
 const maxMipCompositeLevels = 5;
-const baseColor: [number, number, number] = [0.03, 0.035, 0.045];
 
 const uniformBindingPoints = {
   scene: 0,
@@ -94,6 +98,7 @@ export type BackgroundShaderRendererOptions = {
   getToColors: () => ShaderColorSet;
   getTransitionStartedAtMs: () => number;
   getSettings: () => BackgroundShaderSettings;
+  getBaseColor: () => ShaderColor;
   onUnsupportedChange: (isUnsupported: boolean) => void;
   onDiagnostics?: (message: string) => void;
 };
@@ -306,6 +311,7 @@ export function createBackgroundShaderRenderer(
     }
 
     const uniformData = renderState.compositeUniformData;
+    const baseColor = options.getBaseColor();
     uniformData[0] = clamp(opacity, 0, 1);
     uniformData[1] = baseColor[0];
     uniformData[2] = baseColor[1];
@@ -675,9 +681,11 @@ export function createBackgroundShaderRenderer(
       });
 
       outputTarget = temporalResult.outputTarget;
-      renderState.historyReadIndex = temporalResult.temporalState.historyReadIndex;
+      renderState.historyReadIndex =
+        temporalResult.temporalState.historyReadIndex;
       renderState.historyValid = temporalResult.temporalState.historyValid;
-      renderState.historyFrameCount = temporalResult.temporalState.historyFrameCount;
+      renderState.historyFrameCount =
+        temporalResult.temporalState.historyFrameCount;
     } else {
       renderState.historyValid = false;
       renderState.historyFrameCount = 0;
@@ -771,7 +779,12 @@ export function createBackgroundShaderRenderer(
         "composite",
       );
 
-      configureUniformBlock(gl, sceneProgram, "Uniforms", uniformBindingPoints.scene);
+      configureUniformBlock(
+        gl,
+        sceneProgram,
+        "Uniforms",
+        uniformBindingPoints.scene,
+      );
       configureUniformBlock(
         gl,
         dualDownProgram,
@@ -835,7 +848,9 @@ export function createBackgroundShaderRenderer(
         uniformBindingPoints.composite,
       );
 
-      const initializedSceneProgram: SceneProgramInfo = { program: sceneProgram };
+      const initializedSceneProgram: SceneProgramInfo = {
+        program: sceneProgram,
+      };
       const initializedDualDownProgram: BlurProgramInfo = {
         program: dualDownProgram,
         inputTexture: gl.getUniformLocation(dualDownProgram, "inputTexture"),
@@ -859,8 +874,14 @@ export function createBackgroundShaderRenderer(
       };
       const initializedTemporalProgram: TemporalProgramInfo = {
         program: temporalProgram,
-        currentTexture: gl.getUniformLocation(temporalProgram, "currentTexture"),
-        historyTexture: gl.getUniformLocation(temporalProgram, "historyTexture"),
+        currentTexture: gl.getUniformLocation(
+          temporalProgram,
+          "currentTexture",
+        ),
+        historyTexture: gl.getUniformLocation(
+          temporalProgram,
+          "historyTexture",
+        ),
       };
       const initializedCompositeProgram: CompositeProgramInfo = {
         program: compositeProgram,
@@ -924,7 +945,9 @@ export function createBackgroundShaderRenderer(
 
   const handleContextRestored = () => {
     renderState.contextLost = false;
-    reportDiagnostic("WebGL2 context restored. Reinitializing shader renderer.");
+    reportDiagnostic(
+      "WebGL2 context restored. Reinitializing shader renderer.",
+    );
     void startInitialize();
   };
 

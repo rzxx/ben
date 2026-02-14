@@ -80,7 +80,10 @@ export function runTemporalResolve(args: TemporalResolveArgs): {
     temporalState: {
       historyReadIndex: 1 - args.temporalState.historyReadIndex,
       historyValid: true,
-      historyFrameCount: Math.min(args.temporalState.historyFrameCount + 1, 120),
+      historyFrameCount: Math.min(
+        args.temporalState.historyFrameCount + 1,
+        120,
+      ),
     },
   };
 }
