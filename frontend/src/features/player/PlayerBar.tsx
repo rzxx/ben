@@ -79,7 +79,7 @@ export function PlayerBar(props: PlayerBarProps) {
               type="button"
               onClick={() => void props.onPreviousTrack()}
               disabled={!props.hasCurrentTrack || props.transportBusy}
-              className="text-accent-700 hover:text-accent-600 disabled:text-accent-400 dark:text-accent-200 dark:hover:text-accent-100 dark:disabled:text-accent-600 cursor-pointer rounded p-2 transition-colors disabled:cursor-not-allowed"
+              className="text-accent-700 hover:text-accent-600 disabled:text-theme-400 dark:text-accent-200 dark:hover:text-accent-100 dark:disabled:text-theme-600 cursor-pointer rounded p-2 transition-colors disabled:cursor-not-allowed"
               aria-label="Previous track"
             >
               <SkipBack size={16} fill="currentColor" />
@@ -103,7 +103,7 @@ export function PlayerBar(props: PlayerBarProps) {
               type="button"
               onClick={() => void props.onNextTrack()}
               disabled={!props.hasCurrentTrack || props.transportBusy}
-              className="text-accent-700 hover:text-accent-600 disabled:text-accent-400 dark:text-accent-200 dark:hover:text-accent-100 dark:disabled:text-accent-600 cursor-pointer rounded p-2 transition-colors disabled:cursor-not-allowed"
+              className="text-accent-700 hover:text-accent-600 disabled:text-theme-400 dark:text-accent-200 dark:hover:text-accent-100 dark:disabled:text-theme-600 cursor-pointer rounded p-2 transition-colors disabled:cursor-not-allowed"
               aria-label="Next track"
             >
               <SkipForward size={16} fill="currentColor" />

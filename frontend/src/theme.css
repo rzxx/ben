@@ -3,29 +3,29 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-theme-50: #f0fdf4;
-  --color-theme-100: #dcfce7;
-  --color-theme-200: #bbf7d0;
-  --color-theme-300: #86efac;
-  --color-theme-400: #4ade80;
-  --color-theme-500: #22c55e;
-  --color-theme-600: #16a34a;
-  --color-theme-700: #15803d;
-  --color-theme-800: #166534;
-  --color-theme-900: #14532d;
-  --color-theme-950: #052e16;
+  --color-theme-50: oklch(0.985 0 0);
+  --color-theme-100: oklch(0.97 0 0);
+  --color-theme-200: oklch(0.922 0 0);
+  --color-theme-300: oklch(0.87 0 0);
+  --color-theme-400: oklch(0.708 0 0);
+  --color-theme-500: oklch(0.556 0 0);
+  --color-theme-600: oklch(0.439 0 0);
+  --color-theme-700: oklch(0.371 0 0);
+  --color-theme-800: oklch(0.269 0 0);
+  --color-theme-900: oklch(0.205 0 0);
+  --color-theme-950: oklch(0.145 0 0);
 
-  --color-accent-50: #ecfeff;
-  --color-accent-100: #cffafe;
-  --color-accent-200: #a5f3fc;
-  --color-accent-300: #67e8f9;
-  --color-accent-400: #22d3ee;
-  --color-accent-500: #06b6d4;
-  --color-accent-600: #0891b2;
-  --color-accent-700: #0e7490;
-  --color-accent-800: #155e75;
-  --color-accent-900: #164e63;
-  --color-accent-950: #083344;
+  --color-accent-50: oklch(0.985 0 0);
+  --color-accent-100: oklch(0.97 0 0);
+  --color-accent-200: oklch(0.922 0 0);
+  --color-accent-300: oklch(0.87 0 0);
+  --color-accent-400: oklch(0.708 0 0);
+  --color-accent-500: oklch(0.556 0 0);
+  --color-accent-600: oklch(0.439 0 0);
+  --color-accent-700: oklch(0.371 0 0);
+  --color-accent-800: oklch(0.269 0 0);
+  --color-accent-900: oklch(0.205 0 0);
+  --color-accent-950: oklch(0.145 0 0);
 }
 
 body {
