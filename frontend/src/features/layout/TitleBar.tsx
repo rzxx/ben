@@ -28,7 +28,7 @@ export function TitleBar() {
       className="wails-drag relative z-30 flex h-8 shrink-0 items-center justify-between border-b border-white/3"
     >
       <div className="pl-4">
-        <p className="text-theme-200 text-sm font-medium tracking-wide">ben</p>
+        <p className="text-accent-200 text-sm font-medium tracking-wide">ben</p>
       </div>
 
       <div className="wails-no-drag flex h-full items-center gap-px">
@@ -82,7 +82,7 @@ function ControlButton(props: ControlButtonProps) {
       onClick={props.onClick}
       className={`inline-flex h-full w-12 items-center justify-center transition-colors ${
         props.danger
-          ? "text-theme-400 hover:bg-red-600 hover:text-white"
+          ? "text-accent-400 hover:bg-accent-600 hover:text-white"
           : "text-theme-300 hover:bg-theme-600 hover:text-theme-100"
       }`}
     >

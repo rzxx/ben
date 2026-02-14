@@ -21,7 +21,7 @@ export function QueueView(props: QueueViewProps) {
           type="button"
           onClick={() => void props.onClearQueue()}
           disabled={props.queueState.total === 0}
-          className="text-theme-200 hover:bg-theme-800 rounded-md px-2 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          className="text-accent-200 hover:bg-accent-800 rounded-md px-2 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50"
         >
           Clear
         </button>
