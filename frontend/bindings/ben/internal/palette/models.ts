@@ -155,13 +155,42 @@ export class PaletteColor {
     }
 }
 
+export class PaletteTone {
+    "tone": number;
+    "color": PaletteColor;
+
+    /** Creates a new PaletteTone instance. */
+    constructor($$source: Partial<PaletteTone> = {}) {
+        if (!("tone" in $$source)) {
+            this["tone"] = 0;
+        }
+        if (!("color" in $$source)) {
+            this["color"] = (new PaletteColor());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PaletteTone instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PaletteTone {
+        const $$createField1_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("color" in $$parsedSource) {
+            $$parsedSource["color"] = $$createField1_0($$parsedSource["color"]);
+        }
+        return new PaletteTone($$parsedSource as Partial<PaletteTone>);
+    }
+}
+
 export class ThemePalette {
     "primary"?: PaletteColor | null;
-    "secondary"?: PaletteColor | null;
-    "tertiary"?: PaletteColor | null;
     "dark"?: PaletteColor | null;
     "light"?: PaletteColor | null;
     "accent"?: PaletteColor | null;
+    "themeScale": PaletteTone[];
+    "accentScale": PaletteTone[];
     "gradient": PaletteColor[];
     "sourceWidth": number;
     "sourceHeight": number;
@@ -171,6 +200,12 @@ export class ThemePalette {
 
     /** Creates a new ThemePalette instance. */
     constructor($$source: Partial<ThemePalette> = {}) {
+        if (!("themeScale" in $$source)) {
+            this["themeScale"] = [];
+        }
+        if (!("accentScale" in $$source)) {
+            this["accentScale"] = [];
+        }
         if (!("gradient" in $$source)) {
             this["gradient"] = [];
         }
@@ -201,28 +236,28 @@ export class ThemePalette {
         const $$createField1_0 = $$createType1;
         const $$createField2_0 = $$createType1;
         const $$createField3_0 = $$createType1;
-        const $$createField4_0 = $$createType1;
-        const $$createField5_0 = $$createType1;
-        const $$createField6_0 = $$createType2;
-        const $$createField11_0 = $$createType3;
+        const $$createField4_0 = $$createType3;
+        const $$createField5_0 = $$createType3;
+        const $$createField6_0 = $$createType4;
+        const $$createField11_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("primary" in $$parsedSource) {
             $$parsedSource["primary"] = $$createField0_0($$parsedSource["primary"]);
         }
-        if ("secondary" in $$parsedSource) {
-            $$parsedSource["secondary"] = $$createField1_0($$parsedSource["secondary"]);
-        }
-        if ("tertiary" in $$parsedSource) {
-            $$parsedSource["tertiary"] = $$createField2_0($$parsedSource["tertiary"]);
-        }
         if ("dark" in $$parsedSource) {
-            $$parsedSource["dark"] = $$createField3_0($$parsedSource["dark"]);
+            $$parsedSource["dark"] = $$createField1_0($$parsedSource["dark"]);
         }
         if ("light" in $$parsedSource) {
-            $$parsedSource["light"] = $$createField4_0($$parsedSource["light"]);
+            $$parsedSource["light"] = $$createField2_0($$parsedSource["light"]);
         }
         if ("accent" in $$parsedSource) {
-            $$parsedSource["accent"] = $$createField5_0($$parsedSource["accent"]);
+            $$parsedSource["accent"] = $$createField3_0($$parsedSource["accent"]);
+        }
+        if ("themeScale" in $$parsedSource) {
+            $$parsedSource["themeScale"] = $$createField4_0($$parsedSource["themeScale"]);
+        }
+        if ("accentScale" in $$parsedSource) {
+            $$parsedSource["accentScale"] = $$createField5_0($$parsedSource["accentScale"]);
         }
         if ("gradient" in $$parsedSource) {
             $$parsedSource["gradient"] = $$createField6_0($$parsedSource["gradient"]);
@@ -237,5 +272,7 @@ export class ThemePalette {
 // Private type creation functions
 const $$createType0 = PaletteColor.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $Create.Array($$createType0);
-const $$createType3 = ExtractOptions.createFrom;
+const $$createType2 = PaletteTone.createFrom;
+const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = $Create.Array($$createType0);
+const $$createType5 = ExtractOptions.createFrom;

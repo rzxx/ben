@@ -4,5 +4,6 @@
 export {
     ExtractOptions,
     PaletteColor,
+    PaletteTone,
     ThemePalette
 } from "./models.js";

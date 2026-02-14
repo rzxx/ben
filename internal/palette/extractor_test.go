@@ -32,12 +32,6 @@ func TestExtractFromImageGeneratesPalette(t *testing.T) {
 	if palette.Primary == nil {
 		t.Fatal("expected primary color")
 	}
-	if palette.Secondary == nil {
-		t.Fatal("expected secondary color")
-	}
-	if palette.Tertiary == nil {
-		t.Fatal("expected tertiary color")
-	}
 	if len(palette.Gradient) != 5 {
 		t.Fatalf("expected 5 gradient colors, got %d", len(palette.Gradient))
 	}
@@ -49,6 +43,15 @@ func TestExtractFromImageGeneratesPalette(t *testing.T) {
 	}
 	if palette.Accent == nil {
 		t.Fatal("expected accent color")
+	}
+	if len(palette.ThemeScale) != 11 {
+		t.Fatalf("expected 11 theme scale colors, got %d", len(palette.ThemeScale))
+	}
+	if len(palette.AccentScale) != 11 {
+		t.Fatalf("expected 11 accent scale colors, got %d", len(palette.AccentScale))
+	}
+	if palette.ThemeScale[0].Tone != 50 || palette.ThemeScale[1].Tone != 100 || palette.ThemeScale[len(palette.ThemeScale)-1].Tone != 950 {
+		t.Fatalf("unexpected theme scale tone anchors: %#v", palette.ThemeScale)
 	}
 }
 
@@ -104,6 +107,18 @@ func TestExtractFromImageCapturesDarkAndLightOnHighContrastCover(t *testing.T) {
 	if !hasDarkGradient {
 		t.Fatal("expected at least one dark gradient anchor")
 	}
+	if len(palette.ThemeScale) != 11 {
+		t.Fatalf("expected 11 theme scale colors, got %d", len(palette.ThemeScale))
+	}
+	if palette.ThemeScale[1].Color.Hex != palette.Light.Hex {
+		t.Fatalf("expected theme-100 to anchor light color: scale=%s light=%s", palette.ThemeScale[1].Color.Hex, palette.Light.Hex)
+	}
+	if palette.ThemeScale[len(palette.ThemeScale)-1].Color.Hex != palette.Dark.Hex {
+		t.Fatalf("expected theme-950 to anchor dark color: scale=%s dark=%s", palette.ThemeScale[len(palette.ThemeScale)-1].Color.Hex, palette.Dark.Hex)
+	}
+	if len(palette.AccentScale) != 11 {
+		t.Fatalf("expected 11 accent scale colors, got %d", len(palette.AccentScale))
+	}
 }
 
 func TestExtractFromImageAnchorsDarkAndLightAroundNeutralBases(t *testing.T) {
@@ -158,6 +173,110 @@ func TestExtractFromImageAnchorsDarkAndLightAroundNeutralBases(t *testing.T) {
 	lightHueDistance := hueDistanceDegrees(palette.Primary.Hue, palette.Light.Hue)
 	if lightHueDistance > 35 {
 		t.Fatalf("expected light hue to stay near primary hue, got delta=%0.2f", lightHueDistance)
+	}
+	if len(palette.ThemeScale) != 11 {
+		t.Fatalf("expected 11 theme scale colors, got %d", len(palette.ThemeScale))
+	}
+	if palette.ThemeScale[0].Tone != 50 || palette.ThemeScale[1].Tone != 100 || palette.ThemeScale[10].Tone != 950 {
+		t.Fatalf("unexpected theme scale tones: %#v", palette.ThemeScale)
+	}
+	if palette.ThemeScale[1].Color.Hex != palette.Light.Hex {
+		t.Fatalf("expected theme-100 to anchor light color: scale=%s light=%s", palette.ThemeScale[1].Color.Hex, palette.Light.Hex)
+	}
+	if palette.ThemeScale[10].Color.Hex != palette.Dark.Hex {
+		t.Fatalf("expected theme-950 to anchor dark color: scale=%s dark=%s", palette.ThemeScale[10].Color.Hex, palette.Dark.Hex)
+	}
+	if len(palette.AccentScale) != 11 {
+		t.Fatalf("expected 11 accent scale colors, got %d", len(palette.AccentScale))
+	}
+}
+
+func TestThemeScaleAlwaysUsesPrimaryHue(t *testing.T) {
+	t.Parallel()
+
+	primary := makeTestSwatch(220, 58, 64, 900)
+	accent := makeTestSwatch(46, 216, 116, 500)
+	dark := makeTestSwatch(22, 16, 18, 400)
+	light := makeTestSwatch(244, 243, 246, 400)
+
+	scale := buildThemeScaleSwatches(themeSelection{
+		primary: swatchPointer(primary),
+		accent:  swatchPointer(accent),
+		dark:    swatchPointer(dark),
+		light:   swatchPointer(light),
+	}, DefaultExtractOptions())
+
+	if len(scale) != 11 {
+		t.Fatalf("expected 11 theme scale swatches, got %d", len(scale))
+	}
+
+	mid := scale[5]
+	if hueDistanceDegrees(mid.hue, primary.hue) > 20 {
+		t.Fatalf("expected theme scale hue to follow primary hue, got primary=%0.2f scale=%0.2f", primary.hue, mid.hue)
+	}
+	if hueDistanceDegrees(mid.hue, accent.hue) < 25 {
+		t.Fatalf("expected theme scale hue to avoid accent hue override, got accent=%0.2f scale=%0.2f", accent.hue, mid.hue)
+	}
+}
+
+func TestAccentFallsBackToPrimaryForMonochromeCover(t *testing.T) {
+	t.Parallel()
+
+	img := image.NewNRGBA(image.Rect(0, 0, 196, 196))
+	fillRect(img, img.Bounds(), color.NRGBA{R: 62, G: 110, B: 214, A: 255})
+
+	extractor := NewExtractor()
+	palette, err := extractor.ExtractFromImage(img, ExtractOptions{})
+	if err != nil {
+		t.Fatalf("extract palette: %v", err)
+	}
+
+	if palette.Primary == nil {
+		t.Fatal("expected primary color")
+	}
+	if palette.Accent == nil {
+		t.Fatal("expected accent color")
+	}
+	if palette.Accent.Hex != palette.Primary.Hex {
+		t.Fatalf("expected accent fallback to primary for monochrome cover: primary=%s accent=%s", palette.Primary.Hex, palette.Accent.Hex)
+	}
+}
+
+func TestChooseAccentSwatchPrefersContrastiveHue(t *testing.T) {
+	t.Parallel()
+
+	primary := makeTestSwatch(198, 44, 52, 1200)
+	orange := makeTestSwatch(230, 124, 42, 920)
+	yellow := makeTestSwatch(222, 190, 40, 650)
+
+	accent, ok := chooseAccentSwatch(primary, []swatch{primary, orange, yellow}, DefaultExtractOptions())
+	if !ok {
+		t.Fatal("expected accent candidate")
+	}
+	if !sameRGB(accent, yellow) {
+		t.Fatalf("expected accent to prefer broader hue contrast: got %#v want %#v", accent, yellow)
+	}
+}
+
+func TestBuildGradientSwatchesDoesNotSeedAccent(t *testing.T) {
+	t.Parallel()
+
+	primary := makeTestSwatch(210, 78, 72, 1200)
+	accent := makeTestSwatch(234, 184, 16, 800)
+
+	result := buildGradientSwatches(themeSelection{
+		primary: swatchPointer(primary),
+		accent:  swatchPointer(accent),
+	}, nil, 0.08)
+
+	if len(result) != 5 {
+		t.Fatalf("expected 5 gradient colors, got %d", len(result))
+	}
+	if !sameRGB(result[0], primary) {
+		t.Fatalf("expected first gradient color to keep primary, got %#v", result[0])
+	}
+	if !sameRGB(result[1], primary) {
+		t.Fatalf("expected gradient padding to repeat primary when no gradient seeds exist, got %#v", result[1])
 	}
 }
 

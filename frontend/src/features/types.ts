@@ -296,13 +296,18 @@ export type ThemePaletteColor = {
   hue: number;
 };
 
+export type ThemePaletteTone = {
+  tone: number;
+  color: ThemePaletteColor;
+};
+
 export type ThemePalette = {
   primary?: ThemePaletteColor;
-  secondary?: ThemePaletteColor;
-  tertiary?: ThemePaletteColor;
   dark?: ThemePaletteColor;
   light?: ThemePaletteColor;
   accent?: ThemePaletteColor;
+  themeScale: ThemePaletteTone[];
+  accentScale: ThemePaletteTone[];
   gradient: ThemePaletteColor[];
   sourceWidth: number;
   sourceHeight: number;

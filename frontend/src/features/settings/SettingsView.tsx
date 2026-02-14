@@ -498,18 +498,10 @@ export function SettingsView(props: SettingsViewProps) {
                     ))}
                   </div>
 
-                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6">
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                     <RoleChip
                       label="Primary"
                       color={props.themePalette.primary}
-                    />
-                    <RoleChip
-                      label="Secondary"
-                      color={props.themePalette.secondary}
-                    />
-                    <RoleChip
-                      label="Tertiary"
-                      color={props.themePalette.tertiary}
                     />
                     <RoleChip
                       label="Accent"
@@ -517,6 +509,26 @@ export function SettingsView(props: SettingsViewProps) {
                     />
                     <RoleChip label="Dark" color={props.themePalette.dark} />
                     <RoleChip label="Light" color={props.themePalette.light} />
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {props.themePalette.themeScale.map((tone) => (
+                      <PaletteChip
+                        key={`${tone.tone}-${tone.color.hex}`}
+                        color={tone.color}
+                        label={`Theme ${tone.tone}`}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {props.themePalette.accentScale.map((tone) => (
+                      <PaletteChip
+                        key={`accent-${tone.tone}-${tone.color.hex}`}
+                        color={tone.color}
+                        label={`Accent ${tone.tone}`}
+                      />
+                    ))}
                   </div>
 
                   <div className="mt-3 overflow-hidden rounded-lg border border-neutral-800">

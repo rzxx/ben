@@ -22,6 +22,8 @@ const (
 	maxWorkerCap     = 12
 )
 
+var paletteScaleTones = []int{50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950}
+
 var defaultExtractOptions = ExtractOptions{
 	MaxDimension:            220,
 	Quality:                 2,
@@ -72,17 +74,22 @@ type ExtractOptions struct {
 
 type ThemePalette struct {
 	Primary      *PaletteColor  `json:"primary,omitempty"`
-	Secondary    *PaletteColor  `json:"secondary,omitempty"`
-	Tertiary     *PaletteColor  `json:"tertiary,omitempty"`
 	Dark         *PaletteColor  `json:"dark,omitempty"`
 	Light        *PaletteColor  `json:"light,omitempty"`
 	Accent       *PaletteColor  `json:"accent,omitempty"`
+	ThemeScale   []PaletteTone  `json:"themeScale"`
+	AccentScale  []PaletteTone  `json:"accentScale"`
 	Gradient     []PaletteColor `json:"gradient"`
 	SourceWidth  int            `json:"sourceWidth"`
 	SourceHeight int            `json:"sourceHeight"`
 	SampleWidth  int            `json:"sampleWidth"`
 	SampleHeight int            `json:"sampleHeight"`
 	Options      ExtractOptions `json:"options"`
+}
+
+type PaletteTone struct {
+	Tone  int          `json:"tone"`
+	Color PaletteColor `json:"color"`
 }
 
 type PaletteColor struct {
@@ -157,11 +164,11 @@ func (e *Extractor) ExtractFromImage(img image.Image, options ExtractOptions) (T
 
 	return ThemePalette{
 		Primary:      toPaletteColorPointer(selection.primary),
-		Secondary:    toPaletteColorPointer(selection.secondary),
-		Tertiary:     toPaletteColorPointer(selection.tertiary),
 		Dark:         toPaletteColorPointer(selection.dark),
 		Light:        toPaletteColorPointer(selection.light),
 		Accent:       toPaletteColorPointer(selection.accent),
+		ThemeScale:   swatchesToPaletteTones(selection.themeScale),
+		AccentScale:  swatchesToPaletteTones(selection.accentScale),
 		Gradient:     swatchesToPaletteColors(selection.gradient),
 		SourceWidth:  source.Bounds().Dx(),
 		SourceHeight: source.Bounds().Dy(),
@@ -899,13 +906,15 @@ func isDistinctFromSelection(selected []swatch, candidate swatch, threshold floa
 }
 
 type themeSelection struct {
-	primary   *swatch
-	secondary *swatch
-	tertiary  *swatch
-	dark      *swatch
-	light     *swatch
-	accent    *swatch
-	gradient  []swatch
+	primary     *swatch
+	secondary   *swatch
+	tertiary    *swatch
+	dark        *swatch
+	light       *swatch
+	accent      *swatch
+	themeScale  []swatch
+	accentScale []swatch
+	gradient    []swatch
 }
 
 func resolveThemeSelection(candidates []swatch, selected []swatch, broadCandidates []swatch, options ExtractOptions) themeSelection {
@@ -924,43 +933,30 @@ func resolveThemeSelection(candidates []swatch, selected []swatch, broadCandidat
 
 	primary := selected[0]
 	selection.primary = swatchPointer(primary)
-	chosen := []swatch{primary}
 
-	if secondary, ok := firstDistinctSwatch(append(selected[1:], candidates...), chosen, options.MinDelta); ok {
+	gradientChosen := []swatch{primary}
+	gradientRoleCandidates := append(selected[1:], candidates...)
+	if secondary, ok := firstDistinctSwatch(gradientRoleCandidates, gradientChosen, options.MinDelta); ok {
 		selection.secondary = swatchPointer(secondary)
-		chosen = append(chosen, secondary)
+		gradientChosen = append(gradientChosen, secondary)
 	}
 
-	if tertiary, ok := firstDistinctSwatch(append(selected[1:], candidates...), chosen, options.MinDelta*0.92); ok {
+	if tertiary, ok := firstDistinctSwatch(gradientRoleCandidates, gradientChosen, options.MinDelta*0.92); ok {
 		selection.tertiary = swatchPointer(tertiary)
-		chosen = append(chosen, tertiary)
+		gradientChosen = append(gradientChosen, tertiary)
 	}
 
-	if accent, ok := bestDistinctSwatch(candidates, chosen, options.MinDelta*0.86, func(candidate swatch) float64 {
-		if candidate.lightness < 0.22 || candidate.lightness > 0.82 {
-			return -1
-		}
-		chromaFit := 1 - (math.Abs(candidate.chroma-options.TargetChroma) / maxFloat(options.TargetChroma, 0.001))
-		if chromaFit < 0 {
-			chromaFit = 0
-		}
-		popFit := float64(candidate.population) / float64(candidates[0].population)
-		penalty := 1.0
-		if candidate.chroma > options.MaxChroma {
-			penalty = maxFloat(0.2, 1.0-(candidate.chroma-options.MaxChroma)*4.5)
-		}
-		return (0.64*chromaFit + 0.36*popFit) * penalty
-	}); ok {
+	if accent, ok := chooseAccentSwatch(primary, supportCandidates, options); ok {
 		selection.accent = swatchPointer(accent)
-		chosen = append(chosen, accent)
+	} else {
+		selection.accent = swatchPointer(primary)
 	}
 
 	anchoredDark, anchoredLight := buildAnchoredDarkAndLight(primary, supportCandidates, options)
 	selection.dark = anchoredDark
 	selection.light = anchoredLight
-	if anchoredDark != nil {
-		chosen = append(chosen, *anchoredDark)
-	}
+	selection.themeScale = buildThemeScaleSwatches(selection, options)
+	selection.accentScale = buildAccentScaleSwatches(selection, options)
 
 	gradientCandidates := mergeSwatchPools(candidates, supportCandidates, maxFloat(options.MinDelta*0.3, 0.008))
 	if len(gradientCandidates) == 0 {
@@ -983,7 +979,6 @@ func buildGradientSwatches(selection themeSelection, candidates []swatch, minDel
 	}
 
 	addSeed(selection.primary, minDelta*0.45)
-	addSeed(selection.accent, minDelta*0.42)
 	addSeed(selection.secondary, minDelta*0.42)
 	addSeed(selection.tertiary, minDelta*0.4)
 	addSeed(selection.dark, minDelta*0.28)
@@ -1055,6 +1050,125 @@ func buildAnchoredDarkAndLight(seed swatch, candidates []swatch, options Extract
 	)
 
 	return swatchPointer(dark), swatchPointer(light)
+}
+
+func buildThemeScaleSwatches(selection themeSelection, options ExtractOptions) []swatch {
+	if selection.dark == nil || selection.light == nil {
+		return nil
+	}
+
+	seed := fallbackScaleSeed(selection)
+	if selection.primary != nil {
+		seed = *selection.primary
+	}
+	lightAnchor := *selection.light
+	darkAnchor := *selection.dark
+
+	lightness50 := clampFloat(lightAnchor.lightness+minFloat(0.045, (1-lightAnchor.lightness)*0.8), lightAnchor.lightness, 0.995)
+	chroma50 := clampFloat(lightAnchor.chroma*0.7, 0, options.MaxChroma*0.5)
+
+	seedChroma := seed.chroma
+	if seedChroma <= 0 {
+		seedChroma = options.TargetChroma
+	}
+	peakChroma := clampFloat(maxFloat(seedChroma, options.TargetChroma*0.85), 0.01, options.MaxChroma)
+
+	scale := make([]swatch, 0, len(paletteScaleTones))
+	for _, tone := range paletteScaleTones {
+		switch tone {
+		case 50:
+			scale = append(scale, oklchToSwatch(lightness50, chroma50, seed.hue, seed.population))
+		case 100:
+			scale = append(scale, lightAnchor)
+		case 950:
+			scale = append(scale, darkAnchor)
+		default:
+			t := float64(tone-100) / float64(950-100)
+			lightness := lightAnchor.lightness + (darkAnchor.lightness-lightAnchor.lightness)*t
+			endChroma := lightAnchor.chroma + (darkAnchor.chroma-lightAnchor.chroma)*t
+			centerWeight := math.Sin(math.Pi * t)
+			centerWeight *= centerWeight
+			chroma := endChroma + (peakChroma-endChroma)*centerWeight
+			chroma = clampFloat(chroma, 0, options.MaxChroma)
+			scale = append(scale, oklchToSwatch(lightness, chroma, seed.hue, seed.population))
+		}
+	}
+
+	return scale
+}
+
+func buildAccentScaleSwatches(selection themeSelection, options ExtractOptions) []swatch {
+	if selection.dark == nil || selection.light == nil {
+		return nil
+	}
+
+	seed := fallbackScaleSeed(selection)
+	if selection.accent != nil {
+		seed = *selection.accent
+	} else if selection.primary != nil {
+		seed = *selection.primary
+	}
+
+	upperL := clampFloat(selection.light.lightness+0.01, 0.78, 0.98)
+	lowerL := clampFloat(selection.dark.lightness+0.01, 0.10, 0.40)
+	if upperL <= lowerL {
+		upperL = minFloat(0.98, lowerL+0.25)
+	}
+
+	seedChroma := seed.chroma
+	if seedChroma <= 0 {
+		seedChroma = options.TargetChroma
+	}
+
+	peakChroma := clampFloat(maxFloat(seedChroma*1.15, options.TargetChroma*1.35), 0.02, 0.5)
+	edgeChroma := clampFloat(peakChroma*0.2, 0, 0.16)
+
+	scale := make([]swatch, 0, len(paletteScaleTones))
+	for _, tone := range paletteScaleTones {
+		if tone == 50 {
+			lightness := clampFloat(upperL+0.02, upperL, 0.99)
+			chroma := clampFloat(edgeChroma*0.8, 0, 0.14)
+			scale = append(scale, oklchToSwatch(lightness, chroma, seed.hue, seed.population))
+			continue
+		}
+
+		t := float64(tone-100) / float64(950-100)
+		t = clampFloat(t, 0, 1)
+
+		lightness := upperL + (lowerL-upperL)*math.Pow(t, 0.92)
+		centerWeight := math.Sin(math.Pi * t)
+		centerWeight *= centerWeight
+		chroma := edgeChroma + (peakChroma-edgeChroma)*centerWeight
+		if tone >= 900 {
+			chroma *= 0.82
+		}
+		chroma = clampFloat(chroma, 0, 0.5)
+		scale = append(scale, oklchToSwatch(lightness, chroma, seed.hue, seed.population))
+	}
+
+	return scale
+}
+
+func fallbackScaleSeed(selection themeSelection) swatch {
+	if selection.primary != nil {
+		return *selection.primary
+	}
+	if selection.accent != nil {
+		return *selection.accent
+	}
+	if selection.secondary != nil {
+		return *selection.secondary
+	}
+	if selection.tertiary != nil {
+		return *selection.tertiary
+	}
+	if selection.light != nil {
+		return *selection.light
+	}
+	if selection.dark != nil {
+		return *selection.dark
+	}
+	return swatch{}
 }
 
 func anchoredRoleLightness(candidates []swatch, baseLightness float64, deviation float64, preferDark bool) float64 {
@@ -1189,6 +1303,78 @@ func nearestLightnessDistance(selected []swatch, candidate swatch) float64 {
 	return best
 }
 
+func chooseAccentSwatch(primary swatch, candidates []swatch, options ExtractOptions) (swatch, bool) {
+	if len(candidates) == 0 {
+		return swatch{}, false
+	}
+
+	maxPopulation := float64(candidates[0].population)
+	if maxPopulation <= 0 {
+		maxPopulation = 1
+	}
+
+	targetChroma := clampFloat(
+		maxFloat(options.TargetChroma*1.22, options.MinChroma*1.35),
+		maxFloat(options.MinChroma, 0.02),
+		0.42,
+	)
+	minDistance := maxFloat(options.MinDelta*0.52, 0.045)
+
+	best := swatch{}
+	bestScore := -1.0
+	found := false
+
+	for _, candidate := range candidates {
+		if candidate.r == primary.r && candidate.g == primary.g && candidate.b == primary.b {
+			continue
+		}
+		if candidate.lightness < 0.20 || candidate.lightness > 0.84 {
+			continue
+		}
+		if candidate.chroma < maxFloat(options.MinChroma*0.7, 0.012) {
+			continue
+		}
+
+		distance := okLabDistance(primary, candidate)
+		if distance < minDistance {
+			continue
+		}
+
+		hueDelta := math.Abs(primary.hue - candidate.hue)
+		if hueDelta > 180 {
+			hueDelta = 360 - hueDelta
+		}
+
+		hueContrastScore := clampFloat(hueDelta/95, 0, 1)
+		hueTargetScore := math.Exp(-math.Pow(hueDelta-88, 2) / (2 * 34 * 34))
+		distanceScore := clampFloat(distance/maxFloat(options.MinDelta*1.35, 0.07), 0, 1)
+		chromaScore := 1 - math.Abs(candidate.chroma-targetChroma)/maxFloat(targetChroma, 0.001)
+		chromaScore = clampFloat(chromaScore, 0, 1)
+		populationScore := clampFloat(float64(candidate.population)/maxPopulation, 0, 1)
+
+		penalty := 1.0
+		if hueDelta < 24 {
+			penalty *= 0.65
+		}
+		if candidate.chroma > options.MaxChroma*1.2 {
+			penalty *= maxFloat(0.35, 1.0-(candidate.chroma-options.MaxChroma*1.2)*3.8)
+		}
+
+		score := (0.34*hueTargetScore + 0.22*hueContrastScore + 0.2*distanceScore + 0.16*chromaScore + 0.08*populationScore) * penalty
+		if !found || score > bestScore {
+			best = candidate
+			bestScore = score
+			found = true
+		}
+	}
+
+	if !found || bestScore < 0.36 {
+		return swatch{}, false
+	}
+
+	return best, true
+}
+
 func firstDistinctSwatch(candidates []swatch, selected []swatch, minDelta float64) (swatch, bool) {
 	for _, candidate := range candidates {
 		if containsSwatch(selected, candidate) {
@@ -1199,32 +1385,6 @@ func firstDistinctSwatch(candidates []swatch, selected []swatch, minDelta float6
 		}
 	}
 	return swatch{}, false
-}
-
-func bestDistinctSwatch(candidates []swatch, selected []swatch, minDelta float64, score func(swatch) float64) (swatch, bool) {
-	best := swatch{}
-	found := false
-	bestScore := -1.0
-
-	for _, candidate := range candidates {
-		if containsSwatch(selected, candidate) {
-			continue
-		}
-		if !isDistinctFromSelection(selected, candidate, minDelta) {
-			continue
-		}
-		candidateScore := score(candidate)
-		if candidateScore <= 0 {
-			continue
-		}
-		if !found || candidateScore > bestScore {
-			best = candidate
-			bestScore = candidateScore
-			found = true
-		}
-	}
-
-	return best, found
 }
 
 func swatchPointer(value swatch) *swatch {
@@ -1249,6 +1409,25 @@ func swatchesToPaletteColors(values []swatch) []PaletteColor {
 		colors = append(colors, value.toPaletteColor())
 	}
 	return colors
+}
+
+func swatchesToPaletteTones(values []swatch) []PaletteTone {
+	if len(values) == 0 {
+		return nil
+	}
+
+	result := make([]PaletteTone, 0, minInt(len(values), len(paletteScaleTones)))
+	for index, value := range values {
+		if index >= len(paletteScaleTones) {
+			break
+		}
+		result = append(result, PaletteTone{
+			Tone:  paletteScaleTones[index],
+			Color: value.toPaletteColor(),
+		})
+	}
+
+	return result
 }
 
 func rgbLuma(red uint8, green uint8, blue uint8) float64 {
