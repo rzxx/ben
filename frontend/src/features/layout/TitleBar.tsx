@@ -25,12 +25,10 @@ export function TitleBar() {
   return (
     <header
       onMouseEnter={() => void syncWindowState()}
-      className="wails-drag relative z-30 flex h-8 shrink-0 items-center justify-between border-b border-white/3 text-neutral-100"
+      className="wails-drag relative z-30 flex h-8 shrink-0 items-center justify-between border-b border-white/3"
     >
-      <div className="pl-4 text-neutral-100">
-        <p className="text-sm font-medium tracking-wide text-neutral-200">
-          ben
-        </p>
+      <div className="pl-4">
+        <p className="text-theme-200 text-sm font-medium tracking-wide">ben</p>
       </div>
 
       <div className="wails-no-drag flex h-full items-center gap-px">
@@ -84,8 +82,8 @@ function ControlButton(props: ControlButtonProps) {
       onClick={props.onClick}
       className={`inline-flex h-full w-12 items-center justify-center transition-colors ${
         props.danger
-          ? "text-neutral-400 hover:bg-red-600 hover:text-white"
-          : "text-neutral-300 hover:bg-neutral-600 hover:text-neutral-100"
+          ? "text-theme-400 hover:bg-red-600 hover:text-white"
+          : "text-theme-300 hover:bg-theme-600 hover:text-theme-100"
       }`}
     >
       {props.children}

@@ -41,8 +41,8 @@ export function LeftSidebar(props: LeftSidebarProps) {
               onClick={() => props.onNavigate(item.path)}
               className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
                 isActive
-                  ? "bg-neutral-100 text-neutral-900"
-                  : "text-neutral-200 hover:bg-neutral-800"
+                  ? "bg-theme-100 text-theme-900"
+                  : "text-theme-200 hover:bg-theme-800"
               }`}
             >
               <Icon size={15} />
@@ -53,12 +53,12 @@ export function LeftSidebar(props: LeftSidebarProps) {
       </nav>
 
       <div className="mt-4 flex flex-col gap-2 border-t border-white/3 pt-4">
-        <p className="text-xs tracking-wide text-neutral-400 uppercase">Scan</p>
+        <p className="text-theme-400 text-xs tracking-wide uppercase">Scan</p>
         <button
           type="button"
           onClick={() => void props.onRunIncrementalScan()}
           disabled={props.scanRunning}
-          className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className="text-theme-200 hover:bg-theme-800 inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Disc3 size={15} />
           {props.scanRunning ? "Scanning..." : "Incremental Scan"}
@@ -67,7 +67,7 @@ export function LeftSidebar(props: LeftSidebarProps) {
           type="button"
           onClick={() => void props.onRunFullScan()}
           disabled={props.scanRunning}
-          className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className="text-theme-200 hover:bg-theme-800 inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-60"
         >
           <FolderSearch size={15} />
           {props.scanRunning ? "Scanning..." : "Full Scan"}

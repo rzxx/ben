@@ -22,9 +22,9 @@ export function StatsView(props: StatsViewProps) {
 
   return (
     <section className="flex flex-col gap-4">
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
-        <h1 className="text-xl font-semibold text-neutral-100">Statistics</h1>
-        <p className="mt-1 text-sm text-neutral-400">
+      <div className="border-theme-800 bg-theme-900/70 rounded-xl border p-4">
+        <h1 className="text-theme-100 text-xl font-semibold">Statistics</h1>
+        <p className="text-theme-400 mt-1 text-sm">
           Playback insights and listening patterns.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -37,8 +37,8 @@ export function StatsView(props: StatsViewProps) {
                 onClick={() => props.onRangeChange(option.value)}
                 className={`rounded-md px-3 py-1.5 text-sm transition ${
                   active
-                    ? "bg-neutral-100 text-neutral-900"
-                    : "bg-neutral-800 text-neutral-200 hover:bg-neutral-700"
+                    ? "bg-theme-100 text-theme-900"
+                    : "bg-theme-800 text-theme-200 hover:bg-theme-700"
                 }`}
               >
                 {option.label}
@@ -73,7 +73,7 @@ export function StatsView(props: StatsViewProps) {
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Panel title="Completion and Quality">
-          <ul className="space-y-1 text-sm text-neutral-300">
+          <ul className="text-theme-300 space-y-1 text-sm">
             <li>Completions: {props.dashboard.summary.completeCount}</li>
             <li>Skips: {props.dashboard.summary.skipCount}</li>
             <li>Partials: {props.dashboard.summary.partialCount}</li>
@@ -87,7 +87,7 @@ export function StatsView(props: StatsViewProps) {
         </Panel>
 
         <Panel title="Discovery and Replay">
-          <ul className="space-y-1 text-sm text-neutral-300">
+          <ul className="text-theme-300 space-y-1 text-sm">
             <li>Unique tracks: {props.dashboard.discovery.uniqueTracks}</li>
             <li>Replay plays: {props.dashboard.discovery.replayPlays}</li>
             <li>
@@ -111,7 +111,7 @@ export function StatsView(props: StatsViewProps) {
               <div
                 key={entry.day}
                 title={`${entry.day} - ${props.formatPlayedTime(entry.playedMs)} - ${entry.playCount} plays`}
-                className="h-6 rounded border border-neutral-800"
+                className="border-theme-800 h-6 rounded border"
                 style={{
                   backgroundColor: `rgba(229, 229, 229, ${intensity})`,
                 }}
@@ -123,7 +123,7 @@ export function StatsView(props: StatsViewProps) {
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <Panel title="Top Artists">
-          <ol className="space-y-1 text-sm text-neutral-300">
+          <ol className="text-theme-300 space-y-1 text-sm">
             {props.dashboard.topArtists.map((artist) => (
               <li key={artist.name}>
                 {artist.name} - {props.formatPlayedTime(artist.playedMs)}
@@ -133,7 +133,7 @@ export function StatsView(props: StatsViewProps) {
         </Panel>
 
         <Panel title="Top Albums">
-          <ol className="space-y-1 text-sm text-neutral-300">
+          <ol className="text-theme-300 space-y-1 text-sm">
             {props.dashboard.topAlbums.map((album) => (
               <li key={`${album.albumArtist}-${album.title}`}>
                 {album.title} - {album.albumArtist}
@@ -143,7 +143,7 @@ export function StatsView(props: StatsViewProps) {
         </Panel>
 
         <Panel title="Top Tracks">
-          <ol className="space-y-1 text-sm text-neutral-300">
+          <ol className="text-theme-300 space-y-1 text-sm">
             {props.dashboard.topTracks.map((track) => (
               <li key={track.trackId}>
                 {track.title} - {track.artist}
@@ -155,7 +155,7 @@ export function StatsView(props: StatsViewProps) {
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Panel title="Top Genres">
-          <ul className="space-y-1 text-sm text-neutral-300">
+          <ul className="text-theme-300 space-y-1 text-sm">
             {props.dashboard.topGenres.map((genre) => (
               <li key={genre.genre}>
                 {genre.genre} - {props.formatPlayedTime(genre.playedMs)}
@@ -165,7 +165,7 @@ export function StatsView(props: StatsViewProps) {
         </Panel>
 
         <Panel title="Most Replayed Tracks">
-          <ul className="space-y-1 text-sm text-neutral-300">
+          <ul className="text-theme-300 space-y-1 text-sm">
             {props.dashboard.replayTracks.map((track) => (
               <li key={track.trackId}>{formatReplayTrack(track)}</li>
             ))}
@@ -175,7 +175,7 @@ export function StatsView(props: StatsViewProps) {
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Panel title="Peak Hour Profile">
-          <ul className="space-y-1 text-sm text-neutral-300">
+          <ul className="text-theme-300 space-y-1 text-sm">
             {props.dashboard.hourlyProfile.map((hour) => (
               <li key={hour.hour}>
                 {hour.hour.toString().padStart(2, "0")}:00 -{" "}
@@ -186,7 +186,7 @@ export function StatsView(props: StatsViewProps) {
         </Panel>
 
         <Panel title="Day-of-Week Profile">
-          <ul className="space-y-1 text-sm text-neutral-300">
+          <ul className="text-theme-300 space-y-1 text-sm">
             {props.dashboard.weekdayProfile.map((day) => (
               <li key={day.weekday}>
                 {day.label} - {formatPercent(day.share)}
@@ -197,7 +197,7 @@ export function StatsView(props: StatsViewProps) {
       </section>
 
       <Panel title="Session Stats">
-        <ul className="space-y-1 text-sm text-neutral-300">
+        <ul className="text-theme-300 space-y-1 text-sm">
           <li>Sessions: {props.dashboard.session.sessionCount}</li>
           <li>
             Average session:{" "}
@@ -223,8 +223,8 @@ type PanelProps = {
 
 function Panel(props: PanelProps) {
   return (
-    <section className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
-      <h2 className="mb-2 text-sm font-semibold text-neutral-100">
+    <section className="border-theme-800 bg-theme-900/70 rounded-xl border p-4">
+      <h2 className="text-theme-100 mb-2 text-sm font-semibold">
         {props.title}
       </h2>
       {props.children}
@@ -239,13 +239,11 @@ type MetricCardProps = {
 
 function MetricCard(props: MetricCardProps) {
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-3">
-      <p className="text-xs tracking-wide text-neutral-500 uppercase">
+    <div className="border-theme-800 bg-theme-900/70 rounded-xl border p-3">
+      <p className="text-theme-500 text-xs tracking-wide uppercase">
         {props.label}
       </p>
-      <p className="mt-1 text-lg font-semibold text-neutral-100">
-        {props.value}
-      </p>
+      <p className="text-theme-100 mt-1 text-lg font-semibold">{props.value}</p>
     </div>
   );
 }

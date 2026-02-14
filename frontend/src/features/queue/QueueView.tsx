@@ -13,7 +13,7 @@ export function QueueView(props: QueueViewProps) {
     <section className="flex w-76 flex-col gap-3 pl-3">
       <div className="flex items-center justify-between px-2">
         <div>
-          <p className="text-xs text-neutral-400">
+          <p className="text-theme-400 text-xs">
             {props.queueState.total} tracks
           </p>
         </div>
@@ -21,14 +21,14 @@ export function QueueView(props: QueueViewProps) {
           type="button"
           onClick={() => void props.onClearQueue()}
           disabled={props.queueState.total === 0}
-          className="rounded-md px-2 py-1 text-xs text-neutral-200 transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className="text-theme-200 hover:bg-theme-800 rounded-md px-2 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50"
         >
           Clear
         </button>
       </div>
 
       {props.queueState.entries.length === 0 ? (
-        <p className="text-sm text-neutral-400">Queue is empty.</p>
+        <p className="text-theme-400 text-sm">Queue is empty.</p>
       ) : (
         <ul className="flex min-w-0 flex-col gap-2 pr-1">
           {props.queueState.entries.map((track, index) => (
@@ -37,7 +37,7 @@ export function QueueView(props: QueueViewProps) {
               className={`group flex min-w-0 items-center gap-2 rounded-md border p-2 transition-colors ${
                 index === props.queueState.currentIndex
                   ? "border-white/7"
-                  : "border-transparent hover:bg-neutral-800"
+                  : "hover:bg-theme-800 border-transparent"
               }`}
             >
               <button
@@ -47,10 +47,10 @@ export function QueueView(props: QueueViewProps) {
                   void props.onSelectQueueIndex(index);
                 }}
               >
-                <p className="truncate text-sm font-medium text-neutral-100">
+                <p className="text-theme-100 truncate text-sm font-medium">
                   {track.title}
                 </p>
-                <p className="truncate text-xs text-neutral-400">
+                <p className="text-theme-400 truncate text-xs">
                   {track.artist}
                 </p>
               </button>
@@ -59,7 +59,7 @@ export function QueueView(props: QueueViewProps) {
                 onClick={() => {
                   void props.onRemoveQueueTrack(index);
                 }}
-                className="text-neutral-400/ rounded p-1 transition-colors not-group-hover:hidden group-hover:text-neutral-400 hover:text-neutral-200"
+                className="text-theme-400/ group-hover:text-theme-400 hover:text-theme-200 rounded p-1 transition-colors not-group-hover:hidden"
                 aria-label="Remove track from queue"
               >
                 <X size={14} />

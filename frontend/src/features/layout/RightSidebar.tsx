@@ -23,8 +23,8 @@ export function RightSidebar(props: RightSidebarProps) {
           onClick={() => props.onTabChange("queue")}
           className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
             props.tab === "queue"
-              ? "bg-neutral-100 text-neutral-900"
-              : "text-neutral-200 hover:bg-neutral-800"
+              ? "bg-theme-100 text-theme-900"
+              : "text-theme-200 hover:bg-theme-800"
           }`}
         >
           <ListMusic size={14} />
@@ -35,8 +35,8 @@ export function RightSidebar(props: RightSidebarProps) {
           onClick={() => props.onTabChange("details")}
           className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
             props.tab === "details"
-              ? "bg-neutral-100 text-neutral-900"
-              : "text-neutral-200 hover:bg-neutral-800"
+              ? "bg-theme-100 text-theme-900"
+              : "text-theme-200 hover:bg-theme-800"
           }`}
         >
           <Rows4 size={14} />
@@ -63,7 +63,7 @@ export function RightSidebar(props: RightSidebarProps) {
           </ScrollArea.Content>
         </ScrollArea.Viewport>
         <ScrollArea.Scrollbar className="pointer-events-none m-2 flex w-1 justify-center rounded bg-white/7 opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0">
-          <ScrollArea.Thumb className="w-full rounded bg-neutral-300/50" />
+          <ScrollArea.Thumb className="bg-theme-300/50 w-full rounded" />
         </ScrollArea.Scrollbar>
       </ScrollArea.Root>
     </aside>
@@ -79,12 +79,12 @@ function TrackDetailsPanel(props: TrackDetailsPanelProps) {
   const track = props.playerState.currentTrack;
 
   if (!track) {
-    return <p className="text-sm text-neutral-400">No track selected.</p>;
+    return <p className="text-theme-400 text-sm">No track selected.</p>;
   }
 
   return (
     <section className="flex flex-col gap-2 px-3 text-sm">
-      <h2 className="mb-3 px-2 text-sm font-medium text-neutral-300">
+      <h2 className="text-theme-300 mb-3 px-2 text-sm font-medium">
         Current Track
       </h2>
       <DetailRow label="Title" value={track.title} />
@@ -116,8 +116,8 @@ type DetailRowProps = {
 function DetailRow(props: DetailRowProps) {
   return (
     <div className="px-2 py-1">
-      <p className="text-xs text-neutral-500">{props.label}</p>
-      <p className="truncate text-neutral-100">{props.value}</p>
+      <p className="text-theme-500 text-xs">{props.label}</p>
+      <p className="text-theme-100 truncate">{props.value}</p>
     </div>
   );
 }

@@ -47,42 +47,40 @@ export function SettingsView(props: SettingsViewProps) {
 
   return (
     <section className="flex flex-col gap-5">
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
-        <h1 className="text-xl font-semibold text-neutral-100">Settings</h1>
-        <p className="mt-1 text-sm text-neutral-400">
+      <div className="border-theme-800 bg-theme-900/70 rounded-xl border p-4">
+        <h1 className="text-theme-100 text-xl font-semibold">Settings</h1>
+        <p className="text-theme-400 mt-1 text-sm">
           Scanner, watched folders, and runtime stats.
         </p>
       </div>
 
-      <section className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
-        <h2 className="text-sm font-semibold text-neutral-100">
+      <section className="border-theme-800 bg-theme-900/70 rounded-xl border p-4">
+        <h2 className="text-theme-100 text-sm font-semibold">
           Scanner Progress
         </h2>
         {props.lastProgress ? (
           <div className="mt-3 flex flex-col gap-2">
-            <div className="flex items-center justify-between text-xs text-neutral-400">
+            <div className="text-theme-400 flex items-center justify-between text-xs">
               <span className="capitalize">{props.lastProgress.phase}</span>
               <span>{props.lastProgress.percent}%</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-neutral-800">
+            <div className="bg-theme-800 h-2 overflow-hidden rounded-full">
               <div
-                className="h-full bg-neutral-200"
+                className="bg-theme-200 h-full"
                 style={{
                   width: `${Math.max(0, Math.min(100, props.lastProgress.percent))}%`,
                 }}
               />
             </div>
-            <p className="text-xs text-neutral-400">
+            <p className="text-theme-400 text-xs">
               {props.lastProgress.message}
             </p>
           </div>
         ) : (
-          <p className="mt-2 text-sm text-neutral-400">
-            No progress events yet.
-          </p>
+          <p className="text-theme-400 mt-2 text-sm">No progress events yet.</p>
         )}
 
-        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-neutral-300 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="text-theme-300 mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <Metric
             label="Running"
             value={props.scanStatus.running ? "Yes" : "No"}
@@ -111,8 +109,8 @@ export function SettingsView(props: SettingsViewProps) {
         ) : null}
       </section>
 
-      <section className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
-        <h2 className="text-sm font-semibold text-neutral-100">
+      <section className="border-theme-800 bg-theme-900/70 rounded-xl border p-4">
+        <h2 className="text-theme-100 text-sm font-semibold">
           Watched Folders
         </h2>
         <form
@@ -124,11 +122,11 @@ export function SettingsView(props: SettingsViewProps) {
             value={props.newRootPath}
             onChange={(event) => props.onNewRootPathChange(event.target.value)}
             placeholder="C:\\Music"
-            className="flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 outline-none focus:border-neutral-500"
+            className="border-theme-700 bg-theme-950 text-theme-200 focus:border-theme-500 flex-1 rounded-md border px-3 py-2 text-sm outline-none"
           />
           <button
             type="submit"
-            className="rounded-md bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-200"
+            className="bg-theme-100 text-theme-900 hover:bg-theme-200 rounded-md px-4 py-2 text-sm font-medium"
           >
             Add
           </button>
@@ -142,9 +140,9 @@ export function SettingsView(props: SettingsViewProps) {
           {props.watchedRoots.map((root) => (
             <li
               key={root.id}
-              className="flex flex-col gap-2 rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+              className="border-theme-800 bg-theme-900 flex flex-col gap-2 rounded-md border px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
             >
-              <label className="flex min-w-0 items-center gap-2 text-sm text-neutral-300">
+              <label className="text-theme-300 flex min-w-0 items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={root.enabled}
@@ -159,7 +157,7 @@ export function SettingsView(props: SettingsViewProps) {
                 onClick={() => {
                   void props.onRemoveWatchedRoot(root.id);
                 }}
-                className="w-fit rounded-md bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-700"
+                className="bg-theme-800 text-theme-200 hover:bg-theme-700 w-fit rounded-md px-3 py-1.5 text-xs"
               >
                 Remove
               </button>
@@ -168,15 +166,15 @@ export function SettingsView(props: SettingsViewProps) {
         </ul>
       </section>
 
-      <section className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
-        <h2 className="text-sm font-semibold text-neutral-100">
+      <section className="border-theme-800 bg-theme-900/70 rounded-xl border p-4">
+        <h2 className="text-theme-100 text-sm font-semibold">
           Theme Palette Demo
         </h2>
-        <p className="mt-1 text-sm text-neutral-400">
+        <p className="text-theme-400 mt-1 text-sm">
           Backend-generated palette from the active track cover.
         </p>
 
-        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-neutral-300 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="text-theme-300 mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <NumericSetting
             label="Max Dimension"
             value={props.themeOptions.maxDimension}
@@ -426,7 +424,7 @@ export function SettingsView(props: SettingsViewProps) {
           />
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-neutral-300">
+        <div className="text-theme-300 mt-3 flex flex-wrap items-center gap-4 text-sm">
           <label className="inline-flex items-center gap-2">
             <input
               type="checkbox"
@@ -462,12 +460,12 @@ export function SettingsView(props: SettingsViewProps) {
             onClick={() => {
               void props.onGenerateThemePalette();
             }}
-            className="rounded-md bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-200 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400"
+            className="bg-theme-100 text-theme-900 hover:bg-theme-200 disabled:bg-theme-700 disabled:text-theme-400 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed"
           >
             {props.themeBusy ? "Generating..." : "Generate Theme Palette"}
           </button>
           {!coverURL ? (
-            <p className="text-sm text-neutral-400">
+            <p className="text-theme-400 text-sm">
               Play a track with cover art to run the demo.
             </p>
           ) : null}
@@ -482,7 +480,7 @@ export function SettingsView(props: SettingsViewProps) {
             <img
               src={coverURL}
               alt="Current cover"
-              className="h-40 w-40 rounded-lg border border-neutral-800 object-cover"
+              className="border-theme-800 h-40 w-40 rounded-lg border object-cover"
             />
 
             <div className="min-w-0 flex-1">
@@ -531,10 +529,10 @@ export function SettingsView(props: SettingsViewProps) {
                     ))}
                   </div>
 
-                  <div className="mt-3 overflow-hidden rounded-lg border border-neutral-800">
+                  <div className="border-theme-800 mt-3 overflow-hidden rounded-lg border">
                     <div className="h-28 w-full" style={gradientPreviewStyle} />
                   </div>
-                  <p className="mt-2 text-xs text-neutral-400">
+                  <p className="text-theme-400 mt-2 text-xs">
                     Source {props.themePalette.sourceWidth}x
                     {props.themePalette.sourceHeight}, sampled to{" "}
                     {props.themePalette.sampleWidth}x
@@ -542,7 +540,7 @@ export function SettingsView(props: SettingsViewProps) {
                   </p>
                 </>
               ) : (
-                <p className="text-sm text-neutral-400">
+                <p className="text-theme-400 text-sm">
                   Generate a palette to preview swatches and gradient output.
                 </p>
               )}
@@ -551,15 +549,15 @@ export function SettingsView(props: SettingsViewProps) {
         ) : null}
       </section>
 
-      <section className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
-        <h2 className="text-sm font-semibold text-neutral-100">
+      <section className="border-theme-800 bg-theme-900/70 rounded-xl border p-4">
+        <h2 className="text-theme-100 text-sm font-semibold">
           Background Shader
         </h2>
-        <p className="mt-1 text-sm text-neutral-400">
+        <p className="text-theme-400 mt-1 text-sm">
           Gradient background controls
         </p>
 
-        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-neutral-300 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="text-theme-300 mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <SelectSetting
             label="Scene Module"
             value={shaderSettings.sceneVariant}
@@ -598,7 +596,7 @@ export function SettingsView(props: SettingsViewProps) {
           />
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-neutral-300 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="text-theme-300 mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <NumericSetting
             label="Effect Opacity"
             value={shaderSettings.opacity}
@@ -831,24 +829,22 @@ type MetricProps = {
 
 function Metric(props: MetricProps) {
   return (
-    <div className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-2">
-      <p className="text-xs tracking-wide text-neutral-500 uppercase">
+    <div className="border-theme-800 bg-theme-900 rounded-md border px-2 py-2">
+      <p className="text-theme-500 text-xs tracking-wide uppercase">
         {props.label}
       </p>
-      <p className="truncate text-sm text-neutral-200">{props.value}</p>
+      <p className="text-theme-200 truncate text-sm">{props.value}</p>
     </div>
   );
 }
 
 function MetricCard(props: MetricProps) {
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-4">
-      <p className="text-xs tracking-wide text-neutral-500 uppercase">
+    <div className="border-theme-800 bg-theme-900/70 rounded-xl border p-4">
+      <p className="text-theme-500 text-xs tracking-wide uppercase">
         {props.label}
       </p>
-      <p className="mt-1 text-lg font-semibold text-neutral-100">
-        {props.value}
-      </p>
+      <p className="text-theme-100 mt-1 text-lg font-semibold">{props.value}</p>
     </div>
   );
 }
@@ -882,14 +878,14 @@ type ToggleSettingProps = {
 
 function SelectSetting(props: SelectSettingProps) {
   return (
-    <label className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-2">
-      <p className="text-xs tracking-wide text-neutral-500 uppercase">
+    <label className="border-theme-800 bg-theme-900 rounded-md border px-2 py-2">
+      <p className="text-theme-500 text-xs tracking-wide uppercase">
         {props.label}
       </p>
       <select
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
-        className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-500"
+        className="border-theme-700 bg-theme-950 text-theme-200 focus:border-theme-500 mt-1 w-full rounded border px-2 py-1 text-sm outline-none"
       >
         {props.options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -903,8 +899,8 @@ function SelectSetting(props: SelectSettingProps) {
 
 function ToggleSetting(props: ToggleSettingProps) {
   return (
-    <label className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-200">
-      <span className="text-xs tracking-wide text-neutral-400 uppercase">
+    <label className="border-theme-800 bg-theme-900 text-theme-200 flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+      <span className="text-theme-400 text-xs tracking-wide uppercase">
         {props.label}
       </span>
       <input
@@ -918,8 +914,8 @@ function ToggleSetting(props: ToggleSettingProps) {
 
 function NumericSetting(props: NumericSettingProps) {
   return (
-    <label className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-2">
-      <p className="text-xs tracking-wide text-neutral-500 uppercase">
+    <label className="border-theme-800 bg-theme-900 rounded-md border px-2 py-2">
+      <p className="text-theme-500 text-xs tracking-wide uppercase">
         {props.label}
       </p>
       <input
@@ -935,7 +931,7 @@ function NumericSetting(props: NumericSettingProps) {
           }
           props.onChange(parsed);
         }}
-        className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-500"
+        className="border-theme-700 bg-theme-950 text-theme-200 focus:border-theme-500 mt-1 w-full rounded border px-2 py-1 text-sm outline-none"
       />
     </label>
   );
@@ -948,18 +944,18 @@ type PaletteChipProps = {
 
 function PaletteChip(props: PaletteChipProps) {
   return (
-    <div className="min-w-32 rounded-md border border-neutral-800 bg-neutral-900 p-2">
-      <p className="text-xs tracking-wide text-neutral-500 uppercase">
+    <div className="border-theme-800 bg-theme-900 min-w-32 rounded-md border p-2">
+      <p className="text-theme-500 text-xs tracking-wide uppercase">
         {props.label}
       </p>
       <div
-        className="mt-1 h-10 w-full rounded border border-neutral-700"
+        className="border-theme-700 mt-1 h-10 w-full rounded border"
         style={{ backgroundColor: props.color.hex }}
       />
-      <p className="mt-1 text-xs font-medium text-neutral-200">
+      <p className="text-theme-200 mt-1 text-xs font-medium">
         {props.color.hex}
       </p>
-      <p className="text-[11px] text-neutral-400">
+      <p className="text-theme-400 text-[11px]">
         L {Math.round(props.color.lightness * 100)}% | C{" "}
         {Math.round(props.color.chroma * 100)}%
       </p>
@@ -974,15 +970,15 @@ type RoleChipProps = {
 
 function RoleChip(props: RoleChipProps) {
   return (
-    <div className="rounded-md border border-neutral-800 bg-neutral-900 p-2">
-      <p className="text-xs tracking-wide text-neutral-500 uppercase">
+    <div className="border-theme-800 bg-theme-900 rounded-md border p-2">
+      <p className="text-theme-500 text-xs tracking-wide uppercase">
         {props.label}
       </p>
       <div
-        className="mt-1 h-8 w-full rounded border border-neutral-700"
+        className="border-theme-700 mt-1 h-8 w-full rounded border"
         style={{ backgroundColor: props.color?.hex ?? "#111111" }}
       />
-      <p className="mt-1 text-xs text-neutral-300">{props.color?.hex ?? "-"}</p>
+      <p className="text-theme-300 mt-1 text-xs">{props.color?.hex ?? "-"}</p>
     </div>
   );
 }

@@ -43,7 +43,7 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
           <button
             type="button"
             onClick={props.onBack}
-            className="inline-flex w-fit items-center gap-2 rounded-md py-1 text-sm text-neutral-400 transition-colors hover:text-neutral-200"
+            className="text-theme-400 hover:text-theme-200 inline-flex w-fit items-center gap-2 rounded-md py-1 text-sm transition-colors"
           >
             <ArrowLeft size={14} />
             Back to albums
@@ -54,12 +54,12 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
             className="mt-4 aspect-square w-full rounded-2xl border border-white/7"
             loading="eager"
           />
-          <div className="mt-4 space-y-2">
-            <h1 className="text-2xl font-bold text-neutral-100 lg:text-4xl">
+          <div className="mt-4 space-y-1">
+            <h1 className="text-theme-100 text-xl font-bold lg:text-2xl">
               {album.title}
             </h1>
-            <p className="text-lg text-neutral-300">{album.albumArtist}</p>
-            <p className="text-sm text-neutral-500">
+            <p className="text-theme-300">{album.albumArtist}</p>
+            <p className="text-theme-500 text-xs">
               {releaseDateLabel} - {trackCountLabel}
             </p>
 
@@ -68,7 +68,7 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
               onClick={() =>
                 void props.onPlayAlbum(album.title, album.albumArtist)
               }
-              className="mt-2 inline-flex items-center gap-2 rounded-md bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-200"
+              className="bg-theme-100 text-theme-900 hover:bg-theme-200 mt-2 inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors"
             >
               <Play size={16} />
               Play all tracks
@@ -76,18 +76,18 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
 
             <dl className="mt-2 grid grid-cols-2 gap-3 rounded-xl">
               <div>
-                <dt className="text-xs tracking-wide text-neutral-500 uppercase">
+                <dt className="text-theme-500 text-xs tracking-wide uppercase">
                   Length
                 </dt>
-                <dd className="text-sm font-medium text-neutral-100">
+                <dd className="text-theme-100 text-sm font-medium">
                   {props.formatDuration(totalDurationMS)}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs tracking-wide text-neutral-500 uppercase">
+                <dt className="text-theme-500 text-xs tracking-wide uppercase">
                   Discs
                 </dt>
-                <dd className="text-sm font-medium text-neutral-100">
+                <dd className="text-theme-100 text-sm font-medium">
                   {discCount}
                 </dd>
               </div>
@@ -97,7 +97,7 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
 
         <section className="mt-8 w-3/5">
           {album.tracks.length === 0 ? (
-            <p className="text-sm text-neutral-500">
+            <p className="text-theme-500 text-sm">
               No tracks found in this album.
             </p>
           ) : (
@@ -113,22 +113,22 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
                         track.id,
                       )
                     }
-                    className="group flex w-full items-center rounded-2xl px-4 py-3 text-left transition-colors hover:bg-neutral-800"
+                    className="group hover:bg-theme-800 flex w-full items-center rounded-2xl px-4 py-3 text-left transition-colors"
                     aria-label={`Play ${track.title}`}
                   >
-                    <p className="w-10 text-xs text-neutral-500">
+                    <p className="text-theme-500 w-10 text-xs">
                       {track.discNo ? `${track.discNo}-` : ""}
                       {track.trackNo ?? "-"}
                     </p>
                     <div className="min-w-0">
-                      <p className="truncate font-medium text-neutral-100 group-hover:text-white">
+                      <p className="text-theme-100 truncate font-medium group-hover:text-white">
                         {track.title}
                       </p>
-                      <p className="truncate text-xs text-neutral-500">
+                      <p className="text-theme-500 truncate text-xs">
                         {track.artist}
                       </p>
                     </div>
-                    <p className="ml-auto pl-1 text-right text-xs text-neutral-300">
+                    <p className="text-theme-300 ml-auto pl-1 text-right text-xs">
                       {props.formatDuration(track.durationMs)}
                     </p>
                   </button>
