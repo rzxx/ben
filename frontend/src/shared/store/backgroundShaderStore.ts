@@ -1,5 +1,9 @@
 import { create } from "zustand";
 import { ThemePalette } from "../../features/types";
+import {
+  resolveBackgroundShaderPresetSettings,
+  type BackgroundShaderPresetId,
+} from "./backgroundShaderPresets";
 
 export type ShaderColor = [number, number, number];
 export type ShaderThemeMode = "light" | "dark";
@@ -55,9 +59,12 @@ type BackgroundShaderState = {
   toColors: ShaderColorSet;
   baseColor: ShaderColor;
   transitionStartedAtMs: number;
+  activePresetId: BackgroundShaderPresetId;
+  customSettings: BackgroundShaderSettings;
   settings: BackgroundShaderSettings;
   setThemePalette: (palette: ThemePalette | null) => void;
   setThemeMode: (mode: ShaderThemeMode) => void;
+  setPreset: (presetId: BackgroundShaderPresetId) => void;
   setSettings: (patch: Partial<BackgroundShaderSettings>) => void;
 };
 
@@ -80,9 +87,9 @@ const lightBaseColor: ShaderColor = [245 / 255, 245 / 255, 245 / 255];
 const defaultSettings: BackgroundShaderSettings = {
   sceneVariant: "stableLayered",
   blurMode: "mipPyramid",
-  opacity: 0.78,
-  renderScale: 0.5,
-  maxRenderDpr: 1,
+  opacity: 0.2,
+  renderScale: 0.2,
+  maxRenderDpr: 0.75,
   targetFrameRate: 30,
   noiseScale: 1.1,
   flowSpeed: 0.48,
@@ -91,11 +98,11 @@ const defaultSettings: BackgroundShaderSettings = {
   detailScale: 1,
   detailSpeed: 0.58,
   colorDrift: 0.2,
-  lumaAnchor: 0.45,
-  lumaRemapStrength: 0.48,
-  lightThemeTintLightness: 0.86,
-  lightThemeTintMinChroma: 0.035,
-  lightThemeTintMaxChroma: 0.16,
+  lumaAnchor: 0.5,
+  lumaRemapStrength: 0.1,
+  lightThemeTintLightness: 0.72,
+  lightThemeTintMinChroma: 0.18,
+  lightThemeTintMaxChroma: 0.35,
   blurRadius: 1.2,
   blurRadiusStep: 0.75,
   blurPasses: 4,
@@ -119,6 +126,8 @@ export const useBackgroundShaderStore = create<BackgroundShaderState>(
     toColors: fallbackColors,
     baseColor: darkBaseColor,
     transitionStartedAtMs: nowMs(),
+    activePresetId: "stableLayered",
+    customSettings: defaultSettings,
     settings: defaultSettings,
     setThemePalette: (palette) => {
       const sourceColors = paletteToColorSet(palette);
@@ -150,16 +159,47 @@ export const useBackgroundShaderStore = create<BackgroundShaderState>(
     setThemeMode: (mode) => {
       const nextBaseColor = mode === "light" ? lightBaseColor : darkBaseColor;
       set((state) => {
+        const nextSettings =
+          state.activePresetId === "custom"
+            ? state.customSettings
+            : sanitizeSettings(
+                resolveBackgroundShaderPresetSettings(
+                  state.activePresetId,
+                  mode,
+                  defaultSettings,
+                  state.customSettings,
+                ),
+              );
         const modeUnchanged = state.themeMode === mode;
-        const baseColorUnchanged = areColorsEqual(state.baseColor, nextBaseColor);
+        const baseColorUnchanged = areColorsEqual(
+          state.baseColor,
+          nextBaseColor,
+        );
         const nextColors = mapColorSetForThemeMode(
           state.sourceColors,
           mode,
+          nextSettings,
+        );
+        const settingsUnchanged = areSettingsEqual(
           state.settings,
+          nextSettings,
         );
         const paletteUnchanged = areColorSetsEqual(state.toColors, nextColors);
-        if (modeUnchanged && baseColorUnchanged && paletteUnchanged) {
+        if (
+          modeUnchanged &&
+          baseColorUnchanged &&
+          settingsUnchanged &&
+          paletteUnchanged
+        ) {
           return state;
+        }
+
+        if (paletteUnchanged) {
+          return {
+            themeMode: mode,
+            baseColor: nextBaseColor,
+            settings: nextSettings,
+          };
         }
 
         const now = nowMs();
@@ -168,6 +208,52 @@ export const useBackgroundShaderStore = create<BackgroundShaderState>(
         return {
           themeMode: mode,
           baseColor: nextBaseColor,
+          settings: nextSettings,
+          fromColors: liveColors,
+          toColors: nextColors,
+          transitionStartedAtMs: now,
+        };
+      });
+    },
+    setPreset: (presetId) => {
+      set((state) => {
+        const resolvedSettings = sanitizeSettings(
+          resolveBackgroundShaderPresetSettings(
+            presetId,
+            state.themeMode,
+            defaultSettings,
+            state.customSettings,
+          ),
+        );
+        const nextColors = mapColorSetForThemeMode(
+          state.sourceColors,
+          state.themeMode,
+          resolvedSettings,
+        );
+        const presetUnchanged = state.activePresetId === presetId;
+        const settingsUnchanged = areSettingsEqual(
+          state.settings,
+          resolvedSettings,
+        );
+        const colorsUnchanged = areColorSetsEqual(state.toColors, nextColors);
+
+        if (presetUnchanged && settingsUnchanged && colorsUnchanged) {
+          return state;
+        }
+
+        if (colorsUnchanged) {
+          return {
+            activePresetId: presetId,
+            settings: resolvedSettings,
+          };
+        }
+
+        const now = nowMs();
+        const liveColors = getLiveColorSet(state, now);
+
+        return {
+          activePresetId: presetId,
+          settings: resolvedSettings,
           fromColors: liveColors,
           toColors: nextColors,
           transitionStartedAtMs: now,
@@ -183,15 +269,30 @@ export const useBackgroundShaderStore = create<BackgroundShaderState>(
           nextSettings,
         );
 
-        const settingsUnchanged = areSettingsEqual(state.settings, nextSettings);
+        const settingsUnchanged = areSettingsEqual(
+          state.settings,
+          nextSettings,
+        );
+        const customSettingsUnchanged = areSettingsEqual(
+          state.customSettings,
+          nextSettings,
+        );
+        const presetUnchanged = state.activePresetId === "custom";
         const colorsUnchanged = areColorSetsEqual(state.toColors, nextColors);
-        if (settingsUnchanged && colorsUnchanged) {
+        if (
+          settingsUnchanged &&
+          customSettingsUnchanged &&
+          presetUnchanged &&
+          colorsUnchanged
+        ) {
           return state;
         }
 
         if (colorsUnchanged) {
           return {
             settings: nextSettings,
+            customSettings: nextSettings,
+            activePresetId: "custom",
           };
         }
 
@@ -199,6 +300,8 @@ export const useBackgroundShaderStore = create<BackgroundShaderState>(
         const liveColors = getLiveColorSet(state, now);
         return {
           settings: nextSettings,
+          customSettings: nextSettings,
+          activePresetId: "custom",
           fromColors: liveColors,
           toColors: nextColors,
           transitionStartedAtMs: now,
@@ -332,7 +435,11 @@ function linearToSrgb(value: number): number {
 function sanitizeSettings(
   settings: BackgroundShaderSettings,
 ): BackgroundShaderSettings {
-  const lightThemeTintMinChroma = clamp(settings.lightThemeTintMinChroma, 0, 0.25);
+  const lightThemeTintMinChroma = clamp(
+    settings.lightThemeTintMinChroma,
+    0,
+    0.25,
+  );
   const lightThemeTintMaxChroma = clamp(
     settings.lightThemeTintMaxChroma,
     lightThemeTintMinChroma,
@@ -363,7 +470,11 @@ function sanitizeSettings(
     colorDrift: clamp(settings.colorDrift, 0, 1),
     lumaAnchor: clamp(settings.lumaAnchor, 0, 1),
     lumaRemapStrength: clamp(settings.lumaRemapStrength, 0, 1),
-    lightThemeTintLightness: clamp(settings.lightThemeTintLightness, 0.72, 0.96),
+    lightThemeTintLightness: clamp(
+      settings.lightThemeTintLightness,
+      0.72,
+      0.96,
+    ),
     lightThemeTintMinChroma,
     lightThemeTintMaxChroma,
     blurRadius: clamp(settings.blurRadius, 0, 8),
@@ -469,7 +580,11 @@ function areSettingsEqual(
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function fitOklabColorToSrgb(lightness: number, a: number, b: number): ShaderColor {
+function fitOklabColorToSrgb(
+  lightness: number,
+  a: number,
+  b: number,
+): ShaderColor {
   const initial = oklabToSrgb([lightness, a, b]);
   if (isInSrgbGamut(initial)) {
     return [
