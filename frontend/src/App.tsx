@@ -1080,6 +1080,22 @@ function AppContent() {
     [artistsPage.items],
   );
 
+  const openAlbumView = useCallback(
+    (title: string, albumArtist: string) => {
+      setSelectedAlbum({ title, albumArtist });
+      navigate("/albums");
+    },
+    [navigate],
+  );
+
+  const openArtistView = useCallback(
+    (artistName: string) => {
+      setSelectedArtist(artistName);
+      navigate("/artists");
+    },
+    [navigate],
+  );
+
   return (
     <div className="bg-theme-50 text-theme-900 dark:bg-theme-950 dark:text-theme-100 relative isolate flex h-dvh flex-col overflow-hidden">
       <BackgroundShader />
@@ -1124,10 +1140,7 @@ function AppContent() {
                         <AlbumsGridView
                           albums={sortedAlbums}
                           onSelectAlbum={(album) => {
-                            setSelectedAlbum({
-                              title: album.title,
-                              albumArtist: album.albumArtist,
-                            });
+                            openAlbumView(album.title, album.albumArtist);
                           }}
                         />
                       )}
@@ -1142,11 +1155,7 @@ function AppContent() {
                           onPlayArtist={onPlayArtistTracks}
                           onPlayTopTrack={onPlayArtistTopTrack}
                           onSelectAlbum={(album) => {
-                            setSelectedAlbum({
-                              title: album.title,
-                              albumArtist: album.albumArtist,
-                            });
-                            navigate("/albums");
+                            openAlbumView(album.title, album.albumArtist);
                           }}
                           formatPlayedTime={formatPlayedTime}
                         />
@@ -1154,7 +1163,7 @@ function AppContent() {
                         <ArtistsGridView
                           artists={sortedArtists}
                           onSelectArtist={(artistName) => {
-                            setSelectedArtist(artistName);
+                            openArtistView(artistName);
                           }}
                         />
                       )}
@@ -1165,6 +1174,7 @@ function AppContent() {
                         tracks={tracksPage.items}
                         onPlayTrack={onPlayTrackNow}
                         onQueueTrack={onAppendTrack}
+                        onSelectArtist={openArtistView}
                         formatDuration={formatDuration}
                       />
                     </Route>
@@ -1252,6 +1262,8 @@ function AppContent() {
         onCycleRepeat={onCycleRepeat}
         onSeek={onSeek}
         onSetVolume={onSetVolume}
+        onOpenAlbum={(track) => openAlbumView(track.album, track.albumArtist)}
+        onOpenArtist={openArtistView}
         formatDuration={formatDuration}
       />
     </div>

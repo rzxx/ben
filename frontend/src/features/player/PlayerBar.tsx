@@ -27,12 +27,15 @@ type PlayerBarProps = {
   onCycleRepeat: () => Promise<void>;
   onSeek: (positionMS: number) => Promise<void>;
   onSetVolume: (volume: number) => Promise<void>;
+  onOpenAlbum: (track: LibraryTrack) => void;
+  onOpenArtist: (artistName: string) => void;
   formatDuration: (durationMS?: number) => string;
 };
 
 export function PlayerBar(props: PlayerBarProps) {
   const isPlaying = props.playerState.status === "playing";
   const RepeatIcon = props.queueState.repeatMode === "one" ? Repeat1 : Repeat;
+  const currentTrack = props.currentTrack;
 
   return (
     <footer className="dark:bg-theme-900/25 border-theme-500/15 fixed inset-x-24 bottom-4 z-40 rounded-2xl border bg-neutral-100/85 px-8 py-4 shadow-xl shadow-black/7 backdrop-blur-lg backdrop-saturate-150 dark:border-white/7 dark:shadow-black/35 dark:backdrop-blur-xl dark:backdrop-brightness-75">
@@ -49,14 +52,32 @@ export function PlayerBar(props: PlayerBarProps) {
             loading="eager"
           />
           <div className="min-w-0">
-            <p className="text-theme-900 dark:text-theme-100 truncate text-sm font-medium">
-              {props.currentTrack?.title ?? "No track selected"}
-            </p>
-            <p className="text-theme-600 dark:text-theme-400 truncate text-xs">
-              {props.currentTrack
-                ? props.currentTrack.artist
-                : "Select a track to start playback"}
-            </p>
+            {currentTrack ? (
+              <button
+                type="button"
+                onClick={() => props.onOpenAlbum(currentTrack)}
+                className="text-theme-900 hover:text-accent-950 dark:text-theme-100 dark:hover:text-theme-200 block max-w-full cursor-pointer truncate text-left text-sm font-medium transition-colors"
+              >
+                {currentTrack.title}
+              </button>
+            ) : (
+              <p className="text-theme-900 dark:text-theme-100 truncate text-sm font-medium">
+                No track selected
+              </p>
+            )}
+            <div className="text-theme-600 dark:text-theme-400 truncate text-xs">
+              {currentTrack ? (
+                <button
+                  type="button"
+                  onClick={() => props.onOpenArtist(currentTrack.artist)}
+                  className="text-theme-600 hover:text-theme-800 dark:text-theme-400 dark:hover:text-theme-500 max-w-full cursor-pointer truncate text-left text-xs transition-colors"
+                >
+                  {currentTrack.artist}
+                </button>
+              ) : (
+                "Select a track to start playback"
+              )}
+            </div>
           </div>
         </div>
 

@@ -7,14 +7,19 @@ import { useBackgroundShaderStore } from "../../shared/store/backgroundShaderSto
 
 export function BackgroundShaderSettingsSection() {
   const shaderSettings = useBackgroundShaderStore((state) => state.settings);
-  const activePresetId = useBackgroundShaderStore((state) => state.activePresetId);
-  const setShaderSettings = useBackgroundShaderStore((state) => state.setSettings);
+  const activePresetId = useBackgroundShaderStore(
+    (state) => state.activePresetId,
+  );
+  const setShaderSettings = useBackgroundShaderStore(
+    (state) => state.setSettings,
+  );
   const setShaderPreset = useBackgroundShaderStore((state) => state.setPreset);
 
   const selectedPreset = useMemo(
     () =>
-      backgroundShaderPresetOptions.find((preset) => preset.id === activePresetId) ??
-      backgroundShaderPresetOptions[0],
+      backgroundShaderPresetOptions.find(
+        (preset) => preset.id === activePresetId,
+      ) ?? backgroundShaderPresetOptions[0],
     [activePresetId],
   );
 
@@ -82,7 +87,9 @@ export function BackgroundShaderSettingsSection() {
           <ToggleSetting
             label="Temporal Accumulation"
             checked={shaderSettings.temporalEnabled}
-            onChange={(checked) => setShaderSettings({ temporalEnabled: checked })}
+            onChange={(checked) =>
+              setShaderSettings({ temporalEnabled: checked })
+            }
           />
           <NumericSetting
             label="Effect Opacity"
@@ -292,7 +299,9 @@ export function BackgroundShaderSettingsSection() {
                 min={0}
                 max={0.98}
                 step={0.01}
-                onChange={(next) => setShaderSettings({ temporalStrength: next })}
+                onChange={(next) =>
+                  setShaderSettings({ temporalStrength: next })
+                }
               />
               <NumericSetting
                 label="Temporal Response"
@@ -300,7 +309,9 @@ export function BackgroundShaderSettingsSection() {
                 min={0.01}
                 max={1.5}
                 step={0.01}
-                onChange={(next) => setShaderSettings({ temporalResponse: next })}
+                onChange={(next) =>
+                  setShaderSettings({ temporalResponse: next })
+                }
               />
               <NumericSetting
                 label="Temporal Clamp"

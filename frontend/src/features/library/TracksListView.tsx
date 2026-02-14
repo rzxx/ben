@@ -5,6 +5,7 @@ type TracksListViewProps = {
   tracks: LibraryTrack[];
   onPlayTrack: (trackID: number) => Promise<void>;
   onQueueTrack: (trackID: number) => Promise<void>;
+  onSelectArtist: (artistName: string) => void;
   formatDuration: (durationMS?: number) => string;
 };
 
@@ -30,7 +31,14 @@ export function TracksListView(props: TracksListViewProps) {
                   {track.title}
                 </p>
                 <p className="text-theme-600 dark:text-theme-400 truncate text-xs">
-                  {track.artist} - {track.album}
+                  <button
+                    type="button"
+                    onClick={() => props.onSelectArtist(track.artist)}
+                    className="text-theme-600 hover:text-theme-800 dark:text-theme-400 dark:hover:text-theme-200 cursor-pointer text-xs transition-colors"
+                  >
+                    {track.artist}
+                  </button>{" "}
+                  - {track.album}
                 </p>
               </div>
               <p className="text-theme-600 dark:text-theme-500 w-14 shrink-0 text-right text-xs">
