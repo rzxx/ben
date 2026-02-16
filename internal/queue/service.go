@@ -246,6 +246,19 @@ func (s *Service) AdvanceAutoplay() (State, bool) {
 	return s.advance(nextModeAutoplay)
 }
 
+func (s *Service) PeekAutoplayNext() (*library.TrackSummary, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	nextIndex, ok := s.resolveNextIndexLocked(nextModeAutoplay)
+	if !ok || nextIndex < 0 || nextIndex >= len(s.entries) {
+		return nil, false
+	}
+
+	track := s.entries[nextIndex]
+	return &track, true
+}
+
 func (s *Service) advance(mode nextMode) (State, bool) {
 	s.mu.Lock()
 	nextIndex, ok := s.resolveNextIndexLocked(mode)

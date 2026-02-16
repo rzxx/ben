@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -65,6 +67,8 @@ type Service struct {
 	backend        playbackBackend
 	backendErr     string
 	skipQueueSync  int
+	hasPreloaded   bool
+	preloadedTrack int64
 }
 
 func NewService(database *sql.DB, queueService *queue.Service) *Service {
@@ -83,6 +87,7 @@ func NewService(database *sql.DB, queueService *queue.Service) *Service {
 	} else {
 		service.backend = backend
 		service.backend.SetOnEOF(service.onBackendEOF)
+		service.backend.SetOnTrackStart(service.onBackendTrackStart)
 		_ = service.backend.SetVolume(service.volume)
 	}
 
@@ -149,6 +154,7 @@ func (s *Service) Play() (State, error) {
 	if err := s.loadTrack(backend, queueState.CurrentTrack, false); err != nil {
 		return s.GetState(), err
 	}
+	s.syncPreloadedNext(backend, queueState)
 
 	if err := backend.Play(); err != nil {
 		return s.GetState(), fmt.Errorf("start playback: %w", err)
@@ -230,6 +236,7 @@ func (s *Service) Next() (State, error) {
 	if err := s.loadTrack(backend, queueState.CurrentTrack, true); err != nil {
 		return s.GetState(), err
 	}
+	s.syncPreloadedNext(backend, queueState)
 
 	if wasPlaying {
 		if err := backend.Play(); err != nil {
@@ -287,6 +294,7 @@ func (s *Service) Previous() (State, error) {
 	if err := s.loadTrack(backend, queueState.CurrentTrack, true); err != nil {
 		return s.GetState(), err
 	}
+	s.syncPreloadedNext(backend, queueState)
 
 	if wasPlaying {
 		if err := backend.Play(); err != nil {
@@ -342,6 +350,7 @@ func (s *Service) Seek(positionMS int) (State, error) {
 		if err := s.loadTrack(backend, queueState.CurrentTrack, false); err != nil {
 			return s.GetState(), err
 		}
+		s.syncPreloadedNext(backend, queueState)
 	}
 
 	if duration := s.currentDuration(queueState.CurrentTrack); duration != nil && positionMS > *duration {
@@ -431,6 +440,10 @@ func (s *Service) onQueueChanged(queueState queue.State) {
 	}
 
 	if backend != nil {
+		s.syncPreloadedNext(backend, queueState)
+	}
+
+	if backend != nil {
 		s.refreshPlaybackPosition(backend)
 	}
 
@@ -458,9 +471,30 @@ func (s *Service) onBackendEOF() {
 		return
 	}
 
+	s.mu.Lock()
+	useGaplessTransition := s.hasPreloaded && queueState.CurrentTrack != nil && s.preloadedTrack == queueState.CurrentTrack.ID
+	s.mu.Unlock()
+
+	if useGaplessTransition {
+		s.mu.Lock()
+		s.status = StatusPlaying
+		s.positionMS = 0
+		s.durationMS = trackDuration(queueState.CurrentTrack)
+		s.setCurrentTrackLocked(queueState.CurrentTrack, false)
+		s.hasPreloaded = false
+		s.preloadedTrack = 0
+		s.updatedAt = time.Now().UTC()
+		s.ensureTickerLocked()
+		s.mu.Unlock()
+
+		s.emitState(s.stateFromQueue(queueState))
+		return
+	}
+
 	if err := s.loadTrack(backend, queueState.CurrentTrack, true); err != nil {
 		return
 	}
+	s.syncPreloadedNext(backend, queueState)
 
 	if err := backend.Play(); err != nil {
 		return
@@ -473,6 +507,50 @@ func (s *Service) onBackendEOF() {
 	s.mu.Unlock()
 
 	s.refreshPlaybackPosition(backend)
+	s.emitState(s.stateFromQueue(queueState))
+}
+
+func (s *Service) onBackendTrackStart(path string) {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return
+	}
+
+	queueState := s.queue.GetState()
+	if queueState.CurrentTrack == nil {
+		return
+	}
+
+	if !sameTrackPath(queueState.CurrentTrack.Path, trimmedPath) {
+		nextTrack, ok := s.queue.PeekAutoplayNext()
+		if !ok || nextTrack == nil || !sameTrackPath(nextTrack.Path, trimmedPath) {
+			return
+		}
+
+		restore := s.beginQueueMutation()
+		advancedState, moved := s.queue.AdvanceAutoplay()
+		restore()
+		if !moved {
+			return
+		}
+		queueState = advancedState
+	}
+
+	s.mu.Lock()
+	s.setCurrentTrackLocked(queueState.CurrentTrack, false)
+	s.positionMS = 0
+	s.durationMS = trackDuration(queueState.CurrentTrack)
+	s.updatedAt = time.Now().UTC()
+	s.hasPreloaded = false
+	s.preloadedTrack = 0
+	s.mu.Unlock()
+
+	backend := s.tryBackend()
+	if backend != nil {
+		s.syncPreloadedNext(backend, queueState)
+		s.refreshPlaybackPosition(backend)
+	}
+
 	s.emitState(s.stateFromQueue(queueState))
 }
 
@@ -583,10 +661,41 @@ func (s *Service) loadTrack(backend playbackBackend, track *library.TrackSummary
 	s.setCurrentTrackLocked(track, false)
 	s.positionMS = 0
 	s.durationMS = trackDuration(track)
+	s.hasPreloaded = false
+	s.preloadedTrack = 0
 	s.updatedAt = time.Now().UTC()
 	s.mu.Unlock()
 
 	return nil
+}
+
+func (s *Service) syncPreloadedNext(backend playbackBackend, queueState queue.State) {
+	if backend == nil || queueState.CurrentTrack == nil {
+		return
+	}
+
+	nextTrack, ok := s.queue.PeekAutoplayNext()
+	if !ok || nextTrack == nil {
+		_ = backend.ClearPreloadedNext()
+		s.mu.Lock()
+		s.hasPreloaded = false
+		s.preloadedTrack = 0
+		s.mu.Unlock()
+		return
+	}
+
+	if err := backend.PreloadNext(nextTrack.Path); err != nil {
+		s.mu.Lock()
+		s.hasPreloaded = false
+		s.preloadedTrack = 0
+		s.mu.Unlock()
+		return
+	}
+
+	s.mu.Lock()
+	s.hasPreloaded = true
+	s.preloadedTrack = nextTrack.ID
+	s.mu.Unlock()
 }
 
 func (s *Service) refreshPlaybackPosition(backend playbackBackend) {
@@ -642,6 +751,7 @@ func (s *Service) transitionToIdle(queueState queue.State, backend playbackBacke
 		if resetPosition {
 			_ = backend.Seek(0)
 		}
+		_ = backend.ClearPreloadedNext()
 	}
 
 	s.mu.Lock()
@@ -653,11 +763,15 @@ func (s *Service) transitionToIdle(queueState queue.State, backend playbackBacke
 		s.durationMS = nil
 		s.hasCurrent = false
 		s.currentTrackID = 0
+		s.hasPreloaded = false
+		s.preloadedTrack = 0
 	} else {
 		s.setCurrentTrackLocked(queueState.CurrentTrack, false)
 		if resetPosition {
 			s.durationMS = trackDuration(queueState.CurrentTrack)
 		}
+		s.hasPreloaded = false
+		s.preloadedTrack = 0
 	}
 	s.updatedAt = time.Now().UTC()
 	s.stopTickerLocked()
@@ -896,4 +1010,18 @@ func normalizePlayerStatus(value string) string {
 	default:
 		return StatusIdle
 	}
+}
+
+func sameTrackPath(left string, right string) bool {
+	leftPath := filepath.Clean(strings.TrimSpace(left))
+	rightPath := filepath.Clean(strings.TrimSpace(right))
+	if leftPath == "." || rightPath == "." {
+		return false
+	}
+
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(leftPath, rightPath)
+	}
+
+	return leftPath == rightPath
 }

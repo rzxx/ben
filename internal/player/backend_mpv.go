@@ -6,20 +6,27 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 
 	mpv "github.com/gen2brain/go-mpv"
 )
 
 type mpvBackend struct {
-	mu          sync.Mutex
-	client      *mpv.Mpv
-	onEOF       func()
-	closeOnce   sync.Once
-	closed      chan struct{}
-	stopLoop    chan struct{}
-	closing     bool
-	eventLoopWG sync.WaitGroup
+	mu           sync.Mutex
+	client       *mpv.Mpv
+	onEOF        func()
+	onTrackStart func(path string)
+	closeOnce    sync.Once
+	closed       chan struct{}
+	stopLoop     chan struct{}
+	closing      bool
+	hasPreload   bool
+	preloadPath  string
+	eventLoopWG  sync.WaitGroup
 }
 
 func newPlaybackBackend() (playbackBackend, error) {
@@ -32,6 +39,8 @@ func newPlaybackBackend() (playbackBackend, error) {
 	setOptionString(client, "video", "no")
 	setOptionString(client, "audio-display", "no")
 	setOptionString(client, "keep-open", "no")
+	setOptionString(client, "gapless-audio", "yes")
+	setOptionString(client, "prefetch-playlist", "yes")
 
 	if err := client.Initialize(); err != nil {
 		client.TerminateDestroy()
@@ -45,6 +54,7 @@ func newPlaybackBackend() (playbackBackend, error) {
 	}
 
 	_ = client.RequestEvent(mpv.EventEnd, true)
+	_ = client.RequestEvent(mpv.EventFileLoaded, true)
 	_ = client.SetProperty(mpvVolumeProperty, mpv.FormatDouble, float64(defaultVolume))
 
 	backend.eventLoopWG.Add(1)
@@ -69,6 +79,64 @@ func (b *mpvBackend) Load(path string) error {
 		return fmt.Errorf("load file %q: %w", path, err)
 	}
 
+	b.hasPreload = false
+	b.preloadPath = ""
+
+	return nil
+}
+
+func (b *mpvBackend) PreloadNext(path string) error {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return b.ClearPreloadedNext()
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	client, err := b.requireClientLocked()
+	if err != nil {
+		return err
+	}
+
+	if b.hasPreload && pathEqual(b.preloadPath, trimmedPath) {
+		return nil
+	}
+
+	if b.hasPreload {
+		if err := b.removeNextPlaylistEntryLocked(client); err != nil {
+			return err
+		}
+		b.hasPreload = false
+		b.preloadPath = ""
+	}
+
+	if err := client.Command([]string{"loadfile", trimmedPath, "append"}); err != nil {
+		return fmt.Errorf("append preloaded file %q: %w", trimmedPath, err)
+	}
+
+	b.hasPreload = true
+	b.preloadPath = trimmedPath
+	return nil
+}
+
+func (b *mpvBackend) ClearPreloadedNext() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	client, err := b.requireClientLocked()
+	if err != nil {
+		return err
+	}
+
+	if !b.hasPreload {
+		return nil
+	}
+
+	if err := b.removeNextPlaylistEntryLocked(client); err != nil {
+		return err
+	}
+
+	b.hasPreload = false
+	b.preloadPath = ""
 	return nil
 }
 
@@ -181,6 +249,15 @@ func (b *mpvBackend) SetOnEOF(callback func()) {
 	b.onEOF = callback
 }
 
+func (b *mpvBackend) SetOnTrackStart(callback func(path string)) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closing {
+		return
+	}
+	b.onTrackStart = callback
+}
+
 func (b *mpvBackend) Close() error {
 	b.closeOnce.Do(func() {
 		b.mu.Lock()
@@ -206,6 +283,9 @@ func (b *mpvBackend) Close() error {
 		b.mu.Lock()
 		b.client = nil
 		b.onEOF = nil
+		b.onTrackStart = nil
+		b.hasPreload = false
+		b.preloadPath = ""
 		b.mu.Unlock()
 
 		close(b.closed)
@@ -247,6 +327,8 @@ func (b *mpvBackend) eventLoop() {
 		switch event.EventID {
 		case mpv.EventShutdown:
 			return
+		case mpv.EventFileLoaded:
+			b.handleFileLoadedEvent()
 		case mpv.EventEnd:
 			end := event.EndFile()
 			if end.Reason != mpv.EndFileEOF {
@@ -261,6 +343,29 @@ func (b *mpvBackend) eventLoop() {
 				onEOF()
 			}
 		}
+	}
+}
+
+func (b *mpvBackend) handleFileLoadedEvent() {
+	b.mu.Lock()
+	client := b.client
+	if client == nil || b.closing {
+		b.mu.Unlock()
+		return
+	}
+
+	path := strings.TrimSpace(client.GetPropertyString("path"))
+	if b.hasPreload && path != "" && pathEqual(path, b.preloadPath) {
+		b.hasPreload = false
+		b.preloadPath = ""
+		b.prunePlayedEntriesLocked(client)
+	}
+
+	callback := b.onTrackStart
+	b.mu.Unlock()
+
+	if callback != nil && path != "" {
+		callback(path)
 	}
 }
 
@@ -293,6 +398,68 @@ func (b *mpvBackend) readMillisecondsPropertyLocked(property string) (int, bool,
 	return int(math.Round(seconds * 1000)), true, nil
 }
 
+func (b *mpvBackend) removeNextPlaylistEntryLocked(client *mpv.Mpv) error {
+	playlistPos, ok, err := readIntPropertyLocked(client, "playlist-pos")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
+	removeIndex := playlistPos + 1
+	if err := client.Command([]string{"playlist-remove", strconv.FormatInt(removeIndex, 10)}); err != nil {
+		return fmt.Errorf("remove preloaded entry: %w", err)
+	}
+
+	return nil
+}
+
+func (b *mpvBackend) prunePlayedEntriesLocked(client *mpv.Mpv) {
+	playlistPos, ok, err := readIntPropertyLocked(client, "playlist-pos")
+	if err != nil || !ok {
+		return
+	}
+
+	for playlistPos > 0 {
+		if err := client.Command([]string{"playlist-remove", "0"}); err != nil {
+			return
+		}
+		playlistPos--
+	}
+}
+
+func readIntPropertyLocked(client *mpv.Mpv, property string) (int64, bool, error) {
+	value, err := client.GetProperty(property, mpv.FormatInt64)
+	if err != nil {
+		if errors.Is(err, mpv.ErrPropertyUnavailable) || errors.Is(err, mpv.ErrPropertyNotFound) {
+			return 0, false, nil
+		}
+		return 0, false, fmt.Errorf("read %s: %w", property, err)
+	}
+
+	switch cast := value.(type) {
+	case int64:
+		return cast, true, nil
+	case int:
+		return int64(cast), true, nil
+	case float64:
+		return int64(math.Round(cast)), true, nil
+	case string:
+		trimmed := strings.TrimSpace(cast)
+		if trimmed == "" {
+			return 0, false, nil
+		}
+		parsed, parseErr := strconv.ParseInt(trimmed, 10, 64)
+		if parseErr != nil {
+			return 0, false, nil
+		}
+		return parsed, true, nil
+	default:
+		return 0, false, nil
+	}
+}
+
 func asFloat64(value any) (float64, bool) {
 	switch cast := value.(type) {
 	case float64:
@@ -306,6 +473,20 @@ func asFloat64(value any) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func pathEqual(left string, right string) bool {
+	leftPath := filepath.Clean(strings.TrimSpace(left))
+	rightPath := filepath.Clean(strings.TrimSpace(right))
+	if leftPath == "." || rightPath == "." {
+		return false
+	}
+
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(leftPath, rightPath)
+	}
+
+	return leftPath == rightPath
 }
 
 func setOptionString(client *mpv.Mpv, name string, value string) {
