@@ -87,7 +87,7 @@ const lightBaseColor: ShaderColor = [245 / 255, 245 / 255, 245 / 255];
 const defaultSettings: BackgroundShaderSettings = {
   sceneVariant: "stableLayered",
   blurMode: "mipPyramid",
-  opacity: 0.2,
+  opacity: 0.15,
   renderScale: 0.2,
   maxRenderDpr: 0.75,
   targetFrameRate: 30,

@@ -31,7 +31,7 @@ const builtInPresets: readonly BackgroundShaderPresetDefinition[] = [
       lumaAnchor: 0,
     },
     light: {
-      opacity: 0.15,
+      opacity: 0.1,
       lumaRemapStrength: 0,
     },
     dark: {},
@@ -50,7 +50,7 @@ const builtInPresets: readonly BackgroundShaderPresetDefinition[] = [
     },
     dark: {},
     light: {
-      opacity: 0.15,
+      opacity: 0.1,
     },
   },
   {
@@ -66,11 +66,9 @@ const builtInPresets: readonly BackgroundShaderPresetDefinition[] = [
       mipCurve: 1,
       blurRadius: 1.5,
     },
-    dark: {
-      opacity: 0.2,
-    },
+    dark: {},
     light: {
-      opacity: 0.15,
+      opacity: 0.1,
     },
   },
 ];

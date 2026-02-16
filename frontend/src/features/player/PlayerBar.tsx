@@ -38,7 +38,7 @@ export function PlayerBar(props: PlayerBarProps) {
   const currentTrack = props.currentTrack;
 
   return (
-    <footer className="dark:bg-theme-900/25 border-theme-500/15 fixed inset-x-24 bottom-4 z-40 rounded-2xl border bg-neutral-100/85 px-8 py-4 shadow-xl shadow-black/7 backdrop-blur-lg backdrop-saturate-150 dark:border-white/7 dark:shadow-black/35 dark:backdrop-blur-xl dark:backdrop-brightness-75">
+    <footer className="dark:bg-theme-900/25 bg-theme-100-desat/85 border-theme-500/15 fixed inset-x-24 bottom-4 z-40 rounded-2xl border px-8 py-4 shadow-xl shadow-black/7 backdrop-blur-lg backdrop-saturate-150 dark:border-white/7 dark:shadow-black/35 dark:backdrop-blur-xl dark:backdrop-brightness-75">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
         <div className="flex min-w-0 items-center gap-3 lg:w-72 lg:shrink-0">
           <CoverArt
@@ -88,7 +88,7 @@ export function PlayerBar(props: PlayerBarProps) {
               onClick={() => void props.onToggleShuffle()}
               className={`cursor-pointer rounded p-2 transition-colors ${
                 props.queueState.shuffle
-                  ? "text-accent-600 hover:text-accent-700 dark:text-accent-200 dark:hover:text-accent-100"
+                  ? "text-accent-700 hover:text-accent-800 dark:text-accent-200 dark:hover:text-accent-100"
                   : "text-theme-400 hover:text-theme-700 dark:text-theme-500 dark:hover:text-theme-200"
               }`}
               aria-label="Toggle shuffle"
@@ -100,7 +100,7 @@ export function PlayerBar(props: PlayerBarProps) {
               type="button"
               onClick={() => void props.onPreviousTrack()}
               disabled={!props.hasCurrentTrack || props.transportBusy}
-              className="text-accent-700 hover:text-accent-600 disabled:text-theme-400 dark:text-accent-200 dark:hover:text-accent-100 dark:disabled:text-theme-600 cursor-pointer rounded p-2 transition-colors disabled:cursor-not-allowed"
+              className="text-theme-700 hover:text-theme-600 disabled:text-theme-400 dark:text-theme-200 dark:hover:text-theme-100 dark:disabled:text-theme-600 cursor-pointer rounded p-2 transition-colors disabled:cursor-not-allowed"
               aria-label="Previous track"
             >
               <SkipBack size={16} fill="currentColor" />
@@ -110,7 +110,7 @@ export function PlayerBar(props: PlayerBarProps) {
               type="button"
               onClick={() => void props.onTogglePlayback()}
               disabled={props.queueState.total === 0 || props.transportBusy}
-              className="bg-accent-700 text-accent-50 hover:bg-accent-600 dark:bg-accent-100 dark:text-accent-900 dark:hover:bg-accent-300 cursor-pointer rounded-full bg-linear-to-b from-white/21 to-black/21 p-3 shadow-md shadow-black/25 transition hover:scale-105 active:scale-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="bg-accent-700 text-accent-50 hover:bg-accent-600 dark:bg-accent-50 dark:text-accent-900 dark:hover:bg-accent-200 cursor-pointer rounded-full bg-linear-to-b from-white/21 to-black/21 p-3 shadow-md shadow-black/25 transition hover:scale-105 active:scale-90 disabled:cursor-not-allowed disabled:opacity-50"
               aria-label={isPlaying ? "Pause" : "Play"}
             >
               {isPlaying ? (
@@ -124,7 +124,7 @@ export function PlayerBar(props: PlayerBarProps) {
               type="button"
               onClick={() => void props.onNextTrack()}
               disabled={!props.hasCurrentTrack || props.transportBusy}
-              className="text-accent-700 hover:text-accent-600 disabled:text-theme-400 dark:text-accent-200 dark:hover:text-accent-100 dark:disabled:text-theme-600 cursor-pointer rounded p-2 transition-colors disabled:cursor-not-allowed"
+              className="text-theme-700 hover:text-theme-600 disabled:text-theme-400 dark:text-theme-200 dark:hover:text-theme-100 dark:disabled:text-theme-600 cursor-pointer rounded p-2 transition-colors disabled:cursor-not-allowed"
               aria-label="Next track"
             >
               <SkipForward size={16} fill="currentColor" />
@@ -136,7 +136,7 @@ export function PlayerBar(props: PlayerBarProps) {
               className={`cursor-pointer rounded p-2 transition-colors ${
                 props.queueState.repeatMode === "off"
                   ? "text-theme-400 hover:text-theme-700 dark:text-theme-500 dark:hover:text-theme-200"
-                  : "text-accent-600 hover:text-accent-700 dark:text-accent-200 dark:hover:text-accent-100"
+                  : "text-accent-700 hover:text-accent-800 dark:text-accent-200 dark:hover:text-accent-100"
               }`}
               aria-label="Cycle repeat mode"
             >
