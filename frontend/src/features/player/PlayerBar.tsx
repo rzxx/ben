@@ -38,7 +38,7 @@ export function PlayerBar(props: PlayerBarProps) {
   const currentTrack = props.currentTrack;
 
   return (
-    <footer className="dark:bg-theme-900/25 bg-theme-100-desat/75 border-theme-500/15 fixed inset-x-24 bottom-4 z-40 rounded-2xl border px-8 py-4 shadow-xl shadow-black/7 backdrop-blur-xl backdrop-saturate-150 dark:border-white/7 dark:shadow-black/35 dark:backdrop-brightness-75">
+    <footer className="dark:bg-theme-900/25 bg-theme-100-desat/75 border-theme-500/15 fixed inset-x-4 bottom-4 z-40 mx-auto rounded-2xl border px-8 py-4 shadow-xl shadow-black/7 backdrop-blur-xl backdrop-saturate-150 lg:inset-x-0 lg:max-w-4xl xl:max-w-6xl 2xl:max-w-360 dark:border-white/7 dark:shadow-black/35 dark:backdrop-brightness-75">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
         <div className="flex min-w-0 items-center gap-3 lg:w-72 lg:shrink-0">
           <CoverArt
@@ -148,7 +148,7 @@ export function PlayerBar(props: PlayerBarProps) {
             <span className="text-theme-700 dark:text-theme-300 -mt-0.5 w-10 shrink-0 text-right text-xs">
               {props.formatDuration(props.playerState.positionMs)}
             </span>
-            <span className="max-w-2/3 flex-1">
+            <span className="max-w-160 flex-1">
               <SingleValueSlider
                 ariaLabel="Track position"
                 min={0}
