@@ -4,6 +4,7 @@ package platform
 
 import (
 	"ben/internal/platform/windows/smtc"
+	"ben/internal/platform/windows/thumbbar"
 	"ben/internal/player"
 	"log"
 	"sync"
@@ -24,20 +25,24 @@ type windowsService struct {
 	app          *application.App
 	player       *player.Service
 	smtc         *smtc.Service
+	thumbbar     *thumbbar.Service
 	accelerators []string
 
-	mu           sync.Mutex
-	smtcStarted  bool
-	smtcStarting bool
-	hasLastState bool
-	lastState    player.State
+	mu            sync.Mutex
+	smtcStarted   bool
+	smtcStarting  bool
+	thumbStarted  bool
+	thumbStarting bool
+	hasLastState  bool
+	lastState     player.State
 }
 
 func NewService(app *application.App, playerService *player.Service) Service {
 	return &windowsService{
-		app:    app,
-		player: playerService,
-		smtc:   smtc.NewService(playerService),
+		app:      app,
+		player:   playerService,
+		smtc:     smtc.NewService(playerService),
+		thumbbar: thumbbar.NewService(playerService),
 	}
 }
 
@@ -60,6 +65,7 @@ func (s *windowsService) Start() error {
 	}
 
 	s.startSMTCIfNeeded()
+	s.startThumbbarIfNeeded()
 
 	s.registerBinding(acceleratorMediaPlayPause, func() {
 		if _, err := s.player.TogglePlayback(); err != nil {
@@ -94,14 +100,26 @@ func (s *windowsService) Stop() error {
 		s.smtcStarted = false
 		s.smtcStarting = false
 		s.mu.Unlock()
-		return s.smtc.Close()
+		if err := s.smtc.Close(); err != nil {
+			return err
+		}
+	}
+
+	if s.thumbbar != nil {
+		s.mu.Lock()
+		s.thumbStarted = false
+		s.thumbStarting = false
+		s.mu.Unlock()
+		if err := s.thumbbar.Close(); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
 func (s *windowsService) HandlePlayerState(state player.State) {
-	if s.smtc == nil {
+	if s.smtc == nil && s.thumbbar == nil {
 		return
 	}
 
@@ -109,14 +127,25 @@ func (s *windowsService) HandlePlayerState(state player.State) {
 	s.lastState = state
 	s.hasLastState = true
 	started := s.smtcStarted
+	thumbStarted := s.thumbStarted
 	s.mu.Unlock()
 
-	if !started {
+	if s.smtc != nil && !started {
 		s.startSMTCIfNeeded()
+	} else if s.smtc != nil {
+		s.smtc.UpdatePlayerState(state)
+	}
+
+	if s.thumbbar == nil {
 		return
 	}
 
-	s.smtc.UpdatePlayerState(state)
+	if !thumbStarted {
+		s.startThumbbarIfNeeded()
+		return
+	}
+
+	s.thumbbar.UpdatePlayerState(state)
 }
 
 func (s *windowsService) startSMTCIfNeeded() bool {
@@ -175,13 +204,13 @@ func (s *windowsService) watchWindow(window application.Window) {
 		return
 	}
 
-	if s.startSMTCIfNeeded() {
+	if s.startSMTCIfNeeded() && s.startThumbbarIfNeeded() {
 		return
 	}
 
 	var cancel func()
 	cancel = window.OnWindowEvent(events.Windows.WebViewNavigationCompleted, func(_ *application.WindowEvent) {
-		if !s.startSMTCIfNeeded() {
+		if !s.startSMTCIfNeeded() || !s.startThumbbarIfNeeded() {
 			return
 		}
 		if cancel != nil {
@@ -229,4 +258,55 @@ func (s *windowsService) registerBinding(accelerator string, action func()) {
 	s.app.KeyBinding.Add(accelerator, func(_ application.Window) {
 		action()
 	})
+}
+
+func (s *windowsService) startThumbbarIfNeeded() bool {
+	if s.thumbbar == nil {
+		return false
+	}
+
+	s.mu.Lock()
+	if s.thumbStarted {
+		s.mu.Unlock()
+		return true
+	}
+	if s.thumbStarting {
+		s.mu.Unlock()
+		return false
+	}
+	s.thumbStarting = true
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		s.thumbStarting = false
+		s.mu.Unlock()
+	}()
+
+	hwnd, ok := s.resolveWindowHandle()
+	if !ok {
+		return false
+	}
+
+	if err := s.thumbbar.Start(hwnd); err != nil {
+		log.Printf("platform thumbnail toolbar disabled: %v", err)
+		return false
+	}
+
+	var pending player.State
+	hasPending := false
+
+	s.mu.Lock()
+	s.thumbStarted = true
+	if s.hasLastState {
+		pending = s.lastState
+		hasPending = true
+	}
+	s.mu.Unlock()
+
+	if hasPending {
+		s.thumbbar.UpdatePlayerState(pending)
+	}
+
+	return true
 }
