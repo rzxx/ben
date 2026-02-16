@@ -55,9 +55,10 @@ type Service struct {
 	hasLastState bool
 	lastState    player.State
 
-	lastIsPlaying bool
-	lastHasQueue  bool
-	lastHasTrack  bool
+	lastIsPlaying     bool
+	lastHasQueue      bool
+	lastHasTrack      bool
+	lastUseLightTheme bool
 }
 
 type thumbbarIcons struct {
@@ -136,6 +137,7 @@ func (s *Service) Start(hwnd win32.HWND) error {
 		s.started = true
 		s.taskbarButtonCreatedMsg = taskbarButtonCreatedMsg
 		s.useLightTheme = useLightTheme
+		s.lastUseLightTheme = useLightTheme
 		s.useCustomIcons = iconErr == nil
 		s.iconsDark = iconsDark
 		s.iconsLight = iconsLight
@@ -255,11 +257,12 @@ func (s *Service) applyState(state player.State) {
 	isPlaying := strings.EqualFold(strings.TrimSpace(state.Status), player.StatusPlaying)
 
 	s.mu.Lock()
-	changed := isPlaying != s.lastIsPlaying || hasQueue != s.lastHasQueue || hasTrack != s.lastHasTrack
+	changed := isPlaying != s.lastIsPlaying || hasQueue != s.lastHasQueue || hasTrack != s.lastHasTrack || s.useLightTheme != s.lastUseLightTheme
 	if changed {
 		s.lastIsPlaying = isPlaying
 		s.lastHasQueue = hasQueue
 		s.lastHasTrack = hasTrack
+		s.lastUseLightTheme = s.useLightTheme
 	}
 	s.mu.Unlock()
 
@@ -291,6 +294,10 @@ func (s *Service) handleWindowMessage(hwnd win32.HWND, msg uint32, wParam win32.
 		}
 	}
 
+	if msg == win32.WM_SETTINGCHANGE {
+		s.handleThemeChange()
+	}
+
 	s.mu.Lock()
 	taskbarButtonCreatedMsg := s.taskbarButtonCreatedMsg
 	hasState := s.hasLastState
@@ -307,6 +314,31 @@ func (s *Service) handleWindowMessage(hwnd win32.HWND, msg uint32, wParam win32.
 	}
 
 	return win32.DefSubclassProc(hwnd, msg, wParam, lParam)
+}
+
+func (s *Service) handleThemeChange() {
+	s.mu.Lock()
+	if !s.started || !s.useCustomIcons {
+		s.mu.Unlock()
+		return
+	}
+	currentLightTheme := s.useLightTheme
+	hasState := s.hasLastState
+	state := s.lastState
+	s.mu.Unlock()
+
+	newLightTheme, ok := queryAppsUseLightTheme()
+	if !ok || newLightTheme == currentLightTheme {
+		return
+	}
+
+	s.mu.Lock()
+	s.useLightTheme = newLightTheme
+	s.mu.Unlock()
+
+	if hasState {
+		s.applyState(state)
+	}
 }
 
 func (s *Service) handleThumbbarButton(buttonID uint32) {
