@@ -54,6 +54,10 @@ type Service struct {
 
 	hasLastState bool
 	lastState    player.State
+
+	lastIsPlaying bool
+	lastHasQueue  bool
+	lastHasTrack  bool
 }
 
 type thumbbarIcons struct {
@@ -219,12 +223,6 @@ func (s *Service) addButtons() error {
 		return nil
 	}
 
-	if themeValue, ok := queryAppsUseLightTheme(); ok {
-		s.mu.Lock()
-		s.useLightTheme = themeValue
-		s.mu.Unlock()
-	}
-
 	prevIcon, playIcon, nextIcon := s.resolveStaticButtonIcons()
 
 	buttons := []win32.THUMBBUTTON{
@@ -252,15 +250,22 @@ func (s *Service) applyState(state player.State) {
 		return
 	}
 
-	if themeValue, ok := queryAppsUseLightTheme(); ok {
-		s.mu.Lock()
-		s.useLightTheme = themeValue
-		s.mu.Unlock()
-	}
-
 	hasQueue := state.QueueLength > 0
 	hasTrack := state.CurrentTrack != nil
 	isPlaying := strings.EqualFold(strings.TrimSpace(state.Status), player.StatusPlaying)
+
+	s.mu.Lock()
+	changed := isPlaying != s.lastIsPlaying || hasQueue != s.lastHasQueue || hasTrack != s.lastHasTrack
+	if changed {
+		s.lastIsPlaying = isPlaying
+		s.lastHasQueue = hasQueue
+		s.lastHasTrack = hasTrack
+	}
+	s.mu.Unlock()
+
+	if !changed {
+		return
+	}
 
 	prevIcon, playPauseIcon, nextIcon, playPauseTip := s.resolveDynamicButtonIcons(isPlaying)
 
