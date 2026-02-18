@@ -31,30 +31,45 @@ type Emitter func(eventName string, payload any)
 
 type ChangeListener func(state State)
 
+type ShuffleDebugState struct {
+	SessionVersion int   `json:"sessionVersion"`
+	CycleVersion   int   `json:"cycleVersion"`
+	CycleLength    int   `json:"cycleLength"`
+	CycleProgress  int   `json:"cycleProgress"`
+	RecentWindow   int   `json:"recentWindow"`
+	GuardPrefix    int   `json:"guardPrefix"`
+	TrailIndices   []int `json:"trailIndices"`
+	Upcoming       []int `json:"upcoming"`
+	RecentIndices  []int `json:"recentIndices"`
+}
+
 type State struct {
 	Entries      []library.TrackSummary `json:"entries"`
 	CurrentIndex int                    `json:"currentIndex"`
 	CurrentTrack *library.TrackSummary  `json:"currentTrack,omitempty"`
 	RepeatMode   string                 `json:"repeatMode"`
 	Shuffle      bool                   `json:"shuffle"`
+	ShuffleDebug *ShuffleDebugState     `json:"shuffleDebug,omitempty"`
 	Total        int                    `json:"total"`
 	UpdatedAt    string                 `json:"updatedAt"`
 }
 
 type Service struct {
-	mu           sync.Mutex
-	db           *sql.DB
-	entries      []library.TrackSummary
-	currentIndex int
-	repeatMode   string
-	shuffle      bool
-	shuffleOrder []int
-	shuffleTrail []int
-	lastShuffle  []int
-	updatedAt    time.Time
-	emit         Emitter
-	onChange     ChangeListener
-	rng          *rand.Rand
+	mu                    sync.Mutex
+	db                    *sql.DB
+	entries               []library.TrackSummary
+	currentIndex          int
+	repeatMode            string
+	shuffle               bool
+	shuffleOrder          []int
+	shuffleTrail          []int
+	lastShuffle           []int
+	shuffleSessionVersion int
+	shuffleCycleVersion   int
+	updatedAt             time.Time
+	emit                  Emitter
+	onChange              ChangeListener
+	rng                   *rand.Rand
 }
 
 func NewService(database *sql.DB) *Service {
@@ -126,6 +141,8 @@ func (s *Service) SetShuffle(enabled bool) State {
 			s.shuffleOrder = nil
 			s.shuffleTrail = nil
 			s.lastShuffle = nil
+			s.shuffleSessionVersion = 0
+			s.shuffleCycleVersion = 0
 		}
 	}
 	s.touchLocked()
@@ -230,6 +247,8 @@ func (s *Service) Clear() State {
 	s.shuffleOrder = nil
 	s.shuffleTrail = nil
 	s.lastShuffle = nil
+	s.shuffleSessionVersion = 0
+	s.shuffleCycleVersion = 0
 	s.touchLocked()
 	state := s.snapshotLocked()
 	s.mu.Unlock()
@@ -250,7 +269,7 @@ func (s *Service) PeekAutoplayNext() (*library.TrackSummary, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	nextIndex, ok := s.resolveNextIndexLocked(nextModeAutoplay)
+	nextIndex, ok := s.resolveNextIndexLocked(nextModeAutoplay, false)
 	if !ok || nextIndex < 0 || nextIndex >= len(s.entries) {
 		return nil, false
 	}
@@ -261,7 +280,7 @@ func (s *Service) PeekAutoplayNext() (*library.TrackSummary, bool) {
 
 func (s *Service) advance(mode nextMode) (State, bool) {
 	s.mu.Lock()
-	nextIndex, ok := s.resolveNextIndexLocked(mode)
+	nextIndex, ok := s.resolveNextIndexLocked(mode, true)
 	if !ok {
 		state := s.snapshotLocked()
 		s.mu.Unlock()
@@ -277,7 +296,7 @@ func (s *Service) advance(mode nextMode) (State, bool) {
 	return state, true
 }
 
-func (s *Service) resolveNextIndexLocked(mode nextMode) (int, bool) {
+func (s *Service) resolveNextIndexLocked(mode nextMode, consume bool) (int, bool) {
 	total := len(s.entries)
 	if total == 0 {
 		return -1, false
@@ -299,9 +318,17 @@ func (s *Service) resolveNextIndexLocked(mode nextMode) (int, bool) {
 			return 0, true
 		}
 
-		s.ensureShuffleSessionLocked()
+		if consume {
+			s.ensureShuffleSessionLocked()
+		} else if !s.isShuffleSessionConsistentLocked() {
+			return -1, false
+		}
+
 		if len(s.shuffleOrder) == 0 {
 			if s.repeatMode != RepeatModeAll {
+				return -1, false
+			}
+			if !consume {
 				return -1, false
 			}
 			s.refillShuffleOrderLocked()
@@ -311,8 +338,10 @@ func (s *Service) resolveNextIndexLocked(mode nextMode) (int, bool) {
 		}
 
 		nextIndex := s.shuffleOrder[0]
-		s.shuffleOrder = s.shuffleOrder[1:]
-		s.recordShuffleVisitLocked(nextIndex)
+		if consume {
+			s.shuffleOrder = s.shuffleOrder[1:]
+			s.recordShuffleVisitLocked(nextIndex)
+		}
 		return nextIndex, true
 	}
 
@@ -325,6 +354,24 @@ func (s *Service) resolveNextIndexLocked(mode nextMode) (int, bool) {
 	}
 
 	return -1, false
+}
+
+func (s *Service) isShuffleSessionConsistentLocked() bool {
+	if !s.shuffle {
+		return true
+	}
+	if len(s.entries) == 0 {
+		return len(s.shuffleTrail) == 0 && len(s.shuffleOrder) == 0
+	}
+	if s.currentIndex < 0 || s.currentIndex >= len(s.entries) {
+		return false
+	}
+	if len(s.shuffleTrail) == 0 {
+		return false
+	}
+
+	last := s.shuffleTrail[len(s.shuffleTrail)-1]
+	return last == s.currentIndex && last >= 0 && last < len(s.entries)
 }
 
 func (s *Service) Previous() (State, bool) {
@@ -350,6 +397,10 @@ func (s *Service) Previous() (State, bool) {
 			s.afterMutation(state)
 			return state, true
 		}
+
+		state := s.snapshotLocked()
+		s.mu.Unlock()
+		return state, false
 	}
 
 	if s.currentIndex == 0 {
@@ -500,11 +551,44 @@ func (s *Service) snapshotLocked() State {
 		state.CurrentTrack = &track
 	}
 
+	state.ShuffleDebug = s.shuffleDebugStateLocked()
+
 	if !s.updatedAt.IsZero() {
 		state.UpdatedAt = s.updatedAt.UTC().Format(time.RFC3339)
 	}
 
 	return state
+}
+
+func (s *Service) shuffleDebugStateLocked() *ShuffleDebugState {
+	if !s.shuffle {
+		return nil
+	}
+
+	recentWindow := s.recentShuffleWindowLocked()
+	guardPrefix := s.recentGuardPrefixLocked(len(s.shuffleOrder))
+	cycleLength := len(s.lastShuffle)
+	cycleProgress := cycleLength - len(s.shuffleOrder)
+	if cycleProgress < 0 {
+		cycleProgress = 0
+	}
+	if cycleProgress > cycleLength {
+		cycleProgress = cycleLength
+	}
+
+	debug := &ShuffleDebugState{
+		SessionVersion: s.shuffleSessionVersion,
+		CycleVersion:   s.shuffleCycleVersion,
+		CycleLength:    cycleLength,
+		CycleProgress:  cycleProgress,
+		RecentWindow:   recentWindow,
+		GuardPrefix:    guardPrefix,
+		TrailIndices:   append([]int(nil), s.shuffleTrail...),
+		Upcoming:       append([]int(nil), s.shuffleOrder...),
+		RecentIndices:  s.recentShuffleIndicesLocked(),
+	}
+
+	return debug
 }
 
 func (s *Service) touchLocked() {
@@ -632,6 +716,8 @@ func (s *Service) syncShuffleAfterQueueMutationLocked() {
 		s.shuffleOrder = nil
 		s.shuffleTrail = nil
 		s.lastShuffle = nil
+		s.shuffleSessionVersion = 0
+		s.shuffleCycleVersion = 0
 		return
 	}
 
@@ -639,16 +725,13 @@ func (s *Service) syncShuffleAfterQueueMutationLocked() {
 	s.resetShuffleSessionLocked()
 }
 
-func (s *Service) syncShuffleAfterDirectJumpLocked(index int) {
+func (s *Service) syncShuffleAfterDirectJumpLocked(_ int) {
 	if !s.shuffle {
 		return
 	}
 
-	s.ensureShuffleSessionLocked()
-	if len(s.shuffleTrail) == 0 || s.shuffleTrail[len(s.shuffleTrail)-1] != index {
-		s.recordShuffleVisitLocked(index)
-	}
-	s.removeFromShuffleOrderLocked(index)
+	s.lastShuffle = nil
+	s.resetShuffleSessionLocked()
 }
 
 func (s *Service) ensureShuffleSessionLocked() {
@@ -679,6 +762,8 @@ func (s *Service) resetShuffleSessionLocked() {
 		s.shuffleOrder = nil
 		s.shuffleTrail = nil
 		s.lastShuffle = nil
+		s.shuffleSessionVersion = 0
+		s.shuffleCycleVersion = 0
 		return
 	}
 
@@ -687,6 +772,8 @@ func (s *Service) resetShuffleSessionLocked() {
 	}
 
 	s.shuffleTrail = []int{s.currentIndex}
+	s.shuffleSessionVersion++
+	s.shuffleCycleVersion = 0
 	s.refillShuffleOrderLocked()
 }
 
@@ -695,6 +782,7 @@ func (s *Service) refillShuffleOrderLocked() {
 	if total <= 1 {
 		s.shuffleOrder = nil
 		s.lastShuffle = nil
+		s.shuffleCycleVersion = 0
 		return
 	}
 
@@ -709,12 +797,14 @@ func (s *Service) refillShuffleOrderLocked() {
 	if len(candidates) == 0 {
 		s.shuffleOrder = nil
 		s.lastShuffle = nil
+		s.shuffleCycleVersion = 0
 		return
 	}
 
 	order := s.buildShuffleOrderWithCycleDistanceLocked(candidates)
 	s.shuffleOrder = order
 	s.lastShuffle = append([]int(nil), order...)
+	s.shuffleCycleVersion++
 }
 
 func (s *Service) buildShuffleOrderWithCycleDistanceLocked(candidates []int) []int {
@@ -745,8 +835,16 @@ func (s *Service) buildShuffleOrderWithCycleDistanceLocked(candidates []int) []i
 		}
 
 		if s.shuffleCycleAcceptedLocked(previous, order, stats) {
-			copy(bestOrder, order)
-			break
+			guardedOrder := make([]int, len(order))
+			copy(guardedOrder, order)
+			s.applyRecentHistoryGuardLocked(guardedOrder)
+
+			_, guardedStats := s.shuffleCycleClosenessScoreLocked(previous, guardedOrder)
+			if s.shuffleCycleAcceptedLocked(previous, guardedOrder, guardedStats) {
+				return guardedOrder
+			}
+
+			return order
 		}
 	}
 
@@ -841,7 +939,7 @@ func (s *Service) shuffleCycleAcceptedLocked(previous []int, current []int, stat
 	}
 
 	maxSamePosition := maxInt(1, n/10)
-	maxSamePairs := n / 12
+	maxSamePairs := maxInt(2, n/12)
 
 	if stats.firstEqual {
 		return false
@@ -1125,11 +1223,147 @@ func (s *Service) sameAlbumLocked(left int, right int) bool {
 
 	leftAlbum := strings.ToLower(strings.TrimSpace(s.entries[left].Album))
 	rightAlbum := strings.ToLower(strings.TrimSpace(s.entries[right].Album))
-	if leftAlbum == "" || rightAlbum == "" {
+	leftAlbumArtist := strings.ToLower(strings.TrimSpace(s.entries[left].AlbumArtist))
+	rightAlbumArtist := strings.ToLower(strings.TrimSpace(s.entries[right].AlbumArtist))
+	if leftAlbum == "" || rightAlbum == "" || leftAlbumArtist == "" || rightAlbumArtist == "" {
 		return false
 	}
 
-	return leftAlbum == rightAlbum
+	return leftAlbum == rightAlbum && leftAlbumArtist == rightAlbumArtist
+}
+
+func (s *Service) applyRecentHistoryGuardLocked(order []int) {
+	if len(order) < 2 || len(s.entries) < 5 {
+		return
+	}
+
+	recentSet := s.recentShuffleIndexSetLocked()
+	if len(recentSet) == 0 {
+		return
+	}
+
+	guardPrefix := s.recentGuardPrefixLocked(len(order))
+	if guardPrefix <= 0 {
+		return
+	}
+
+	for i := 0; i < guardPrefix; i++ {
+		if _, guarded := recentSet[order[i]]; !guarded {
+			continue
+		}
+
+		swapIndex := -1
+		for j := i + 1; j < len(order); j++ {
+			if _, guardedLater := recentSet[order[j]]; guardedLater {
+				continue
+			}
+			swapIndex = j
+			break
+		}
+
+		if swapIndex >= 0 {
+			order[i], order[swapIndex] = order[swapIndex], order[i]
+		}
+	}
+}
+
+func (s *Service) recentShuffleWindowLocked() int {
+	if len(s.entries) <= 1 {
+		return 0
+	}
+
+	window := len(s.entries) / 3
+	if window < 3 {
+		window = 3
+	}
+	if window > 8 {
+		window = 8
+	}
+
+	maxWindow := len(s.entries) - 1
+	if window > maxWindow {
+		window = maxWindow
+	}
+
+	if window < 0 {
+		return 0
+	}
+
+	return window
+}
+
+func (s *Service) recentGuardPrefixLocked(orderLength int) int {
+	if orderLength <= 0 {
+		return 0
+	}
+
+	prefix := len(s.entries) / 5
+	if prefix < 2 {
+		prefix = 2
+	}
+	if prefix > 6 {
+		prefix = 6
+	}
+
+	nonRecent := orderLength - s.recentShuffleWindowLocked()
+	if nonRecent < 0 {
+		nonRecent = 0
+	}
+	if prefix > nonRecent {
+		prefix = nonRecent
+	}
+	if prefix > orderLength {
+		prefix = orderLength
+	}
+	if prefix < 0 {
+		return 0
+	}
+
+	return prefix
+}
+
+func (s *Service) recentShuffleIndicesLocked() []int {
+	if len(s.shuffleTrail) == 0 {
+		return nil
+	}
+
+	window := s.recentShuffleWindowLocked()
+	if window <= 0 {
+		return nil
+	}
+
+	recent := make([]int, 0, window)
+	seen := make(map[int]struct{}, window)
+	for i := len(s.shuffleTrail) - 1; i >= 0 && len(recent) < window; i-- {
+		index := s.shuffleTrail[i]
+		if index == s.currentIndex {
+			continue
+		}
+		if !s.validIndexLocked(index) {
+			continue
+		}
+		if _, exists := seen[index]; exists {
+			continue
+		}
+		seen[index] = struct{}{}
+		recent = append(recent, index)
+	}
+
+	return recent
+}
+
+func (s *Service) recentShuffleIndexSetLocked() map[int]struct{} {
+	recent := s.recentShuffleIndicesLocked()
+	if len(recent) == 0 {
+		return nil
+	}
+
+	set := make(map[int]struct{}, len(recent))
+	for _, index := range recent {
+		set[index] = struct{}{}
+	}
+
+	return set
 }
 
 func (s *Service) isAlbumAscendingPairLocked(left int, right int) bool {

@@ -2,6 +2,7 @@ package queue
 
 import (
 	"ben/internal/db"
+	"ben/internal/library"
 	"database/sql"
 	"fmt"
 	"math/rand"
@@ -196,6 +197,269 @@ func TestShufflePreviousFollowsPlaybackTrail(t *testing.T) {
 	}
 	if backState.CurrentTrack.ID != first.ID {
 		t.Fatalf("expected previous to return first track")
+	}
+}
+
+func TestShufflePreviousAtTrailStartKeepsSessionOrder(t *testing.T) {
+	t.Parallel()
+
+	service, database := newQueueServiceForTest(t)
+	defer database.Close()
+
+	trackIDs := []int64{
+		insertTrackForTest(t, database, "S-Prev-1"),
+		insertTrackForTest(t, database, "S-Prev-2"),
+		insertTrackForTest(t, database, "S-Prev-3"),
+		insertTrackForTest(t, database, "S-Prev-4"),
+	}
+
+	if _, err := service.SetQueue(trackIDs, 0); err != nil {
+		t.Fatalf("set queue: %v", err)
+	}
+
+	service.rng = rand.New(rand.NewSource(1337))
+	service.SetShuffle(true)
+
+	before := service.GetState()
+	if before.CurrentTrack == nil {
+		t.Fatalf("expected current track before previous")
+	}
+
+	service.mu.Lock()
+	if len(service.shuffleOrder) == 0 {
+		service.mu.Unlock()
+		t.Fatalf("expected shuffle order")
+	}
+	expectedNextIndex := service.shuffleOrder[0]
+	expectedNextID := service.entries[expectedNextIndex].ID
+	service.mu.Unlock()
+
+	afterPrevious, moved := service.Previous()
+	if moved {
+		t.Fatalf("expected previous to stop at trail start")
+	}
+	if afterPrevious.CurrentTrack == nil || afterPrevious.CurrentTrack.ID != before.CurrentTrack.ID {
+		t.Fatalf("expected previous at trail start to keep current track")
+	}
+
+	afterNext, moved := service.Next()
+	if !moved {
+		t.Fatalf("expected next to advance")
+	}
+	if afterNext.CurrentTrack == nil || afterNext.CurrentTrack.ID != expectedNextID {
+		t.Fatalf("expected next to follow existing shuffle order")
+	}
+}
+
+func TestShuffleDirectJumpResetsSessionFromSelectedTrack(t *testing.T) {
+	t.Parallel()
+
+	service, database := newQueueServiceForTest(t)
+	defer database.Close()
+
+	trackIDs := []int64{
+		insertTrackForTest(t, database, "S-Jump-1"),
+		insertTrackForTest(t, database, "S-Jump-2"),
+		insertTrackForTest(t, database, "S-Jump-3"),
+		insertTrackForTest(t, database, "S-Jump-4"),
+		insertTrackForTest(t, database, "S-Jump-5"),
+		insertTrackForTest(t, database, "S-Jump-6"),
+	}
+
+	if _, err := service.SetQueue(trackIDs, 0); err != nil {
+		t.Fatalf("set queue: %v", err)
+	}
+
+	service.rng = rand.New(rand.NewSource(88))
+	service.SetShuffle(true)
+
+	if _, moved := service.Next(); !moved {
+		t.Fatalf("expected first shuffle advance")
+	}
+	if _, moved := service.Next(); !moved {
+		t.Fatalf("expected second shuffle advance")
+	}
+
+	jumpIndex := 4
+	if _, err := service.SetCurrentIndex(jumpIndex); err != nil {
+		t.Fatalf("set current index: %v", err)
+	}
+
+	service.mu.Lock()
+	defer service.mu.Unlock()
+
+	if len(service.shuffleTrail) != 1 || service.shuffleTrail[0] != jumpIndex {
+		t.Fatalf("expected direct jump to reset shuffle trail to selected index")
+	}
+
+	for _, index := range service.shuffleOrder {
+		if index == jumpIndex {
+			t.Fatalf("expected selected index to be excluded from next shuffle order")
+		}
+	}
+}
+
+func TestPeekAutoplayNextDoesNotMutateShuffleState(t *testing.T) {
+	t.Parallel()
+
+	service, database := newQueueServiceForTest(t)
+	defer database.Close()
+
+	trackIDs := []int64{
+		insertTrackForTest(t, database, "Peek-1"),
+		insertTrackForTest(t, database, "Peek-2"),
+		insertTrackForTest(t, database, "Peek-3"),
+		insertTrackForTest(t, database, "Peek-4"),
+		insertTrackForTest(t, database, "Peek-5"),
+	}
+
+	if _, err := service.SetQueue(trackIDs, 0); err != nil {
+		t.Fatalf("set queue: %v", err)
+	}
+
+	service.rng = rand.New(rand.NewSource(505))
+	service.SetShuffle(true)
+
+	service.mu.Lock()
+	beforeOrder := append([]int(nil), service.shuffleOrder...)
+	beforeTrail := append([]int(nil), service.shuffleTrail...)
+	service.mu.Unlock()
+
+	firstPeek, ok := service.PeekAutoplayNext()
+	if !ok || firstPeek == nil {
+		t.Fatalf("expected autoplay peek track")
+	}
+
+	secondPeek, ok := service.PeekAutoplayNext()
+	if !ok || secondPeek == nil {
+		t.Fatalf("expected second autoplay peek track")
+	}
+	if secondPeek.ID != firstPeek.ID {
+		t.Fatalf("expected repeated peek to return same track")
+	}
+
+	service.mu.Lock()
+	afterOrder := append([]int(nil), service.shuffleOrder...)
+	afterTrail := append([]int(nil), service.shuffleTrail...)
+	service.mu.Unlock()
+
+	if len(beforeOrder) != len(afterOrder) {
+		t.Fatalf("expected peek to keep shuffle order length")
+	}
+	for i := range beforeOrder {
+		if beforeOrder[i] != afterOrder[i] {
+			t.Fatalf("expected peek not to mutate shuffle order")
+		}
+	}
+	if len(beforeTrail) != len(afterTrail) {
+		t.Fatalf("expected peek to keep shuffle trail length")
+	}
+	for i := range beforeTrail {
+		if beforeTrail[i] != afterTrail[i] {
+			t.Fatalf("expected peek not to mutate shuffle trail")
+		}
+	}
+
+	nextState, moved := service.Next()
+	if !moved || nextState.CurrentTrack == nil {
+		t.Fatalf("expected next to move")
+	}
+	if nextState.CurrentTrack.ID != firstPeek.ID {
+		t.Fatalf("expected next track to match peek result")
+	}
+}
+
+func TestShuffleRecentHistoryGuardAtCycleBoundary(t *testing.T) {
+	t.Parallel()
+
+	service, database := newQueueServiceForTest(t)
+	defer database.Close()
+
+	trackIDs := make([]int64, 0, 8)
+	for i := 0; i < 8; i++ {
+		trackIDs = append(trackIDs, insertTrackForTest(t, database, fmt.Sprintf("S-History-%d", i+1)))
+	}
+
+	if _, err := service.SetQueue(trackIDs, 0); err != nil {
+		t.Fatalf("set queue: %v", err)
+	}
+	if _, err := service.SetRepeatMode(RepeatModeAll); err != nil {
+		t.Fatalf("set repeat mode: %v", err)
+	}
+
+	service.rng = rand.New(rand.NewSource(404))
+	service.SetShuffle(true)
+
+	state := service.GetState()
+	if state.CurrentTrack == nil {
+		t.Fatalf("expected current track")
+	}
+
+	playedCycle := []int64{state.CurrentTrack.ID}
+	for i := 0; i < len(trackIDs)-1; i++ {
+		nextState, moved := service.Next()
+		if !moved || nextState.CurrentTrack == nil {
+			t.Fatalf("expected full first cycle traversal")
+		}
+		playedCycle = append(playedCycle, nextState.CurrentTrack.ID)
+	}
+
+	recentWindow := service.recentShuffleWindowLocked()
+	recentSet := make(map[int64]struct{}, recentWindow)
+	for i := len(playedCycle) - 2; i >= 0 && len(recentSet) < recentWindow; i-- {
+		recentSet[playedCycle[i]] = struct{}{}
+	}
+
+	secondCycleState, moved := service.Next()
+	if !moved || secondCycleState.CurrentTrack == nil {
+		t.Fatalf("expected second cycle to start")
+	}
+
+	if _, found := recentSet[secondCycleState.CurrentTrack.ID]; found {
+		t.Fatalf("expected first track of next cycle to avoid very recent history")
+	}
+
+	service.mu.Lock()
+	guardPrefix := service.recentGuardPrefixLocked(len(service.lastShuffle))
+	checkUpcoming := guardPrefix - 1
+	if checkUpcoming > len(service.shuffleOrder) {
+		checkUpcoming = len(service.shuffleOrder)
+	}
+	upcomingIndices := append([]int(nil), service.shuffleOrder[:checkUpcoming]...)
+	entries := append([]library.TrackSummary(nil), service.entries...)
+	service.mu.Unlock()
+
+	for _, index := range upcomingIndices {
+		if index < 0 || index >= len(entries) {
+			t.Fatalf("expected upcoming index to be in range")
+		}
+		if _, found := recentSet[entries[index].ID]; found {
+			t.Fatalf("expected guarded upcoming prefix to avoid very recent history")
+		}
+	}
+}
+
+func TestSameAlbumUsesAlbumAndAlbumArtist(t *testing.T) {
+	t.Parallel()
+
+	service, database := newQueueServiceForTest(t)
+	defer database.Close()
+
+	first := insertTrackWithMetadataForTest(t, database, "AlbumKey-1", "Artist One", "Shared Album", 1, 1)
+	second := insertTrackWithMetadataForTest(t, database, "AlbumKey-2", "Artist Two", "Shared Album", 1, 2)
+
+	if _, err := service.SetQueue([]int64{first, second}, 0); err != nil {
+		t.Fatalf("set queue: %v", err)
+	}
+
+	service.mu.Lock()
+	defer service.mu.Unlock()
+
+	if service.sameAlbumLocked(0, 0) == false {
+		t.Fatalf("expected track to match its own album key")
+	}
+	if service.sameAlbumLocked(0, 1) {
+		t.Fatalf("expected different album artists to produce different album key")
 	}
 }
 

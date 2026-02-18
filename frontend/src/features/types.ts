@@ -102,8 +102,21 @@ export type QueueState = {
   currentTrack?: LibraryTrack;
   repeatMode: string;
   shuffle: boolean;
+  shuffleDebug?: ShuffleDebugState;
   total: number;
   updatedAt: string;
+};
+
+export type ShuffleDebugState = {
+  sessionVersion: number;
+  cycleVersion: number;
+  cycleLength: number;
+  cycleProgress: number;
+  recentWindow: number;
+  guardPrefix: number;
+  trailIndices: number[];
+  upcoming: number[];
+  recentIndices: number[];
 };
 
 export type PlayerState = {

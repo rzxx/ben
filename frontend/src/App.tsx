@@ -105,6 +105,7 @@ function createEmptyQueueState(): QueueState {
     currentIndex: -1,
     repeatMode: "off",
     shuffle: false,
+    shuffleDebug: undefined,
     total: 0,
     updatedAt: "",
   };

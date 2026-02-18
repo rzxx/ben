@@ -13,6 +13,7 @@ import {
   WatchedRoot,
 } from "../types";
 import { BackgroundShaderSettingsSection } from "./BackgroundShaderSettingsSection";
+import { useQueueViewStore } from "../../shared/store/queueViewStore";
 
 type SettingsViewProps = {
   lastProgress: ScanProgress | null;
@@ -40,6 +41,10 @@ type SettingsViewProps = {
 };
 
 export function SettingsView(props: SettingsViewProps) {
+  const shuffleDebugOpen = useQueueViewStore((state) => state.shuffleDebugOpen);
+  const setShuffleDebugOpen = useQueueViewStore(
+    (state) => state.setShuffleDebugOpen,
+  );
   const coverURL = coverPathToURL(props.currentCoverPath);
   const gradientPreviewStyle = buildGradientPreviewStyle(
     props.themePalette?.gradient ?? [],
@@ -80,6 +85,15 @@ export function SettingsView(props: SettingsViewProps) {
             <option value="light">Light</option>
             <option value="dark">Dark</option>
           </select>
+        </label>
+
+        <label className="text-theme-700 dark:text-theme-300 mt-3 inline-flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={shuffleDebugOpen}
+            onChange={(event) => setShuffleDebugOpen(event.target.checked)}
+          />
+          Show shuffle debug in queue view
         </label>
       </section>
 

@@ -9,12 +9,78 @@ import { Create as $Create } from "@wailsio/runtime";
 // @ts-ignore: Unused imports
 import * as library$0 from "../library/models.js";
 
+export class ShuffleDebugState {
+    "sessionVersion": number;
+    "cycleVersion": number;
+    "cycleLength": number;
+    "cycleProgress": number;
+    "recentWindow": number;
+    "guardPrefix": number;
+    "trailIndices": number[];
+    "upcoming": number[];
+    "recentIndices": number[];
+
+    /** Creates a new ShuffleDebugState instance. */
+    constructor($$source: Partial<ShuffleDebugState> = {}) {
+        if (!("sessionVersion" in $$source)) {
+            this["sessionVersion"] = 0;
+        }
+        if (!("cycleVersion" in $$source)) {
+            this["cycleVersion"] = 0;
+        }
+        if (!("cycleLength" in $$source)) {
+            this["cycleLength"] = 0;
+        }
+        if (!("cycleProgress" in $$source)) {
+            this["cycleProgress"] = 0;
+        }
+        if (!("recentWindow" in $$source)) {
+            this["recentWindow"] = 0;
+        }
+        if (!("guardPrefix" in $$source)) {
+            this["guardPrefix"] = 0;
+        }
+        if (!("trailIndices" in $$source)) {
+            this["trailIndices"] = [];
+        }
+        if (!("upcoming" in $$source)) {
+            this["upcoming"] = [];
+        }
+        if (!("recentIndices" in $$source)) {
+            this["recentIndices"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ShuffleDebugState instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ShuffleDebugState {
+        const $$createField6_0 = $$createType0;
+        const $$createField7_0 = $$createType0;
+        const $$createField8_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("trailIndices" in $$parsedSource) {
+            $$parsedSource["trailIndices"] = $$createField6_0($$parsedSource["trailIndices"]);
+        }
+        if ("upcoming" in $$parsedSource) {
+            $$parsedSource["upcoming"] = $$createField7_0($$parsedSource["upcoming"]);
+        }
+        if ("recentIndices" in $$parsedSource) {
+            $$parsedSource["recentIndices"] = $$createField8_0($$parsedSource["recentIndices"]);
+        }
+        return new ShuffleDebugState($$parsedSource as Partial<ShuffleDebugState>);
+    }
+}
+
 export class State {
     "entries": library$0.TrackSummary[];
     "currentIndex": number;
     "currentTrack"?: library$0.TrackSummary | null;
     "repeatMode": string;
     "shuffle": boolean;
+    "shuffleDebug"?: ShuffleDebugState | null;
     "total": number;
     "updatedAt": string;
 
@@ -46,8 +112,9 @@ export class State {
      * Creates a new State instance from a string or object.
      */
     static createFrom($$source: any = {}): State {
-        const $$createField0_0 = $$createType1;
-        const $$createField2_0 = $$createType2;
+        const $$createField0_0 = $$createType2;
+        const $$createField2_0 = $$createType3;
+        const $$createField5_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("entries" in $$parsedSource) {
             $$parsedSource["entries"] = $$createField0_0($$parsedSource["entries"]);
@@ -55,11 +122,17 @@ export class State {
         if ("currentTrack" in $$parsedSource) {
             $$parsedSource["currentTrack"] = $$createField2_0($$parsedSource["currentTrack"]);
         }
+        if ("shuffleDebug" in $$parsedSource) {
+            $$parsedSource["shuffleDebug"] = $$createField5_0($$parsedSource["shuffleDebug"]);
+        }
         return new State($$parsedSource as Partial<State>);
     }
 }
 
 // Private type creation functions
-const $$createType0 = library$0.TrackSummary.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = $Create.Nullable($$createType0);
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = library$0.TrackSummary.createFrom;
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = $Create.Nullable($$createType1);
+const $$createType4 = ShuffleDebugState.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
