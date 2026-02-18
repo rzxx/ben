@@ -56,6 +56,12 @@ func main() {
 	playerService := NewPlayerService(playerDomain)
 	statsService := NewStatsService(statsDomain)
 	scannerService := NewScannerService(scannerDomain)
+	bootstrapService := NewBootstrapService(
+		browseRepo,
+		queueDomain,
+		playerDomain,
+		scannerDomain,
+	)
 
 	app := application.New(application.Options{
 		Name:        "Ben",
@@ -63,6 +69,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(settingsService),
 			application.NewService(libraryService),
+			application.NewService(bootstrapService),
 			application.NewServiceWithOptions(coverService, application.ServiceOptions{Route: "/covers"}),
 			application.NewService(themeService),
 			application.NewService(queueService),

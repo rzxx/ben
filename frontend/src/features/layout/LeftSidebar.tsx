@@ -3,6 +3,7 @@ import { BarChart3, Library, Music2, Settings2, Users } from "lucide-react";
 type LeftSidebarProps = {
   location: string;
   onNavigate: (path: string) => void;
+  onNavigateIntent?: (path: string) => void;
 };
 
 const navItems = [
@@ -28,6 +29,8 @@ export function LeftSidebar(props: LeftSidebarProps) {
               key={item.path}
               type="button"
               onClick={() => props.onNavigate(item.path)}
+              onMouseEnter={() => props.onNavigateIntent?.(item.path)}
+              onFocus={() => props.onNavigateIntent?.(item.path)}
               className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
                 isActive
                   ? "bg-theme-900 text-theme-100 dark:bg-theme-100 dark:text-theme-900"

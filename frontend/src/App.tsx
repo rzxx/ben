@@ -1,5 +1,7 @@
 import {
   FormEvent,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -8,24 +10,60 @@ import {
 } from "react";
 import { Redirect, Route, Router, Switch, useLocation } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
-import { Call, Events } from "@wailsio/runtime";
+import { Events } from "@wailsio/runtime";
 import { ScrollArea } from "@base-ui/react/scroll-area";
+import { GetInitialState as getAppBootstrap } from "../bindings/ben/bootstrapservice";
+import {
+  GetAlbumDetail as getAlbumDetail,
+  GetAlbumQueueTrackIDs as getAlbumQueueTrackIDs,
+  GetAlbumQueueTrackIDsFromTrack as getAlbumQueueTrackIDsFromTrack,
+  GetArtistDetail as getArtistDetail,
+  GetArtistQueueTrackIDs as getArtistQueueTrackIDs,
+  GetArtistQueueTrackIDsFromTopTrack as getArtistQueueTrackIDsFromTopTrack,
+  GetArtistTopTracks as getArtistTopTracks,
+  ListAlbums as listAlbums,
+  ListArtists as listArtists,
+  ListTracks as listTracks,
+} from "../bindings/ben/libraryservice";
+import {
+  Next as nextTrack,
+  Play as play,
+  Previous as previousTrack,
+  Seek as seek,
+  SetVolume as setVolume,
+  TogglePlayback as togglePlayback,
+} from "../bindings/ben/playerservice";
+import {
+  AppendTracks as appendTracks,
+  Clear as clearQueue,
+  RemoveTrack as removeQueueTrack,
+  SetCurrentIndex as setCurrentQueueIndex,
+  SetQueue as setQueue,
+  SetRepeatMode as setQueueRepeatMode,
+  SetShuffle as setQueueShuffle,
+} from "../bindings/ben/queueservice";
+import {
+  GetStatus as getScannerStatus,
+  TriggerScan as triggerScan,
+} from "../bindings/ben/scannerservice";
+import {
+  AddWatchedRoot as addWatchedRoot,
+  ListWatchedRoots as listWatchedRoots,
+  RemoveWatchedRoot as removeWatchedRoot,
+  SetWatchedRootEnabled as setWatchedRootEnabled,
+} from "../bindings/ben/settingsservice";
 import {
   GetDashboard as getStatsDashboard,
   GetOverview as getStatsOverview,
 } from "../bindings/ben/statsservice";
+import {
+  DefaultOptions as getThemeDefaultOptions,
+  GenerateFromCover as generateThemeFromCover,
+} from "../bindings/ben/themeservice";
 import { LeftSidebar } from "./features/layout/LeftSidebar";
 import { RightSidebar } from "./features/layout/RightSidebar";
 import { TitleBar } from "./features/layout/TitleBar";
-import { AlbumDetailView } from "./features/library/AlbumDetailView";
-import { AlbumsGridView } from "./features/library/AlbumsGridView";
-import { ArtistDetailView } from "./features/library/ArtistDetailView";
-import { ArtistsGridView } from "./features/library/ArtistsGridView";
-import { TracksListView } from "./features/library/TracksListView";
 import { PlayerBar } from "./features/player/PlayerBar";
-import { SettingsView } from "./features/settings/SettingsView";
-import { StatsView } from "./features/stats/StatsView";
-import { BackgroundShader } from "./shared/components/BackgroundShader";
 import { useBackgroundShaderStore } from "./shared/store/backgroundShaderStore";
 import {
   AlbumDetail,
@@ -50,13 +88,6 @@ import {
   WatchedRoot,
 } from "./features/types";
 
-const settingsService = "main.SettingsService";
-const libraryService = "main.LibraryService";
-const scannerService = "main.ScannerService";
-const queueService = "main.QueueService";
-const playerService = "main.PlayerService";
-const themeService = "main.ThemeService";
-
 const scanProgressEvent = "scanner:progress";
 const queueStateEvent = "queue:state";
 const playerStateEvent = "player:state";
@@ -66,6 +97,8 @@ const detailLimit = 200;
 const statsRefreshIntervalMS = 30000;
 const appMemoryLocation = memoryLocation({ path: "/albums" });
 const maxThemePaletteCacheEntries = 48;
+const bootstrapAlbumsOffset = 0;
+const postPaintIdleTimeoutMS = 1200;
 const tailwindThemeTones = [
   50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950,
 ] as const;
@@ -73,6 +106,47 @@ const themeModeStorageKey = "ben.theme-mode";
 const darkColorSchemeMediaQuery = "(prefers-color-scheme: dark)";
 type ResolvedThemeMode = "light" | "dark";
 type TailwindThemeScale = "theme" | "accent";
+
+const AlbumDetailView = lazy(() =>
+  import("./features/library/AlbumDetailView").then((module) => ({
+    default: module.AlbumDetailView,
+  })),
+);
+const AlbumsGridView = lazy(() =>
+  import("./features/library/AlbumsGridView").then((module) => ({
+    default: module.AlbumsGridView,
+  })),
+);
+const ArtistDetailView = lazy(() =>
+  import("./features/library/ArtistDetailView").then((module) => ({
+    default: module.ArtistDetailView,
+  })),
+);
+const ArtistsGridView = lazy(() =>
+  import("./features/library/ArtistsGridView").then((module) => ({
+    default: module.ArtistsGridView,
+  })),
+);
+const SettingsView = lazy(() =>
+  import("./features/settings/SettingsView").then((module) => ({
+    default: module.SettingsView,
+  })),
+);
+const StatsView = lazy(() =>
+  import("./features/stats/StatsView").then((module) => ({
+    default: module.StatsView,
+  })),
+);
+const TracksListView = lazy(() =>
+  import("./features/library/TracksListView").then((module) => ({
+    default: module.TracksListView,
+  })),
+);
+const DeferredBackgroundShader = lazy(() =>
+  import("./shared/components/BackgroundShader").then((module) => ({
+    default: module.BackgroundShader,
+  })),
+);
 
 function parseThemeModePreference(value: string | null): ThemeModePreference {
   if (value === "light" || value === "dark" || value === "system") {
@@ -266,6 +340,56 @@ function applyPaletteScaleVariables(
   }
 }
 
+function scheduleAfterPaintAndIdle(callback: () => void): () => void {
+  let cancelled = false;
+  let timeoutId = 0;
+  let idleId = 0;
+
+  const run = () => {
+    if (cancelled) {
+      return;
+    }
+    callback();
+  };
+
+  const requestIdle: (
+    callback: IdleRequestCallback,
+    options?: IdleRequestOptions,
+  ) => number = window.requestIdleCallback
+    ? (callback, options) => window.requestIdleCallback(callback, options)
+    : (callback) =>
+        window.setTimeout(
+          () =>
+            callback({
+              didTimeout: false,
+              timeRemaining: () => 0,
+            }),
+          1,
+        );
+  const cancelIdle: (id: number) => void = window.cancelIdleCallback
+    ? (id) => window.cancelIdleCallback(id)
+    : (id) => {
+        window.clearTimeout(id);
+      };
+
+  const paintId = window.requestAnimationFrame(() => {
+    timeoutId = window.setTimeout(() => {
+      idleId = requestIdle(run, { timeout: postPaintIdleTimeoutMS });
+    }, 0);
+  });
+
+  return () => {
+    cancelled = true;
+    window.cancelAnimationFrame(paintId);
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+    }
+    if (idleId) {
+      cancelIdle(idleId);
+    }
+  };
+}
+
 function AppContent() {
   const [location, navigate] = useLocation();
   const isStatsRoute = location.startsWith("/stats");
@@ -302,6 +426,14 @@ function AppContent() {
     useState<ResolvedThemeMode>("dark");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [transportBusy, setTransportBusy] = useState(false);
+  const [isBootstrapped, setIsBootstrapped] = useState(false);
+  const [isShaderReady, setIsShaderReady] = useState(false);
+  const [hasLoadedSettingsPayload, setHasLoadedSettingsPayload] =
+    useState(false);
+  const [hasLoadedArtistsPage, setHasLoadedArtistsPage] = useState(false);
+  const [hasLoadedTracksPage, setHasLoadedTracksPage] = useState(false);
+  const [bootstrapThemeModePreference, setBootstrapThemeModePreference] =
+    useState<ThemeModePreference>("system");
 
   const [artistsPage, setArtistsPage] = useState<PagedResult<LibraryArtist>>({
     items: [],
@@ -337,6 +469,7 @@ function AppContent() {
   const statsRefreshKeyRef = useRef("");
   const statsRangeRef = useRef<StatsRange>("short");
   const statsRouteRef = useRef(false);
+  const locationRef = useRef(location);
   const statsOverviewRequestTokenRef = useRef(0);
   const statsDashboardRequestTokenRef = useRef(0);
   const statsOverviewRequestRef = useRef<ReturnType<
@@ -352,23 +485,49 @@ function AppContent() {
   const themePaletteCacheRef = useRef(new Map<string, ThemePalette>());
 
   const loadWatchedRoots = useCallback(async () => {
-    const roots = await Call.ByName(`${settingsService}.ListWatchedRoots`);
+    const roots = await listWatchedRoots();
     setWatchedRoots((roots ?? []) as WatchedRoot[]);
   }, []);
 
   const loadScanStatus = useCallback(async () => {
-    const status = await Call.ByName(`${scannerService}.GetStatus`);
+    const status = await getScannerStatus();
     setScanStatus((status ?? { running: false }) as ScanStatus);
   }, []);
 
-  const loadQueueState = useCallback(async () => {
-    const state = await Call.ByName(`${queueService}.GetState`);
-    setQueueState((state ?? createEmptyQueueState()) as QueueState);
+  const loadBootstrap = useCallback(async () => {
+    const snapshot = await getAppBootstrap(browseLimit, bootstrapAlbumsOffset);
+    setQueueState(
+      (snapshot?.queueState ?? createEmptyQueueState()) as QueueState,
+    );
+    setPlayerState(
+      (snapshot?.playerState ?? createEmptyPlayerState()) as PlayerState,
+    );
+    setScanStatus((snapshot?.scanStatus ?? { running: false }) as ScanStatus);
+    setAlbumsPage(
+      normalizePagedResult<LibraryAlbum>(snapshot?.albumsPage, browseLimit),
+    );
+    setBootstrapThemeModePreference(
+      parseThemeModePreference(snapshot?.themeModePreference ?? null),
+    );
   }, []);
 
-  const loadPlayerState = useCallback(async () => {
-    const state = await Call.ByName(`${playerService}.GetState`);
-    setPlayerState((state ?? createEmptyPlayerState()) as PlayerState);
+  const loadArtistsPage = useCallback(async () => {
+    const artistRows = await listArtists("", browseLimit, 0);
+    setArtistsPage(
+      normalizePagedResult<LibraryArtist>(artistRows, browseLimit),
+    );
+    setHasLoadedArtistsPage(true);
+  }, []);
+
+  const loadAlbumsPage = useCallback(async () => {
+    const albumRows = await listAlbums("", "", browseLimit, 0);
+    setAlbumsPage(normalizePagedResult<LibraryAlbum>(albumRows, browseLimit));
+  }, []);
+
+  const loadTracksPage = useCallback(async () => {
+    const trackRows = await listTracks("", "", "", browseLimit, 0);
+    setTracksPage(normalizePagedResult<LibraryTrack>(trackRows, browseLimit));
+    setHasLoadedTracksPage(true);
   }, []);
 
   const loadStatsOverview = useCallback(async () => {
@@ -428,30 +587,25 @@ function AppContent() {
   }, []);
 
   const loadThemeDefaults = useCallback(async () => {
-    const options = await Call.ByName(`${themeService}.DefaultOptions`);
+    const options = await getThemeDefaultOptions();
     setThemeOptions(
       (options ?? createDefaultThemeExtractOptions()) as ThemeExtractOptions,
     );
   }, []);
 
-  const loadLibraryData = useCallback(async () => {
-    const [artistRows, albumRows, trackRows] = await Promise.all([
-      Call.ByName(`${libraryService}.ListArtists`, "", browseLimit, 0),
-      Call.ByName(`${libraryService}.ListAlbums`, "", "", browseLimit, 0),
-      Call.ByName(`${libraryService}.ListTracks`, "", "", "", browseLimit, 0),
+  const loadSettingsPayload = useCallback(async () => {
+    await Promise.all([
+      loadWatchedRoots(),
+      loadThemeDefaults(),
+      loadStatsOverview(),
     ]);
-
-    setArtistsPage(
-      normalizePagedResult<LibraryArtist>(artistRows, browseLimit),
-    );
-    setAlbumsPage(normalizePagedResult<LibraryAlbum>(albumRows, browseLimit));
-    setTracksPage(normalizePagedResult<LibraryTrack>(trackRows, browseLimit));
-  }, []);
+    setHasLoadedSettingsPayload(true);
+  }, [loadStatsOverview, loadThemeDefaults, loadWatchedRoots]);
 
   const loadArtistData = useCallback(async (name: string) => {
     const [detail, topTracks] = await Promise.all([
-      Call.ByName(`${libraryService}.GetArtistDetail`, name, detailLimit, 0),
-      Call.ByName(`${libraryService}.GetArtistTopTracks`, name, 5),
+      getArtistDetail(name, detailLimit, 0),
+      getArtistTopTracks(name, 5),
     ]);
 
     setArtistDetail((detail ?? null) as ArtistDetail | null);
@@ -460,13 +614,7 @@ function AppContent() {
 
   const loadAlbumDetail = useCallback(
     async (title: string, albumArtist: string) => {
-      const detail = await Call.ByName(
-        `${libraryService}.GetAlbumDetail`,
-        title,
-        albumArtist,
-        detailLimit,
-        0,
-      );
+      const detail = await getAlbumDetail(title, albumArtist, detailLimit, 0);
       setAlbumDetail((detail ?? null) as AlbumDetail | null);
     },
     [],
@@ -475,17 +623,12 @@ function AppContent() {
   useEffect(() => {
     const initialize = async () => {
       try {
-        await Promise.all([
-          loadWatchedRoots(),
-          loadScanStatus(),
-          loadQueueState(),
-          loadPlayerState(),
-          loadStatsOverview(),
-          loadThemeDefaults(),
-          loadLibraryData(),
-        ]);
+        setErrorMessage(null);
+        await loadBootstrap();
       } catch (error) {
         setErrorMessage(parseError(error));
+      } finally {
+        setIsBootstrapped(true);
       }
     };
 
@@ -495,7 +638,14 @@ function AppContent() {
       void loadScanStatus();
 
       if (progress.status === "completed") {
-        void loadLibraryData();
+        void loadAlbumsPage();
+        const nextLocation = locationRef.current;
+        if (nextLocation.startsWith("/artists")) {
+          void loadArtistsPage();
+        }
+        if (nextLocation.startsWith("/tracks")) {
+          void loadTracksPage();
+        }
       }
     });
 
@@ -525,19 +675,95 @@ function AppContent() {
       unsubscribePlayer();
     };
   }, [
-    loadLibraryData,
-    loadPlayerState,
-    loadQueueState,
+    loadAlbumsPage,
+    loadArtistsPage,
+    loadBootstrap,
     loadScanStatus,
     loadStatsDashboard,
     loadStatsOverview,
-    loadThemeDefaults,
-    loadWatchedRoots,
+    loadTracksPage,
   ]);
 
   useEffect(() => {
     statsRouteRef.current = isStatsRoute;
   }, [isStatsRoute]);
+
+  useEffect(() => {
+    locationRef.current = location;
+  }, [location]);
+
+  useEffect(() => {
+    if (!isBootstrapped) {
+      return;
+    }
+
+    return scheduleAfterPaintAndIdle(() => {
+      setIsShaderReady(true);
+    });
+  }, [isBootstrapped]);
+
+  useEffect(() => {
+    if (!isBootstrapped || hasLoadedSettingsPayload) {
+      return;
+    }
+
+    return scheduleAfterPaintAndIdle(() => {
+      void loadSettingsPayload().catch((error: unknown) => {
+        setErrorMessage(parseError(error));
+      });
+    });
+  }, [hasLoadedSettingsPayload, isBootstrapped, loadSettingsPayload]);
+
+  useEffect(() => {
+    if (!location.startsWith("/settings") || hasLoadedSettingsPayload) {
+      return;
+    }
+
+    const runLoad = async () => {
+      try {
+        setErrorMessage(null);
+        await loadSettingsPayload();
+      } catch (error) {
+        setErrorMessage(parseError(error));
+      }
+    };
+
+    void runLoad();
+  }, [hasLoadedSettingsPayload, loadSettingsPayload, location]);
+
+  useEffect(() => {
+    if (!location.startsWith("/artists") || hasLoadedArtistsPage) {
+      return;
+    }
+
+    const runLoad = async () => {
+      try {
+        setErrorMessage(null);
+        await loadArtistsPage();
+      } catch (error) {
+        setErrorMessage(parseError(error));
+      }
+    };
+
+    void runLoad();
+  }, [hasLoadedArtistsPage, loadArtistsPage, location]);
+
+  useEffect(() => {
+    if (!location.startsWith("/tracks") || hasLoadedTracksPage) {
+      return;
+    }
+
+    const runLoad = async () => {
+      try {
+        setErrorMessage(null);
+        await loadTracksPage();
+      } catch (error) {
+        setErrorMessage(parseError(error));
+      }
+    };
+
+    void runLoad();
+  }, [hasLoadedTracksPage, loadTracksPage, location]);
 
   useEffect(() => {
     statsRangeRef.current = statsRange;
@@ -565,11 +791,13 @@ function AppContent() {
   }, [themeOptions]);
 
   useEffect(() => {
-    const storedPreference = parseThemeModePreference(
-      window.localStorage.getItem(themeModeStorageKey),
-    );
+    const storedThemeMode = window.localStorage.getItem(themeModeStorageKey);
+    const storedPreference =
+      storedThemeMode === null
+        ? bootstrapThemeModePreference
+        : parseThemeModePreference(storedThemeMode);
     setThemeModePreference(storedPreference);
-  }, []);
+  }, [bootstrapThemeModePreference]);
 
   useEffect(() => {
     window.localStorage.setItem(themeModeStorageKey, themeModePreference);
@@ -677,12 +905,10 @@ function AppContent() {
 
     try {
       setErrorMessage(null);
-      await Call.ByName(
-        `${settingsService}.AddWatchedRoot`,
-        newRootPath.trim(),
-      );
+      await addWatchedRoot(newRootPath.trim());
       setNewRootPath("");
       await loadWatchedRoots();
+      setHasLoadedSettingsPayload(true);
     } catch (error) {
       setErrorMessage(parseError(error));
     }
@@ -691,11 +917,7 @@ function AppContent() {
   const onToggleWatchedRoot = async (root: WatchedRoot) => {
     try {
       setErrorMessage(null);
-      await Call.ByName(
-        `${settingsService}.SetWatchedRootEnabled`,
-        root.id,
-        !root.enabled,
-      );
+      await setWatchedRootEnabled(root.id, !root.enabled);
       await loadWatchedRoots();
     } catch (error) {
       setErrorMessage(parseError(error));
@@ -705,7 +927,7 @@ function AppContent() {
   const onRemoveWatchedRoot = async (id: number) => {
     try {
       setErrorMessage(null);
-      await Call.ByName(`${settingsService}.RemoveWatchedRoot`, id);
+      await removeWatchedRoot(id);
       await loadWatchedRoots();
     } catch (error) {
       setErrorMessage(parseError(error));
@@ -715,7 +937,7 @@ function AppContent() {
   const onRunScan = async () => {
     try {
       setErrorMessage(null);
-      await Call.ByName(`${scannerService}.TriggerScan`);
+      await triggerScan();
       await loadScanStatus();
     } catch (error) {
       setErrorMessage(parseError(error));
@@ -733,9 +955,9 @@ function AppContent() {
 
     try {
       setErrorMessage(null);
-      await Call.ByName(`${queueService}.SetQueue`, trackIDs, startIndex);
+      await setQueue(trackIDs, startIndex);
       if (autoplay) {
-        await Call.ByName(`${playerService}.Play`);
+        await play();
       }
     } catch (error) {
       setErrorMessage(parseError(error));
@@ -745,7 +967,7 @@ function AppContent() {
   const onAppendTrack = async (trackID: number) => {
     try {
       setErrorMessage(null);
-      await Call.ByName(`${queueService}.AppendTracks`, [trackID]);
+      await appendTracks([trackID]);
     } catch (error) {
       setErrorMessage(parseError(error));
     }
@@ -758,9 +980,9 @@ function AppContent() {
   const onSelectQueueIndex = async (index: number) => {
     try {
       setErrorMessage(null);
-      await Call.ByName(`${queueService}.SetCurrentIndex`, index);
+      await setCurrentQueueIndex(index);
       if (playerState.status === "playing") {
-        await Call.ByName(`${playerService}.Play`);
+        await play();
       }
     } catch (error) {
       setErrorMessage(parseError(error));
@@ -770,7 +992,7 @@ function AppContent() {
   const onRemoveQueueTrack = async (index: number) => {
     try {
       setErrorMessage(null);
-      await Call.ByName(`${queueService}.RemoveTrack`, index);
+      await removeQueueTrack(index);
     } catch (error) {
       setErrorMessage(parseError(error));
     }
@@ -779,7 +1001,7 @@ function AppContent() {
   const onClearQueue = async () => {
     try {
       setErrorMessage(null);
-      await Call.ByName(`${queueService}.Clear`);
+      await clearQueue();
     } catch (error) {
       setErrorMessage(parseError(error));
     }
@@ -788,7 +1010,7 @@ function AppContent() {
   const onSetRepeatMode = async (mode: "off" | "all" | "one") => {
     try {
       setErrorMessage(null);
-      await Call.ByName(`${queueService}.SetRepeatMode`, mode);
+      await setQueueRepeatMode(mode);
     } catch (error) {
       setErrorMessage(parseError(error));
     }
@@ -807,7 +1029,7 @@ function AppContent() {
   const onToggleShuffle = async () => {
     try {
       setErrorMessage(null);
-      await Call.ByName(`${queueService}.SetShuffle`, !queueState.shuffle);
+      await setQueueShuffle(!queueState.shuffle);
     } catch (error) {
       setErrorMessage(parseError(error));
     }
@@ -821,7 +1043,7 @@ function AppContent() {
     try {
       setTransportBusy(true);
       setErrorMessage(null);
-      await Call.ByName(`${playerService}.TogglePlayback`);
+      await togglePlayback();
     } catch (error) {
       setErrorMessage(parseError(error));
     } finally {
@@ -837,7 +1059,7 @@ function AppContent() {
     try {
       setTransportBusy(true);
       setErrorMessage(null);
-      await Call.ByName(`${playerService}.Next`);
+      await nextTrack();
     } catch (error) {
       setErrorMessage(parseError(error));
     } finally {
@@ -853,7 +1075,7 @@ function AppContent() {
     try {
       setTransportBusy(true);
       setErrorMessage(null);
-      await Call.ByName(`${playerService}.Previous`);
+      await previousTrack();
     } catch (error) {
       setErrorMessage(parseError(error));
     } finally {
@@ -883,7 +1105,7 @@ function AppContent() {
 
         try {
           setErrorMessage(null);
-          await Call.ByName(`${playerService}.Seek`, nextSeekMS);
+          await seek(nextSeekMS);
         } catch (error) {
           setErrorMessage(parseError(error));
         }
@@ -896,7 +1118,7 @@ function AppContent() {
   const onSetVolume = async (volume: number) => {
     try {
       setErrorMessage(null);
-      await Call.ByName(`${playerService}.SetVolume`, volume);
+      await setVolume(volume);
     } catch (error) {
       setErrorMessage(parseError(error));
     }
@@ -905,8 +1127,7 @@ function AppContent() {
   const onPlayAlbum = async (title: string, albumArtist: string) => {
     try {
       setErrorMessage(null);
-      const trackIDs = (await Call.ByName(
-        `${libraryService}.GetAlbumQueueTrackIDs`,
+      const trackIDs = (await getAlbumQueueTrackIDs(
         title,
         albumArtist,
       )) as number[];
@@ -923,8 +1144,7 @@ function AppContent() {
   ) => {
     try {
       setErrorMessage(null);
-      const trackIDs = (await Call.ByName(
-        `${libraryService}.GetAlbumQueueTrackIDsFromTrack`,
+      const trackIDs = (await getAlbumQueueTrackIDsFromTrack(
         title,
         albumArtist,
         trackID,
@@ -943,10 +1163,7 @@ function AppContent() {
   const onPlayArtistTracks = async (artistName: string) => {
     try {
       setErrorMessage(null);
-      const trackIDs = (await Call.ByName(
-        `${libraryService}.GetArtistQueueTrackIDs`,
-        artistName,
-      )) as number[];
+      const trackIDs = (await getArtistQueueTrackIDs(artistName)) as number[];
       await onSetQueue(trackIDs ?? [], true);
     } catch (error) {
       setErrorMessage(parseError(error));
@@ -956,8 +1173,7 @@ function AppContent() {
   const onPlayArtistTopTrack = async (artistName: string, trackID: number) => {
     try {
       setErrorMessage(null);
-      const trackIDs = (await Call.ByName(
-        `${libraryService}.GetArtistQueueTrackIDsFromTopTrack`,
+      const trackIDs = (await getArtistQueueTrackIDsFromTopTrack(
         artistName,
         trackID,
       )) as number[];
@@ -998,8 +1214,7 @@ function AppContent() {
       try {
         setThemeBusy(true);
         setThemeErrorMessage(null);
-        const nextPalette = await Call.ByName(
-          `${themeService}.GenerateFromCover`,
+        const nextPalette = await generateThemeFromCover(
           trimmedPath,
           currentThemeOptions,
         );
@@ -1087,9 +1302,50 @@ function AppContent() {
     [navigate],
   );
 
+  const preloadRouteModuleByPath = useCallback((path: string) => {
+    if (path.startsWith("/artists")) {
+      void Promise.all([
+        import("./features/library/ArtistsGridView"),
+        import("./features/library/ArtistDetailView"),
+      ]);
+      return;
+    }
+
+    if (path.startsWith("/tracks")) {
+      void import("./features/library/TracksListView");
+      return;
+    }
+
+    if (path.startsWith("/settings")) {
+      void import("./features/settings/SettingsView");
+      return;
+    }
+
+    if (path.startsWith("/stats")) {
+      void import("./features/stats/StatsView");
+      return;
+    }
+
+    if (path.startsWith("/albums")) {
+      void Promise.all([
+        import("./features/library/AlbumsGridView"),
+        import("./features/library/AlbumDetailView"),
+      ]);
+    }
+  }, []);
+
   return (
     <div className="bg-theme-50 text-theme-900 dark:bg-theme-950 dark:text-theme-100 relative isolate flex h-dvh flex-col overflow-hidden">
-      <BackgroundShader />
+      <div
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{
+          background:
+            "radial-gradient(120% 120% at 15% -5%, rgba(120, 120, 120, 0.26) 0%, rgba(12, 12, 12, 0) 58%), radial-gradient(130% 130% at 85% -10%, rgba(90, 90, 90, 0.2) 0%, rgba(12, 12, 12, 0) 62%)",
+        }}
+      />
+      <Suspense fallback={null}>
+        {isShaderReady ? <DeferredBackgroundShader /> : null}
+      </Suspense>
 
       <TitleBar />
 
@@ -1097,6 +1353,7 @@ function AppContent() {
         <LeftSidebar
           location={location}
           onNavigate={navigate}
+          onNavigateIntent={preloadRouteModuleByPath}
         />
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -1110,111 +1367,127 @@ function AppContent() {
                     </p>
                   ) : null}
 
-                  <Switch>
-                    <Route path="/">
-                      <Redirect to="/albums" replace />
-                    </Route>
+                  {!isBootstrapped ? (
+                    <p className="text-theme-600 dark:text-theme-400 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm">
+                      Loading your library shell...
+                    </p>
+                  ) : null}
 
-                    <Route path="/albums">
-                      {selectedAlbum ? (
-                        <AlbumDetailView
-                          albumDetail={albumDetail}
-                          onBack={() => setSelectedAlbum(null)}
-                          onPlayAlbum={onPlayAlbum}
-                          onPlayTrackFromAlbum={onPlayTrackFromAlbum}
-                          formatDuration={formatDuration}
-                        />
-                      ) : (
-                        <AlbumsGridView
-                          albums={sortedAlbums}
-                          onSelectAlbum={(album) => {
-                            openAlbumView(album.title, album.albumArtist);
-                          }}
-                        />
-                      )}
-                    </Route>
-
-                    <Route path="/artists">
-                      {selectedArtist ? (
-                        <ArtistDetailView
-                          artistDetail={artistDetail}
-                          topTracks={artistTopTracks}
-                          onBack={() => setSelectedArtist(null)}
-                          onPlayArtist={onPlayArtistTracks}
-                          onPlayTopTrack={onPlayArtistTopTrack}
-                          onSelectAlbum={(album) => {
-                            openAlbumView(album.title, album.albumArtist);
-                          }}
-                          formatPlayedTime={formatPlayedTime}
-                        />
-                      ) : (
-                        <ArtistsGridView
-                          artists={sortedArtists}
-                          onSelectArtist={(artistName) => {
-                            openArtistView(artistName);
-                          }}
-                        />
-                      )}
-                    </Route>
-
-                    <Route path="/tracks">
-                      <TracksListView
-                        tracks={tracksPage.items}
-                        onPlayTrack={onPlayTrackNow}
-                        onQueueTrack={onAppendTrack}
-                        onSelectArtist={openArtistView}
-                        formatDuration={formatDuration}
-                      />
-                    </Route>
-
-                    <Route path="/settings">
-                      <SettingsView
-                        lastProgress={lastProgress}
-                        scanStatus={scanStatus}
-                        watchedRoots={watchedRoots}
-                        newRootPath={newRootPath}
-                        errorMessage={errorMessage}
-                        queueState={queueState}
-                        playerState={playerState}
-                        statsOverview={statsOverview}
-                        currentCoverPath={playerState.currentTrack?.coverPath}
-                        themeOptions={themeOptions}
-                        themePalette={generatedThemePalette}
-                        themeBusy={themeBusy}
-                        themeErrorMessage={themeErrorMessage}
-                        onNewRootPathChange={setNewRootPath}
-                        onAddWatchedRoot={onAddWatchedRoot}
-                        onToggleWatchedRoot={onToggleWatchedRoot}
-                        onRemoveWatchedRoot={onRemoveWatchedRoot}
-                        onRunScan={onRunScan}
-                        onThemeOptionsChange={setThemeOptions}
-                        onGenerateThemePalette={onGenerateThemePalette}
-                        themeModePreference={themeModePreference}
-                        resolvedThemeMode={resolvedThemeMode}
-                        onThemeModePreferenceChange={setThemeModePreference}
-                      />
-                    </Route>
-
-                    <Route path="/stats">
-                      <StatsView
-                        dashboard={statsDashboard}
-                        range={statsRange}
-                        onRangeChange={setStatsRange}
-                        formatPlayedTime={formatPlayedTime}
-                      />
-                    </Route>
-
-                    <Route path="*">
-                      <section>
-                        <h1 className="text-theme-900 dark:text-theme-100 text-xl font-semibold">
-                          Not Found
-                        </h1>
-                        <p className="text-theme-600 dark:text-theme-400 text-sm">
-                          Choose Albums, Artists, Tracks, Stats, or Settings.
+                  <Suspense
+                    fallback={
+                      <section className="rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-sm">
+                        <p className="text-theme-700 dark:text-theme-300">
+                          Loading view...
                         </p>
                       </section>
-                    </Route>
-                  </Switch>
+                    }
+                  >
+                    <Switch>
+                      <Route path="/">
+                        <Redirect to="/albums" replace />
+                      </Route>
+
+                      <Route path="/albums">
+                        {selectedAlbum ? (
+                          <AlbumDetailView
+                            albumDetail={albumDetail}
+                            onBack={() => setSelectedAlbum(null)}
+                            onPlayAlbum={onPlayAlbum}
+                            onPlayTrackFromAlbum={onPlayTrackFromAlbum}
+                            formatDuration={formatDuration}
+                          />
+                        ) : (
+                          <AlbumsGridView
+                            albums={sortedAlbums}
+                            onSelectAlbum={(album) => {
+                              openAlbumView(album.title, album.albumArtist);
+                            }}
+                          />
+                        )}
+                      </Route>
+
+                      <Route path="/artists">
+                        {selectedArtist ? (
+                          <ArtistDetailView
+                            artistDetail={artistDetail}
+                            topTracks={artistTopTracks}
+                            onBack={() => setSelectedArtist(null)}
+                            onPlayArtist={onPlayArtistTracks}
+                            onPlayTopTrack={onPlayArtistTopTrack}
+                            onSelectAlbum={(album) => {
+                              openAlbumView(album.title, album.albumArtist);
+                            }}
+                            formatPlayedTime={formatPlayedTime}
+                          />
+                        ) : (
+                          <ArtistsGridView
+                            artists={sortedArtists}
+                            onSelectArtist={(artistName) => {
+                              openArtistView(artistName);
+                            }}
+                          />
+                        )}
+                      </Route>
+
+                      <Route path="/tracks">
+                        <TracksListView
+                          tracks={tracksPage.items}
+                          onPlayTrack={onPlayTrackNow}
+                          onQueueTrack={onAppendTrack}
+                          onSelectArtist={openArtistView}
+                          formatDuration={formatDuration}
+                        />
+                      </Route>
+
+                      <Route path="/settings">
+                        <SettingsView
+                          lastProgress={lastProgress}
+                          scanStatus={scanStatus}
+                          watchedRoots={watchedRoots}
+                          newRootPath={newRootPath}
+                          errorMessage={errorMessage}
+                          queueState={queueState}
+                          playerState={playerState}
+                          statsOverview={statsOverview}
+                          currentCoverPath={playerState.currentTrack?.coverPath}
+                          themeOptions={themeOptions}
+                          themePalette={generatedThemePalette}
+                          themeBusy={themeBusy}
+                          themeErrorMessage={themeErrorMessage}
+                          onNewRootPathChange={setNewRootPath}
+                          onAddWatchedRoot={onAddWatchedRoot}
+                          onToggleWatchedRoot={onToggleWatchedRoot}
+                          onRemoveWatchedRoot={onRemoveWatchedRoot}
+                          onRunScan={onRunScan}
+                          onThemeOptionsChange={setThemeOptions}
+                          onGenerateThemePalette={onGenerateThemePalette}
+                          themeModePreference={themeModePreference}
+                          resolvedThemeMode={resolvedThemeMode}
+                          onThemeModePreferenceChange={setThemeModePreference}
+                        />
+                      </Route>
+
+                      <Route path="/stats">
+                        <StatsView
+                          dashboard={statsDashboard}
+                          range={statsRange}
+                          onRangeChange={setStatsRange}
+                          formatPlayedTime={formatPlayedTime}
+                        />
+                      </Route>
+
+                      <Route path="*">
+                        <section>
+                          <h1 className="text-theme-900 dark:text-theme-100 text-xl font-semibold">
+                            Not Found
+                          </h1>
+                          <p className="text-theme-600 dark:text-theme-400 text-sm">
+                            Choose Albums, Artists, Tracks, Stats, or Settings.
+                          </p>
+                        </section>
+                      </Route>
+                    </Switch>
+                  </Suspense>
                 </div>
               </ScrollArea.Content>
             </ScrollArea.Viewport>
