@@ -34,8 +34,6 @@ const metadataVersion = 2
 
 const watcherDebounceDelay = 1200 * time.Millisecond
 
-const verificationScanInterval = 6 * time.Hour
-
 type scanMode string
 
 const (
@@ -87,6 +85,7 @@ type Emitter func(eventName string, payload any)
 type Service struct {
 	mu            sync.Mutex
 	running       bool
+	currentMode   scanMode
 	pendingMode   scanMode
 	lastRun       time.Time
 	lastMode      string
@@ -108,9 +107,10 @@ type Service struct {
 }
 
 type scanTotals struct {
-	filesSeen int
-	indexed   int
-	skipped   int
+	filesSeen      int
+	indexed        int
+	skipped        int
+	libraryChanged bool
 }
 
 func NewService(database *sql.DB, roots *library.WatchedRootRepository, coverCacheDir string) *Service {
@@ -218,9 +218,6 @@ func (s *Service) NotifyWatchedRootsChanged() {
 }
 
 func (s *Service) watchLoop(watcher *fsnotify.Watcher, stopCh <-chan struct{}) {
-	verificationTicker := time.NewTicker(verificationScanInterval)
-	defer verificationTicker.Stop()
-
 	for {
 		select {
 		case <-stopCh:
@@ -234,6 +231,7 @@ func (s *Service) watchLoop(watcher *fsnotify.Watcher, stopCh <-chan struct{}) {
 					Status:  "failed",
 					At:      time.Now().UTC().Format(time.RFC3339),
 				})
+				s.queueRecoveryScan(scanModeFull, "watcher", "watch root refresh failed")
 				continue
 			}
 
@@ -245,6 +243,7 @@ func (s *Service) watchLoop(watcher *fsnotify.Watcher, stopCh <-chan struct{}) {
 					Status:  "failed",
 					At:      time.Now().UTC().Format(time.RFC3339),
 				})
+				s.queueRecoveryScan(scanModeFull, "watcher", "watch root sync failed")
 			}
 
 			s.scheduleWatcherIncrementalScan()
@@ -257,8 +256,6 @@ func (s *Service) watchLoop(watcher *fsnotify.Watcher, stopCh <-chan struct{}) {
 				s.markDirtyPath(event.Name)
 				s.scheduleWatcherIncrementalScan()
 			}
-		case <-verificationTicker.C:
-			s.queueVerificationScan()
 		case err, ok := <-watcher.Errors:
 			if !ok {
 				return
@@ -270,6 +267,7 @@ func (s *Service) watchLoop(watcher *fsnotify.Watcher, stopCh <-chan struct{}) {
 				Status:  "failed",
 				At:      time.Now().UTC().Format(time.RFC3339),
 			})
+			s.queueRecoveryScan(scanModeFull, "watcher", "watcher reported an internal error")
 		}
 	}
 }
@@ -487,6 +485,7 @@ func (s *Service) handleWatcherEvent(watcher *fsnotify.Watcher, event fsnotify.E
 					Status:  "failed",
 					At:      time.Now().UTC().Format(time.RFC3339),
 				})
+				s.queueRecoveryScan(scanModeFull, "watcher", "watching new directory failed")
 			}
 		}
 	}
@@ -582,10 +581,45 @@ func (s *Service) queueIncrementalScan() {
 	s.mu.Unlock()
 }
 
-func (s *Service) queueVerificationScan() {
+func (s *Service) queueRecoveryScan(mode scanMode, phase string, reason string) {
+	trimmedReason := strings.TrimSpace(reason)
+	if trimmedReason == "" {
+		trimmedReason = "library verification requested"
+	}
+
+	queued := false
+
 	s.mu.Lock()
-	s.queueScanLocked(scanModeFull)
+	if s.shouldQueueRecoveryLocked(mode) {
+		s.queueScanLocked(mode)
+		queued = true
+	}
 	s.mu.Unlock()
+
+	if !queued {
+		return
+	}
+
+	s.emitProgress(Progress{
+		Phase:   phase,
+		Message: fmt.Sprintf("%s; scheduling %s scan", trimmedReason, strings.ToLower(scanModeLabel(mode))),
+		Percent: 0,
+		Status:  "running",
+		At:      time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+func (s *Service) shouldQueueRecoveryLocked(mode scanMode) bool {
+	if mode == scanModeFull {
+		if s.pendingMode == scanModeFull {
+			return false
+		}
+		if s.running && (s.currentMode == scanModeFull || s.currentMode == scanModeRepair) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (s *Service) queueScanLocked(mode scanMode) {
@@ -635,6 +669,7 @@ func (s *Service) triggerScan(mode scanMode) error {
 
 func (s *Service) startScanLocked(mode scanMode) {
 	s.running = true
+	s.currentMode = mode
 	s.lastError = ""
 	go s.runScan(mode)
 }
@@ -664,6 +699,7 @@ func (s *Service) runScan(mode scanMode) {
 
 	s.mu.Lock()
 	s.running = false
+	s.currentMode = ""
 	nextMode := s.pendingMode
 	s.pendingMode = ""
 	if err != nil {
@@ -682,6 +718,10 @@ func (s *Service) runScan(mode scanMode) {
 	s.mu.Unlock()
 
 	if err != nil {
+		if mode == scanModeIncremental {
+			s.queueRecoveryScan(scanModeFull, "repair", "incremental scan failed")
+		}
+
 		s.emitProgress(Progress{
 			Phase:   "failed",
 			Message: err.Error(),
@@ -779,6 +819,10 @@ func (s *Service) performScan(ctx context.Context, mode scanMode) (scanTotals, e
 	}
 
 	totals := scanTotals{}
+	if isFullTraversalMode(mode) {
+		totals.libraryChanged = true
+	}
+
 	if mode == scanModeIncremental {
 		dirtyPaths := s.consumeDirtyPaths()
 		if len(dirtyPaths) > 0 {
@@ -819,17 +863,22 @@ func (s *Service) performScan(ctx context.Context, mode scanMode) (scanTotals, e
 				totals.filesSeen += rootTotals.filesSeen
 				totals.indexed += rootTotals.indexed
 				totals.skipped += rootTotals.skipped
+				totals.libraryChanged = totals.libraryChanged || rootTotals.libraryChanged
 				if scanErr != nil {
 					return scanTotals{}, scanErr
 				}
 
-				if err := reconcileMissingFilesIncremental(ctx, tx, root.ID); err != nil {
+				filesReconciled, err := reconcileMissingFilesIncremental(ctx, tx, root.ID)
+				if err != nil {
 					return scanTotals{}, err
 				}
+				totals.libraryChanged = totals.libraryChanged || filesReconciled
 
-				if err := cleanupMissingTracks(ctx, tx, []library.WatchedRoot{root}); err != nil {
+				tracksCleaned, err := cleanupMissingTracks(ctx, tx, []library.WatchedRoot{root})
+				if err != nil {
 					return scanTotals{}, err
 				}
+				totals.libraryChanged = totals.libraryChanged || tracksCleaned
 			}
 		}
 	} else {
@@ -847,6 +896,7 @@ func (s *Service) performScan(ctx context.Context, mode scanMode) (scanTotals, e
 			totals.filesSeen += rootTotals.filesSeen
 			totals.indexed += rootTotals.indexed
 			totals.skipped += rootTotals.skipped
+			totals.libraryChanged = totals.libraryChanged || rootTotals.libraryChanged
 			if scanErr != nil {
 				return scanTotals{}, scanErr
 			}
@@ -862,25 +912,39 @@ func (s *Service) performScan(ctx context.Context, mode scanMode) (scanTotals, e
 	})
 
 	if isFullTraversalMode(mode) {
-		if err := cleanupMissingTracks(ctx, tx, enabledRoots); err != nil {
+		tracksCleaned, err := cleanupMissingTracks(ctx, tx, enabledRoots)
+		if err != nil {
 			return scanTotals{}, err
 		}
+		totals.libraryChanged = totals.libraryChanged || tracksCleaned
 	}
 
-	if err := cleanupMissingCovers(ctx, tx); err != nil {
+	coversCleaned, err := cleanupMissingCovers(ctx, tx)
+	if err != nil {
 		return scanTotals{}, err
 	}
+	totals.libraryChanged = totals.libraryChanged || coversCleaned
 
-	s.emitProgress(Progress{
-		Phase:   "derive",
-		Message: "Refreshing artists, albums, and album track mappings",
-		Percent: 96,
-		Status:  "running",
-		At:      time.Now().UTC().Format(time.RFC3339),
-	})
+	if totals.libraryChanged || isFullTraversalMode(mode) {
+		s.emitProgress(Progress{
+			Phase:   "derive",
+			Message: "Refreshing artists, albums, and album track mappings",
+			Percent: 96,
+			Status:  "running",
+			At:      time.Now().UTC().Format(time.RFC3339),
+		})
 
-	if err := rebuildDerivedLibrary(ctx, tx); err != nil {
-		return scanTotals{}, err
+		if err := rebuildDerivedLibrary(ctx, tx); err != nil {
+			return scanTotals{}, err
+		}
+	} else {
+		s.emitProgress(Progress{
+			Phase:   "derive",
+			Message: "No library changes detected, skipping derived catalog refresh",
+			Percent: 96,
+			Status:  "running",
+			At:      time.Now().UTC().Format(time.RFC3339),
+		})
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -950,8 +1014,8 @@ func markPathSeenIncremental(ctx context.Context, tx *sql.Tx, path string) error
 	return nil
 }
 
-func reconcileMissingFilesIncremental(ctx context.Context, tx *sql.Tx, rootID int64) error {
-	if _, err := tx.ExecContext(
+func reconcileMissingFilesIncremental(ctx context.Context, tx *sql.Tx, rootID int64) (bool, error) {
+	result, err := tx.ExecContext(
 		ctx,
 		`UPDATE files
 		 SET file_exists = 0
@@ -959,11 +1023,17 @@ func reconcileMissingFilesIncremental(ctx context.Context, tx *sql.Tx, rootID in
 		   AND file_exists = 1
 		   AND path NOT IN (SELECT path FROM scan_seen_paths)`,
 		rootID,
-	); err != nil {
-		return fmt.Errorf("reconcile missing files for root %d: %w", rootID, err)
+	)
+	if err != nil {
+		return false, fmt.Errorf("reconcile missing files for root %d: %w", rootID, err)
 	}
 
-	return nil
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read reconciled missing file count for root %d: %w", rootID, err)
+	}
+
+	return rowsAffected > 0, nil
 }
 
 func reconcileMissingFilesIncrementalByPrefix(ctx context.Context, tx *sql.Tx, rootID int64, prefix string) (bool, error) {
@@ -1092,7 +1162,10 @@ func scanDirtyPathsIncremental(
 				totals.filesSeen += dirTotals.filesSeen
 				totals.indexed += dirTotals.indexed
 				totals.skipped += dirTotals.skipped
-				affectedRootIDs[root.ID] = struct{}{}
+				totals.libraryChanged = totals.libraryChanged || dirTotals.libraryChanged
+				if dirTotals.libraryChanged {
+					affectedRootIDs[root.ID] = struct{}{}
+				}
 				continue
 			}
 
@@ -1108,9 +1181,9 @@ func scanDirtyPathsIncremental(
 			}
 			if indexed {
 				totals.indexed++
+				totals.libraryChanged = true
+				affectedRootIDs[root.ID] = struct{}{}
 			}
-
-			affectedRootIDs[root.ID] = struct{}{}
 			continue
 		}
 
@@ -1124,6 +1197,7 @@ func scanDirtyPathsIncremental(
 			return scanTotals{}, err
 		}
 		if changed {
+			totals.libraryChanged = true
 			affectedRootIDs[root.ID] = struct{}{}
 		}
 	}
@@ -1140,9 +1214,11 @@ func scanDirtyPathsIncremental(
 		affectedRoots = append(affectedRoots, root)
 	}
 
-	if err := cleanupMissingTracks(ctx, tx, affectedRoots); err != nil {
+	tracksCleaned, err := cleanupMissingTracks(ctx, tx, affectedRoots)
+	if err != nil {
 		return scanTotals{}, err
 	}
+	totals.libraryChanged = totals.libraryChanged || tracksCleaned
 
 	return totals, nil
 }
@@ -1190,6 +1266,7 @@ func scanIncrementalDirectory(
 		}
 		if indexed {
 			totals.indexed++
+			totals.libraryChanged = true
 		}
 
 		if seenErr := markPathSeenIncremental(ctx, tx, cleanPath); seenErr != nil {
@@ -1202,39 +1279,58 @@ func scanIncrementalDirectory(
 		return scanTotals{}, fmt.Errorf("walk incremental directory %s: %w", directoryPath, err)
 	}
 
-	if _, err := reconcileMissingFilesIncrementalByPrefix(ctx, tx, root.ID, directoryPath); err != nil {
+	missingReconciled, err := reconcileMissingFilesIncrementalByPrefix(ctx, tx, root.ID, directoryPath)
+	if err != nil {
 		return scanTotals{}, err
 	}
+	totals.libraryChanged = totals.libraryChanged || missingReconciled
 
 	return totals, nil
 }
 
-func cleanupMissingTracks(ctx context.Context, tx *sql.Tx, roots []library.WatchedRoot) error {
+func cleanupMissingTracks(ctx context.Context, tx *sql.Tx, roots []library.WatchedRoot) (bool, error) {
+	changed := false
+
 	for _, root := range roots {
-		if _, err := tx.ExecContext(
+		result, err := tx.ExecContext(
 			ctx,
 			"DELETE FROM tracks WHERE file_id IN (SELECT id FROM files WHERE root_id = ? AND file_exists = 0)",
 			root.ID,
-		); err != nil {
-			return fmt.Errorf("cleanup missing tracks for root %d: %w", root.ID, err)
+		)
+		if err != nil {
+			return false, fmt.Errorf("cleanup missing tracks for root %d: %w", root.ID, err)
+		}
+
+		rowsAffected, rowsErr := result.RowsAffected()
+		if rowsErr != nil {
+			return false, fmt.Errorf("read missing track cleanup count for root %d: %w", root.ID, rowsErr)
+		}
+		if rowsAffected > 0 {
+			changed = true
 		}
 	}
 
-	return nil
+	return changed, nil
 }
 
-func cleanupMissingCovers(ctx context.Context, tx *sql.Tx) error {
-	if _, err := tx.ExecContext(
+func cleanupMissingCovers(ctx context.Context, tx *sql.Tx) (bool, error) {
+	result, err := tx.ExecContext(
 		ctx,
 		`DELETE FROM covers
 		 WHERE source_file_id IS NULL
 		    OR source_file_id IN (SELECT id FROM files WHERE file_exists = 0)
 		    OR source_file_id NOT IN (SELECT id FROM files)`,
-	); err != nil {
-		return fmt.Errorf("cleanup missing covers: %w", err)
+	)
+	if err != nil {
+		return false, fmt.Errorf("cleanup missing covers: %w", err)
 	}
 
-	return nil
+	rowsAffected, rowsErr := result.RowsAffected()
+	if rowsErr != nil {
+		return false, fmt.Errorf("read missing cover cleanup count: %w", rowsErr)
+	}
+
+	return rowsAffected > 0, nil
 }
 
 func cleanupOrphanedCoverFiles(ctx context.Context, database *sql.DB, coverCacheDir string) error {
@@ -1621,6 +1717,7 @@ func scanRoot(ctx context.Context, tx *sql.Tx, root library.WatchedRoot, mode sc
 
 		if indexed {
 			rootTotals.indexed++
+			rootTotals.libraryChanged = true
 		}
 
 		return nil
