@@ -52,6 +52,7 @@ const compositeUniformBufferSize =
   compositeUniformFloatCount * Float32Array.BYTES_PER_ELEMENT;
 
 const maxMipCompositeLevels = 5;
+const resizeSettleDelayMs = 120;
 
 const uniformBindingPoints = {
   scene: 0,
@@ -122,6 +123,8 @@ export function createBackgroundShaderRenderer(
   let lastRenderAtMs = 0;
   let disposed = false;
   let resizeObserver: ResizeObserver | null = null;
+  let resizeDebounceTimeoutId = 0;
+  let isResizeDebouncing = false;
   let initializePromise: Promise<void> | null = null;
   let hasRenderLoopStarted = false;
   let lastDiagnosticMessage = "";
@@ -572,6 +575,27 @@ export function createBackgroundShaderRenderer(
     }
   };
 
+  const scheduleDebouncedResize = () => {
+    isResizeDebouncing = true;
+    if (resizeDebounceTimeoutId !== 0) {
+      window.clearTimeout(resizeDebounceTimeoutId);
+    }
+    resizeDebounceTimeoutId = window.setTimeout(() => {
+      resizeDebounceTimeoutId = 0;
+      isResizeDebouncing = false;
+      lastRenderAtMs = 0;
+      startRenderLoop();
+    }, resizeSettleDelayMs);
+  };
+
+  const cancelDebouncedResize = () => {
+    isResizeDebouncing = false;
+    if (resizeDebounceTimeoutId !== 0) {
+      window.clearTimeout(resizeDebounceTimeoutId);
+      resizeDebounceTimeoutId = 0;
+    }
+  };
+
   const render = (time: number) => {
     if (disposed) {
       stopRenderLoop();
@@ -636,7 +660,9 @@ export function createBackgroundShaderRenderer(
     }
 
     try {
-      resizeCanvas();
+      if (!isResizeDebouncing) {
+        resizeCanvas();
+      }
       ensureRenderTargets(canvas.width, canvas.height);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -955,9 +981,10 @@ export function createBackgroundShaderRenderer(
       renderState.compositeUniformBuffer = compositeUniformBuffer;
 
       resizeObserver?.disconnect();
+      cancelDebouncedResize();
       resizeCanvas();
       resizeObserver = new ResizeObserver(() => {
-        resizeCanvas();
+        scheduleDebouncedResize();
       });
       resizeObserver.observe(canvas);
 
@@ -1015,6 +1042,7 @@ export function createBackgroundShaderRenderer(
       window.cancelAnimationFrame(animationFrameId);
       animationFrameId = 0;
       resizeObserver?.disconnect();
+      cancelDebouncedResize();
       canvas.removeEventListener("webglcontextlost", handleContextLost, false);
       canvas.removeEventListener(
         "webglcontextrestored",
