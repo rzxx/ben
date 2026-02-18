@@ -27,7 +27,7 @@ type ThemeService struct {
 
 func NewThemeService(coverCacheDir string) *ThemeService {
 	return &ThemeService{
-		resolver:  NewCoverService(coverCacheDir),
+		resolver:  NewCoverService(nil, coverCacheDir),
 		extractor: palette.NewExtractor(),
 		cache:     make(map[string]themeCacheEntry),
 	}
@@ -43,7 +43,7 @@ func (s *ThemeService) GenerateFromCover(coverPath string, options palette.Extra
 		return palette.ThemePalette{}, errors.New("cover path is required")
 	}
 
-	resolvedPath, err := s.resolver.resolveCoverPath(trimmedPath)
+	resolvedPath, err := s.resolver.resolveCoverPath(trimmedPath, true)
 	if err != nil {
 		return palette.ThemePalette{}, errors.New("cover not found")
 	}

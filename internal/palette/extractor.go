@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+
+	_ "github.com/gen2brain/avif"
 )
 
 const (

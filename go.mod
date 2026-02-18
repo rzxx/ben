@@ -6,6 +6,7 @@ require github.com/wailsapp/wails/v3 v3.0.0-alpha.67
 
 require (
 	github.com/fsnotify/fsnotify v1.8.0
+	github.com/gen2brain/avif v0.4.4
 	github.com/gen2brain/go-mpv v0.2.3
 	github.com/zzl/go-com v1.5.0
 	github.com/zzl/go-win32api/v2 v2.1.0

@@ -50,7 +50,7 @@ func main() {
 	scannerDomain := scanner.NewService(sqliteDB, watchedRoots, paths.CoverCacheDir)
 	settingsService := NewSettingsService(watchedRoots, scannerDomain)
 	libraryService := NewLibraryService(browseRepo)
-	coverService := NewCoverService(paths.CoverCacheDir)
+	coverService := NewCoverService(sqliteDB, paths.CoverCacheDir)
 	themeService := NewThemeService(paths.CoverCacheDir)
 	queueService := NewQueueService(queueDomain)
 	playerService := NewPlayerService(playerDomain)

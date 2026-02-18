@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"image"
 	"image/draw"
-	"image/jpeg"
 	"io/fs"
 	"math"
 	"os"
@@ -27,7 +26,9 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/gen2brain/avif"
 	"go.senan.xyz/taglib"
+	_ "image/jpeg"
 	_ "image/png"
 )
 
@@ -69,6 +70,7 @@ var supportedArtworkExtensions = map[string]struct{}{
 	".jpg":  {},
 	".jpeg": {},
 	".png":  {},
+	".avif": {},
 }
 
 var multiDiscFolderPattern = regexp.MustCompile(`^(cd|disc|disk)[\s._-]*\d+$`)
@@ -1508,7 +1510,7 @@ func cleanupOrphanedCoverFiles(ctx context.Context, database *sql.DB, coverCache
 	defer rows.Close()
 
 	referenced := make(map[string]struct{})
-	referencedHashes := make(map[string]struct{})
+	referencedVariants := make(map[string]struct{})
 	for rows.Next() {
 		var cachePath sql.NullString
 		if scanErr := rows.Scan(&cachePath); scanErr != nil {
@@ -1526,7 +1528,14 @@ func cleanupOrphanedCoverFiles(ctx context.Context, database *sql.DB, coverCache
 
 		referenced[resolvedPath] = struct{}{}
 		if coverHash := coverart.HashFromCachePath(resolvedPath); coverHash != "" {
-			referencedHashes[coverHash] = struct{}{}
+			for _, spec := range coverart.DefaultThumbnailSpecs() {
+				variantPath := coverart.VariantPathForHash(cacheDir, coverHash, spec.Variant)
+				resolvedVariantPath, variantErr := filepath.Abs(filepath.Clean(variantPath))
+				if variantErr != nil {
+					continue
+				}
+				referencedVariants[resolvedVariantPath] = struct{}{}
+			}
 		}
 	}
 
@@ -1549,11 +1558,8 @@ func cleanupOrphanedCoverFiles(ctx context.Context, database *sql.DB, coverCache
 			continue
 		}
 
-		candidateHash := coverart.HashFromCachePath(resolvedCandidate)
-		if candidateHash != "" {
-			if _, keep := referencedHashes[candidateHash]; keep {
-				continue
-			}
+		if _, keep := referencedVariants[resolvedCandidate]; keep {
+			continue
 		}
 
 		if removeErr := os.Remove(resolvedCandidate); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
@@ -1669,23 +1675,30 @@ type coverCandidate struct {
 	minDimScore int
 }
 
+const (
+	coverSourceKindEmbedded = "embedded"
+	coverSourceKindFile     = "file"
+)
+
 func syncCoverForFile(ctx context.Context, tx *sql.Tx, fileID int64, fullPath string, coverCacheDir string, force bool) (bool, error) {
 	if strings.TrimSpace(coverCacheDir) == "" {
 		return false, nil
 	}
 
 	var (
-		existingID   int64
-		existingHash sql.NullString
-		existingPath sql.NullString
+		existingID         int64
+		existingHash       sql.NullString
+		existingPath       sql.NullString
+		existingSourceKind sql.NullString
+		existingSourcePath sql.NullString
 	)
 
 	existingFound := true
 	err := tx.QueryRowContext(
 		ctx,
-		"SELECT id, hash, cache_path FROM covers WHERE source_file_id = ?",
+		"SELECT id, hash, cache_path, source_kind, source_path FROM covers WHERE source_file_id = ?",
 		fileID,
-	).Scan(&existingID, &existingHash, &existingPath)
+	).Scan(&existingID, &existingHash, &existingPath, &existingSourceKind, &existingSourcePath)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			existingFound = false
@@ -1695,8 +1708,16 @@ func syncCoverForFile(ctx context.Context, tx *sql.Tx, fileID int64, fullPath st
 	}
 
 	if existingFound && !force {
+		existingHashValue := strings.ToLower(strings.TrimSpace(existingHash.String))
 		existingCachePath := strings.TrimSpace(existingPath.String)
-		if existingCachePath != "" {
+		expectedCachePath := ""
+		if existingHashValue != "" {
+			expectedCachePath = coverart.VariantPathForHash(coverCacheDir, existingHashValue, coverart.VariantDetail)
+		}
+
+		if existingCachePath != "" && expectedCachePath != "" &&
+			normalizedCoverPathForCompare(existingCachePath) == normalizedCoverPathForCompare(expectedCachePath) &&
+			hasCoverSourceReference(existingSourceKind.String, existingSourcePath.String) {
 			if _, statErr := os.Stat(existingCachePath); statErr == nil {
 				_ = ensureCoverThumbnailsFromCachePath(existingCachePath)
 				return false, nil
@@ -1727,22 +1748,12 @@ func syncCoverForFile(ctx context.Context, tx *sql.Tx, fileID int64, fullPath st
 		mimeType = mimeTypeFromImageFormat(selectedCandidate.format)
 	}
 
-	extension := extensionForCover(mimeType, selectedCandidate.format)
-	if extension == "" {
-		extension = ".img"
-	}
+	sourceKind, sourcePath := normalizeCoverSourceReference(selectedCandidate, fullPath)
 
-	cachePath := filepath.Join(coverCacheDir, hash+extension)
-	if existingFound && existingHash.Valid && strings.EqualFold(strings.TrimSpace(existingHash.String), hash) && strings.TrimSpace(existingPath.String) != "" {
-		cachePath = strings.TrimSpace(existingPath.String)
-	}
+	cachePath := coverart.VariantPathForHash(coverCacheDir, hash, coverart.VariantDetail)
 
 	if err := os.MkdirAll(coverCacheDir, 0o755); err != nil {
 		return false, fmt.Errorf("create cover cache dir: %w", err)
-	}
-
-	if statErr := ensureCoverFile(cachePath, selectedCandidate.imageData); statErr != nil {
-		return false, nil
 	}
 
 	if thumbErr := ensureCoverThumbnails(cachePath, hash, selectedCandidate.imageData); thumbErr != nil {
@@ -1753,18 +1764,26 @@ func syncCoverForFile(ctx context.Context, tx *sql.Tx, fileID int64, fullPath st
 	if existingFound {
 		previousHash := strings.TrimSpace(existingHash.String)
 		previousPath := strings.TrimSpace(existingPath.String)
-		if !strings.EqualFold(previousHash, hash) || previousPath != cachePath {
+		previousSourceKind := strings.ToLower(strings.TrimSpace(existingSourceKind.String))
+		previousSourcePath := strings.TrimSpace(existingSourcePath.String)
+
+		if !strings.EqualFold(previousHash, hash) ||
+			normalizedCoverPathForCompare(previousPath) != normalizedCoverPathForCompare(cachePath) ||
+			previousSourceKind != sourceKind ||
+			normalizedCoverPathForCompare(previousSourcePath) != normalizedCoverPathForCompare(sourcePath) {
 			coverChanged = true
 		}
 
 		if _, updateErr := tx.ExecContext(
 			ctx,
-			"UPDATE covers SET mime = ?, width = ?, height = ?, cache_path = ?, hash = ? WHERE id = ?",
+			"UPDATE covers SET mime = ?, width = ?, height = ?, cache_path = ?, hash = ?, source_kind = ?, source_path = ? WHERE id = ?",
 			nullableString(mimeType),
 			nullablePositiveInt(selectedCandidate.width),
 			nullablePositiveInt(selectedCandidate.height),
 			cachePath,
 			hash,
+			nullableString(sourceKind),
+			nullableString(sourcePath),
 			existingID,
 		); updateErr != nil {
 			return false, fmt.Errorf("update cover row for file %d: %w", fileID, updateErr)
@@ -1775,18 +1794,61 @@ func syncCoverForFile(ctx context.Context, tx *sql.Tx, fileID int64, fullPath st
 
 	if _, insertErr := tx.ExecContext(
 		ctx,
-		"INSERT INTO covers(source_file_id, mime, width, height, cache_path, hash) VALUES (?, ?, ?, ?, ?, ?)",
+		"INSERT INTO covers(source_file_id, mime, width, height, cache_path, hash, source_kind, source_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 		fileID,
 		nullableString(mimeType),
 		nullablePositiveInt(selectedCandidate.width),
 		nullablePositiveInt(selectedCandidate.height),
 		cachePath,
 		hash,
+		nullableString(sourceKind),
+		nullableString(sourcePath),
 	); insertErr != nil {
 		return false, fmt.Errorf("insert cover row for file %d: %w", fileID, insertErr)
 	}
 
 	return true, nil
+}
+
+func hasCoverSourceReference(sourceKind string, sourcePath string) bool {
+	normalizedKind := strings.ToLower(strings.TrimSpace(sourceKind))
+	normalizedPath := strings.TrimSpace(sourcePath)
+	if normalizedPath == "" {
+		return false
+	}
+
+	return normalizedKind == coverSourceKindEmbedded || normalizedKind == coverSourceKindFile
+}
+
+func normalizeCoverSourceReference(selectedCandidate *coverCandidate, fullPath string) (string, string) {
+	if selectedCandidate == nil {
+		return "", ""
+	}
+
+	source := strings.ToLower(strings.TrimSpace(selectedCandidate.source))
+	if source == coverSourceKindEmbedded {
+		cleanTrackPath := filepath.Clean(strings.TrimSpace(fullPath))
+		if cleanTrackPath == "" || cleanTrackPath == "." {
+			return "", ""
+		}
+		return coverSourceKindEmbedded, cleanTrackPath
+	}
+
+	cleanSourcePath := filepath.Clean(strings.TrimSpace(selectedCandidate.sourcePath))
+	if cleanSourcePath == "" || cleanSourcePath == "." {
+		return "", ""
+	}
+
+	return coverSourceKindFile, cleanSourcePath
+}
+
+func normalizedCoverPathForCompare(path string) string {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return ""
+	}
+
+	return pathCompareKey(filepath.Clean(trimmedPath))
 }
 
 func readEmbeddedCoverCandidate(fullPath string) *coverCandidate {
@@ -1816,7 +1878,7 @@ func readEmbeddedCoverCandidate(fullPath string) *coverCandidate {
 		format:      format,
 		width:       width,
 		height:      height,
-		source:      "embedded",
+		source:      coverSourceKindEmbedded,
 		confidence:  100,
 		minDimScore: coverMinDimension(width, height),
 	}
@@ -1894,7 +1956,7 @@ func readSidecarCoverCandidates(fullPath string) []coverCandidate {
 				format:      format,
 				width:       width,
 				height:      height,
-				source:      "sidecar",
+				source:      coverSourceKindFile,
 				sourcePath:  sidecarPath,
 				confidence:  confidence,
 				minDimScore: coverMinDimension(width, height),
@@ -2150,18 +2212,6 @@ func decodeCoverImage(imageData []byte) (string, int, int) {
 	return strings.ToLower(strings.TrimSpace(format)), config.Width, config.Height
 }
 
-func ensureCoverFile(path string, contents []byte) error {
-	if _, err := os.Stat(path); err == nil {
-		return nil
-	}
-
-	if err := os.WriteFile(path, contents, 0o644); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func ensureCoverThumbnailsFromCachePath(cachePath string) error {
 	coverHash := coverart.HashFromCachePath(cachePath)
 	if coverHash == "" {
@@ -2238,7 +2288,7 @@ func writeCoverThumbnail(path string, source *image.NRGBA, size int) error {
 	}
 
 	buffer := bytes.Buffer{}
-	if err := jpeg.Encode(&buffer, thumbnail, &jpeg.Options{Quality: 88}); err != nil {
+	if err := avif.Encode(&buffer, thumbnail, avif.Options{Quality: 70, Speed: 8}); err != nil {
 		return err
 	}
 
@@ -2342,6 +2392,8 @@ func mimeTypeFromImageFormat(format string) string {
 		return "image/jpeg"
 	case "png":
 		return "image/png"
+	case "avif":
+		return "image/avif"
 	default:
 		return ""
 	}
@@ -2353,25 +2405,8 @@ func mimeTypeFromExtension(extension string) string {
 		return "image/jpeg"
 	case ".png":
 		return "image/png"
-	default:
-		return ""
-	}
-}
-
-func extensionForCover(mimeType string, format string) string {
-	normalizedMime := strings.ToLower(strings.TrimSpace(mimeType))
-	switch normalizedMime {
-	case "image/jpeg", "image/jpg":
-		return ".jpg"
-	case "image/png":
-		return ".png"
-	}
-
-	switch strings.ToLower(strings.TrimSpace(format)) {
-	case "jpeg", "jpg":
-		return ".jpg"
-	case "png":
-		return ".png"
+	case ".avif":
+		return "image/avif"
 	default:
 		return ""
 	}

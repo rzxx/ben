@@ -14,6 +14,8 @@ const VariantGrid = "grid"
 
 const VariantDetail = "detail"
 
+const ThumbnailExtension = ".avif"
+
 type ThumbnailSpec struct {
 	Variant string
 	Size    int
@@ -61,7 +63,7 @@ func VariantPathFromCachePath(cachePath string, variant string) (string, bool) {
 }
 
 func VariantPathForHash(cacheDir string, coverHash string, variant string) string {
-	return filepath.Join(cacheDir, fmt.Sprintf("%s__%s.jpg", strings.ToLower(strings.TrimSpace(coverHash)), NormalizeVariant(variant)))
+	return filepath.Join(cacheDir, fmt.Sprintf("%s__%s%s", strings.ToLower(strings.TrimSpace(coverHash)), NormalizeVariant(variant), ThumbnailExtension))
 }
 
 func HashFromCachePath(cachePath string) string {
