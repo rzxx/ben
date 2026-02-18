@@ -6,18 +6,21 @@ type TemporalUniformWriter = (
   settingsValue: BackgroundShaderSettings,
   enabled: boolean,
   historyBlendScale: number,
+  frameIndex: number,
 ) => void;
 
 type TemporalProgram = {
   program: WebGLProgram;
   currentTexture: WebGLUniformLocation | null;
   historyTexture: WebGLUniformLocation | null;
+  blueNoiseTexture: WebGLUniformLocation | null;
 };
 
 export type TemporalState = {
   historyReadIndex: number;
   historyValid: boolean;
   historyFrameCount: number;
+  frameIndex: number;
 };
 
 type TemporalResolveArgs = {
@@ -29,6 +32,7 @@ type TemporalResolveArgs = {
   temporalProgram: TemporalProgram;
   temporalState: TemporalState;
   writeTemporalUniforms: TemporalUniformWriter;
+  blueNoiseTexture: WebGLTexture;
 };
 
 export function runTemporalResolve(args: TemporalResolveArgs): {
@@ -45,6 +49,7 @@ export function runTemporalResolve(args: TemporalResolveArgs): {
         historyReadIndex: args.temporalState.historyReadIndex,
         historyValid: false,
         historyFrameCount: 0,
+        frameIndex: args.temporalState.frameIndex,
       },
     };
   }
@@ -60,6 +65,7 @@ export function runTemporalResolve(args: TemporalResolveArgs): {
     args.settings,
     args.temporalState.historyValid,
     historyBlendScale,
+    args.temporalState.frameIndex,
   );
 
   const { gl } = args;
@@ -69,8 +75,10 @@ export function runTemporalResolve(args: TemporalResolveArgs): {
 
   bindTexture(gl, 0, args.outputTarget.texture);
   bindTexture(gl, 1, historySourceTexture);
+  bindTexture(gl, 2, args.blueNoiseTexture);
   gl.uniform1i(args.temporalProgram.currentTexture, 0);
   gl.uniform1i(args.temporalProgram.historyTexture, 1);
+  gl.uniform1i(args.temporalProgram.blueNoiseTexture, 2);
 
   gl.bindVertexArray(args.vao);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -84,6 +92,7 @@ export function runTemporalResolve(args: TemporalResolveArgs): {
         args.temporalState.historyFrameCount + 1,
         120,
       ),
+      frameIndex: (args.temporalState.frameIndex + 1) % 1048576,
     },
   };
 }
