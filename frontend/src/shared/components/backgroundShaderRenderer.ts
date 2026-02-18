@@ -44,15 +44,18 @@ const blurUniformBufferSize =
 const mipCompositeUniformFloatCount = 4;
 const mipCompositeUniformBufferSize =
   mipCompositeUniformFloatCount * Float32Array.BYTES_PER_ELEMENT;
-const temporalUniformFloatCount = 12;
+const temporalUniformFloatCount = 4;
 const temporalUniformBufferSize =
   temporalUniformFloatCount * Float32Array.BYTES_PER_ELEMENT;
-const compositeUniformFloatCount = 4;
+const compositeUniformFloatCount = 8;
 const compositeUniformBufferSize =
   compositeUniformFloatCount * Float32Array.BYTES_PER_ELEMENT;
 
 const maxMipCompositeLevels = 5;
 const resizeSettleDelayMs = 120;
+const compositePhaseCycleLength = 4;
+const compositePhaseHoldFrames = 4;
+const compositeShiftedDitherBlend = 0.2;
 
 const uniformBindingPoints = {
   scene: 0,
@@ -85,7 +88,6 @@ type TemporalProgramInfo = {
   program: WebGLProgram;
   currentTexture: WebGLUniformLocation | null;
   historyTexture: WebGLUniformLocation | null;
-  blueNoiseTexture: WebGLUniformLocation | null;
 };
 
 type CompositeProgramInfo = {
@@ -149,12 +151,6 @@ export function createBackgroundShaderRenderer(
   let lastTemporalStrength = Number.NaN;
   let lastTemporalResponse = Number.NaN;
   let lastTemporalClamp = Number.NaN;
-  let lastTemporalDebandDarkStart = Number.NaN;
-  let lastTemporalDebandDarkEnd = Number.NaN;
-  let lastTemporalDebandMinLsb = Number.NaN;
-  let lastTemporalDebandMaxLsb = Number.NaN;
-  let lastTemporalDebandTaPreserve = Number.NaN;
-  let lastTemporalDebandClampBoost = Number.NaN;
   let lastTemporalTransitionMs = Number.NaN;
 
   const renderState = {
@@ -185,8 +181,8 @@ export function createBackgroundShaderRenderer(
     historyReadIndex: 0,
     historyValid: false,
     historyFrameCount: 0,
-    temporalFrameIndex: 0,
-    blueNoiseTexture: null as WebGLTexture | null,
+    compositePhase: 0,
+    compositePhaseFrameCount: 0,
     targetConfig: null as TargetConfig | null,
     contextLost: false,
   };
@@ -217,7 +213,8 @@ export function createBackgroundShaderRenderer(
     lastRenderAtMs = 0;
     renderState.historyValid = false;
     renderState.historyFrameCount = 0;
-    renderState.temporalFrameIndex = 0;
+    renderState.compositePhase = 0;
+    renderState.compositePhaseFrameCount = 0;
   };
 
   const scheduleRenderFrame = () => {
@@ -341,7 +338,6 @@ export function createBackgroundShaderRenderer(
     settingsValue: BackgroundShaderSettings,
     enabled: boolean,
     historyBlendScale: number,
-    frameIndex: number,
   ) => {
     const gl = renderState.gl;
     const temporalUniformBuffer = renderState.temporalUniformBuffer;
@@ -355,19 +351,15 @@ export function createBackgroundShaderRenderer(
     uniformData[1] = settingsValue.temporalResponse;
     uniformData[2] = settingsValue.temporalClamp;
     uniformData[3] = enabled ? 1 : 0;
-    uniformData[4] = frameIndex;
-    uniformData[5] = settingsValue.renderScale;
-    uniformData[6] = settingsValue.debandDarkStart;
-    uniformData[7] = settingsValue.debandDarkEnd;
-    uniformData[8] = settingsValue.debandMinLsb;
-    uniformData[9] = settingsValue.debandMaxLsb;
-    uniformData[10] = settingsValue.debandTaPreserve;
-    uniformData[11] = settingsValue.debandClampBoost;
 
     writeUniformBuffer(gl, temporalUniformBuffer, uniformData);
   };
 
-  const writeCompositeUniforms = (opacity: number) => {
+  const writeCompositeUniforms = (
+    opacity: number,
+    ignStrength: number,
+    phase: number,
+  ) => {
     const gl = renderState.gl;
     const compositeUniformBuffer = renderState.compositeUniformBuffer;
     if (!gl || !compositeUniformBuffer) {
@@ -380,6 +372,10 @@ export function createBackgroundShaderRenderer(
     uniformData[1] = baseColor[0];
     uniformData[2] = baseColor[1];
     uniformData[3] = baseColor[2];
+    uniformData[4] = Math.max(0, ignStrength);
+    uniformData[5] = phase;
+    uniformData[6] = compositeShiftedDitherBlend;
+    uniformData[7] = 0;
 
     writeUniformBuffer(gl, compositeUniformBuffer, uniformData);
   };
@@ -404,12 +400,6 @@ export function createBackgroundShaderRenderer(
       lastTemporalStrength === settingsValue.temporalStrength &&
       lastTemporalResponse === settingsValue.temporalResponse &&
       lastTemporalClamp === settingsValue.temporalClamp &&
-      lastTemporalDebandDarkStart === settingsValue.debandDarkStart &&
-      lastTemporalDebandDarkEnd === settingsValue.debandDarkEnd &&
-      lastTemporalDebandMinLsb === settingsValue.debandMinLsb &&
-      lastTemporalDebandMaxLsb === settingsValue.debandMaxLsb &&
-      lastTemporalDebandTaPreserve === settingsValue.debandTaPreserve &&
-      lastTemporalDebandClampBoost === settingsValue.debandClampBoost &&
       lastTemporalTransitionMs === transitionStartedAtMsValue
     ) {
       return false;
@@ -430,12 +420,6 @@ export function createBackgroundShaderRenderer(
     lastTemporalStrength = settingsValue.temporalStrength;
     lastTemporalResponse = settingsValue.temporalResponse;
     lastTemporalClamp = settingsValue.temporalClamp;
-    lastTemporalDebandDarkStart = settingsValue.debandDarkStart;
-    lastTemporalDebandDarkEnd = settingsValue.debandDarkEnd;
-    lastTemporalDebandMinLsb = settingsValue.debandMinLsb;
-    lastTemporalDebandMaxLsb = settingsValue.debandMaxLsb;
-    lastTemporalDebandTaPreserve = settingsValue.debandTaPreserve;
-    lastTemporalDebandClampBoost = settingsValue.debandClampBoost;
     lastTemporalTransitionMs = transitionStartedAtMsValue;
     return true;
   };
@@ -469,7 +453,8 @@ export function createBackgroundShaderRenderer(
     renderState.historyReadIndex = 0;
     renderState.historyValid = false;
     renderState.historyFrameCount = 0;
-    renderState.temporalFrameIndex = 0;
+    renderState.compositePhase = 0;
+    renderState.compositePhaseFrameCount = 0;
     renderState.targetConfig = null;
   };
 
@@ -486,7 +471,6 @@ export function createBackgroundShaderRenderer(
     gl.deleteBuffer(renderState.mipCompositeUniformBuffer);
     gl.deleteBuffer(renderState.temporalUniformBuffer);
     gl.deleteBuffer(renderState.compositeUniformBuffer);
-    gl.deleteTexture(renderState.blueNoiseTexture);
 
     gl.deleteProgram(renderState.sceneProgram?.program ?? null);
     gl.deleteProgram(renderState.dualDownProgram?.program ?? null);
@@ -511,7 +495,6 @@ export function createBackgroundShaderRenderer(
     renderState.mipCompositeUniformBuffer = null;
     renderState.temporalUniformBuffer = null;
     renderState.compositeUniformBuffer = null;
-    renderState.blueNoiseTexture = null;
     renderState.gl = null;
   };
 
@@ -666,7 +649,6 @@ export function createBackgroundShaderRenderer(
       mipCompositeUniformBuffer,
       temporalUniformBuffer,
       compositeUniformBuffer,
-      blueNoiseTexture,
     } = renderState;
 
     if (
@@ -683,8 +665,7 @@ export function createBackgroundShaderRenderer(
       !blurUniformBuffer ||
       !mipCompositeUniformBuffer ||
       !temporalUniformBuffer ||
-      !compositeUniformBuffer ||
-      !blueNoiseTexture
+      !compositeUniformBuffer
     ) {
       scheduleRenderFrame();
       return;
@@ -716,7 +697,11 @@ export function createBackgroundShaderRenderer(
     }
 
     writeSceneUniforms(time, canvas.width, canvas.height);
-    writeCompositeUniforms(settingsValue.opacity);
+    writeCompositeUniforms(
+      settingsValue.opacity,
+      settingsValue.ignStrength,
+      renderState.compositePhase,
+    );
 
     if (
       temporalResetInputsChanged(
@@ -726,7 +711,6 @@ export function createBackgroundShaderRenderer(
     ) {
       renderState.historyValid = false;
       renderState.historyFrameCount = 0;
-      renderState.temporalFrameIndex = 0;
     }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, sceneTarget.framebuffer);
@@ -788,10 +772,8 @@ export function createBackgroundShaderRenderer(
           historyReadIndex: renderState.historyReadIndex,
           historyValid: renderState.historyValid,
           historyFrameCount: renderState.historyFrameCount,
-          frameIndex: renderState.temporalFrameIndex,
         },
         writeTemporalUniforms,
-        blueNoiseTexture,
       });
 
       outputTarget = temporalResult.outputTarget;
@@ -800,11 +782,9 @@ export function createBackgroundShaderRenderer(
       renderState.historyValid = temporalResult.temporalState.historyValid;
       renderState.historyFrameCount =
         temporalResult.temporalState.historyFrameCount;
-      renderState.temporalFrameIndex = temporalResult.temporalState.frameIndex;
     } else {
       renderState.historyValid = false;
       renderState.historyFrameCount = 0;
-      renderState.temporalFrameIndex = 0;
     }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -815,6 +795,12 @@ export function createBackgroundShaderRenderer(
     gl.uniform1i(compositeProgram.inputTexture, 0);
     gl.bindVertexArray(vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    renderState.compositePhaseFrameCount += 1;
+    if (renderState.compositePhaseFrameCount >= compositePhaseHoldFrames) {
+      renderState.compositePhaseFrameCount = 0;
+      renderState.compositePhase =
+        (renderState.compositePhase + 1) % compositePhaseCycleLength;
+    }
 
     scheduleRenderFrame();
   };
@@ -963,7 +949,6 @@ export function createBackgroundShaderRenderer(
         compositeUniformBufferSize,
         uniformBindingPoints.composite,
       );
-      const blueNoiseTexture = createBlueNoiseTexture(gl, 64);
 
       const initializedSceneProgram: SceneProgramInfo = {
         program: sceneProgram,
@@ -999,10 +984,6 @@ export function createBackgroundShaderRenderer(
           temporalProgram,
           "historyTexture",
         ),
-        blueNoiseTexture: gl.getUniformLocation(
-          temporalProgram,
-          "blueNoiseTexture",
-        ),
       };
       const initializedCompositeProgram: CompositeProgramInfo = {
         program: compositeProgram,
@@ -1025,7 +1006,6 @@ export function createBackgroundShaderRenderer(
       renderState.mipCompositeUniformBuffer = mipCompositeUniformBuffer;
       renderState.temporalUniformBuffer = temporalUniformBuffer;
       renderState.compositeUniformBuffer = compositeUniformBuffer;
-      renderState.blueNoiseTexture = blueNoiseTexture;
 
       resizeObserver?.disconnect();
       cancelDebouncedResize();
@@ -1135,95 +1115,6 @@ function destroyRenderTarget(
 
   gl.deleteFramebuffer(target.framebuffer);
   gl.deleteTexture(target.texture);
-}
-
-function createBlueNoiseTexture(
-  gl: WebGL2RenderingContext,
-  size: number,
-): WebGLTexture {
-  const safeSize = Math.max(8, Math.floor(size));
-  const texture = gl.createTexture();
-  if (!texture) {
-    throw new Error("Failed to create blue-noise texture.");
-  }
-
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.R8,
-    safeSize,
-    safeSize,
-    0,
-    gl.RED,
-    gl.UNSIGNED_BYTE,
-    buildBlueNoiseTile(safeSize),
-  );
-  gl.bindTexture(gl.TEXTURE_2D, null);
-
-  return texture;
-}
-
-function buildBlueNoiseTile(size: number): Uint8Array {
-  const count = size * size;
-  const base = new Float32Array(count);
-  const highPass = new Float32Array(count);
-
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const index = y * size + x;
-      base[index] = hash2d(x, y);
-    }
-  }
-
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      let neighborhood = 0;
-      for (let oy = -1; oy <= 1; oy += 1) {
-        for (let ox = -1; ox <= 1; ox += 1) {
-          if (ox === 0 && oy === 0) {
-            continue;
-          }
-
-          const sx = (x + ox + size) % size;
-          const sy = (y + oy + size) % size;
-          neighborhood += base[sy * size + sx];
-        }
-      }
-
-      const index = y * size + x;
-      const localAverage = neighborhood * 0.125;
-      highPass[index] = base[index] - localAverage + 0.5;
-    }
-  }
-
-  let mean = 0;
-  for (let i = 0; i < count; i += 1) {
-    mean += highPass[i];
-  }
-  mean /= count;
-
-  const output = new Uint8Array(count);
-  for (let i = 0; i < count; i += 1) {
-    const normalized = clamp(highPass[i] - mean + 0.5, 0, 1);
-    output[i] = Math.round(normalized * 255);
-  }
-
-  return output;
-}
-
-function hash2d(x: number, y: number): number {
-  let value = Math.imul(x | 0, 1597334677) ^ Math.imul(y | 0, -48276737);
-  value ^= value >>> 16;
-  value = Math.imul(value, -2048144789);
-  value ^= value >>> 13;
-  value = Math.imul(value, -1028477387);
-  value ^= value >>> 16;
-  return (value >>> 0) / 4294967295;
 }
 
 function createProgram(

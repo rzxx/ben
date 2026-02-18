@@ -47,8 +47,11 @@ const builtInPresets: readonly BackgroundShaderPresetDefinition[] = [
       mipCurve: 0.2,
       blurRadius: 4,
       mipLevels: 3,
+      ignStrength: 0.25,
     },
-    dark: {},
+    dark: {
+      opacity: 0.075,
+    },
     light: {
       opacity: 0.1,
     },
@@ -65,8 +68,11 @@ const builtInPresets: readonly BackgroundShaderPresetDefinition[] = [
       mipLevels: 2,
       mipCurve: 1,
       blurRadius: 1.5,
+      ignStrength: 0,
     },
-    dark: {},
+    dark: {
+      opacity: 0.075,
+    },
     light: {
       opacity: 0.1,
     },

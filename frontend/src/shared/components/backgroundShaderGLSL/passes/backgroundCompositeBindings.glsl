@@ -1,5 +1,6 @@
 layout(std140) uniform CompositeUniforms {
-  vec4 params;
+  vec4 paramsA;
+  vec4 paramsB;
 } uniforms;
 
 uniform sampler2D inputTexture;

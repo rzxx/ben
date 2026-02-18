@@ -321,62 +321,16 @@ export function BackgroundShaderSettingsSection() {
                 step={0.01}
                 onChange={(next) => setShaderSettings({ temporalClamp: next })}
               />
-              <NumericSetting
-                label="Deband Dark Start"
-                value={shaderSettings.debandDarkStart}
-                min={0.06}
-                max={0.6}
-                step={0.01}
-                onChange={(next) =>
-                  setShaderSettings({ debandDarkStart: next })
-                }
-              />
-              <NumericSetting
-                label="Deband Dark End"
-                value={shaderSettings.debandDarkEnd}
-                min={0}
-                max={0.6}
-                step={0.01}
-                onChange={(next) => setShaderSettings({ debandDarkEnd: next })}
-              />
-              <NumericSetting
-                label="Deband Min LSB"
-                value={shaderSettings.debandMinLsb}
-                min={0}
-                max={3}
-                step={0.01}
-                onChange={(next) => setShaderSettings({ debandMinLsb: next })}
-              />
-              <NumericSetting
-                label="Deband Max LSB"
-                value={shaderSettings.debandMaxLsb}
-                min={0}
-                max={4}
-                step={0.01}
-                onChange={(next) => setShaderSettings({ debandMaxLsb: next })}
-              />
-              <NumericSetting
-                label="Deband TA Preserve"
-                value={shaderSettings.debandTaPreserve}
-                min={0}
-                max={1}
-                step={0.01}
-                onChange={(next) =>
-                  setShaderSettings({ debandTaPreserve: next })
-                }
-              />
-              <NumericSetting
-                label="Deband Clamp Boost"
-                value={shaderSettings.debandClampBoost}
-                min={0}
-                max={4}
-                step={0.05}
-                onChange={(next) =>
-                  setShaderSettings({ debandClampBoost: next })
-                }
-              />
             </>
           ) : null}
+          <NumericSetting
+            label="Interleaved Dither LSB"
+            value={shaderSettings.ignStrength}
+            min={0}
+            max={4}
+            step={0.01}
+            onChange={(next) => setShaderSettings({ ignStrength: next })}
+          />
           <NumericSetting
             label="Grain Strength"
             value={shaderSettings.grainStrength}

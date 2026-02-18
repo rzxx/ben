@@ -47,12 +47,7 @@ export type BackgroundShaderSettings = {
   temporalStrength: number;
   temporalResponse: number;
   temporalClamp: number;
-  debandDarkStart: number;
-  debandDarkEnd: number;
-  debandMinLsb: number;
-  debandMaxLsb: number;
-  debandTaPreserve: number;
-  debandClampBoost: number;
+  ignStrength: number;
   grainStrength: number;
   grainScale: number;
   colorTransitionSeconds: number;
@@ -119,12 +114,7 @@ const defaultSettings: BackgroundShaderSettings = {
   temporalStrength: 0.78,
   temporalResponse: 0.2,
   temporalClamp: 0.16,
-  debandDarkStart: 0.24,
-  debandDarkEnd: 0.04,
-  debandMinLsb: 0.55,
-  debandMaxLsb: 1.35,
-  debandTaPreserve: 0.38,
-  debandClampBoost: 1.6,
+  ignStrength: 1,
   grainStrength: 0.028,
   grainScale: 1.8,
   colorTransitionSeconds: 1.9,
@@ -457,11 +447,6 @@ function sanitizeSettings(
     lightThemeTintMinChroma,
     0.35,
   );
-  const debandDarkStart = clamp(settings.debandDarkStart, 0.06, 0.6);
-  const debandDarkEnd = clamp(settings.debandDarkEnd, 0, debandDarkStart);
-  const debandMinLsb = clamp(settings.debandMinLsb, 0, 3);
-  const debandMaxLsb = clamp(settings.debandMaxLsb, debandMinLsb, 4);
-
   return {
     sceneVariant:
       settings.sceneVariant === "legacyFeedback"
@@ -503,12 +488,7 @@ function sanitizeSettings(
     temporalStrength: clamp(settings.temporalStrength, 0, 0.98),
     temporalResponse: clamp(settings.temporalResponse, 0.01, 1.5),
     temporalClamp: clamp(settings.temporalClamp, 0.01, 1),
-    debandDarkStart,
-    debandDarkEnd,
-    debandMinLsb,
-    debandMaxLsb,
-    debandTaPreserve: clamp(settings.debandTaPreserve, 0, 1),
-    debandClampBoost: clamp(settings.debandClampBoost, 0, 4),
+    ignStrength: clamp(settings.ignStrength, 0, 4),
     grainStrength: clamp(settings.grainStrength, 0, 0.25),
     grainScale: clamp(settings.grainScale, 0.1, 8),
     colorTransitionSeconds: clamp(settings.colorTransitionSeconds, 0, 16),
