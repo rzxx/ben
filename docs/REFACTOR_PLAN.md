@@ -1,0 +1,53 @@
+Key Structural Weak Points
+- frontend/src/App.tsx:269 + frontend/src/App.tsx:475 is a classic “god component”: routing, domain state, IPC, side-effects, theming, shader orchestration, and UI composition all in one file; this hurts startup, maintainability, and re-render control.
+- Startup is over-eager in frontend/src/App.tsx:478 (Promise.all of many domains), including non-critical work for first route; this matches the profiling bottleneck before FCP.
+- First route is /albums (frontend/src/App.tsx:67) but startup fetches artists, albums, and tracks together (frontend/src/App.tsx:437), plus stats and theme defaults; that is unnecessary first-paint work.
+- App imports all routes eagerly (frontend/src/App.tsx:20 through frontend/src/App.tsx:27), violating the skill’s bundle-dynamic-imports / bundle-conditional guidance.
+- Background shader is on critical path (frontend/src/App.tsx:1092), triggers mount-time texture generation (frontend/src/shared/components/BackgroundShader.tsx:28) and heavy WebGL init/compile (frontend/src/shared/components/backgroundShaderRenderer.ts:808 onward).
+- Player state updates are very frequent (ticker every 500ms in internal/player/service.go:27 and internal/player/service.go:817), and App sets root state on event (frontend/src/App.tsx:506), so the full tree can rerender at playback cadence.
+- String-based RPC calls (Call.ByName) dominate app logic (frontend/src/App.tsx:355 etc.) even though typed generated clients exist in frontend/bindings/ben/*.ts; that weakens architecture and makes batching/cancellation harder.
+- Dev-only startup inflation is real: StrictMode wraps app in frontend/src/main.tsx:7, so init effects are replayed in dev, aligning with skill rule advanced-init-once.
+- Perceived startup is poor by design: dark native background in main.go:126 + empty root in frontend/index.html:10 means black frame during blocked paint.
+- You have architectural drift/dead code: frontend/src/features/library/LibraryView.tsx and frontend/src/shared/store/libraryUIStore.ts appear unused.
+Big Refactor Target (Best-Implementation Path)
+- Move from one App orchestrator to an app-shell architecture: AppShell + route modules + domain providers + typed data layer.
+- Route-first composition: each route owns its own provider and data lifecycle; no global preloading of unrelated route data.
+- Provider contracts per composition skill (state, actions, meta) so UI is decoupled from data mechanism (state-context-interface, state-decouple-implementation).
+- Event-driven domain stores (playback, queue, library, stats, scanner, theme) with selector-based subscriptions; root should not rerender on every player tick.
+- Typed service gateway around frontend/bindings/ben/*.ts; remove stringly-typed Call.ByName calls from feature code.
+- Shader becomes progressive enhancement: static gradient first, shader runtime loaded idle/after first paint.
+- Explicit view variants instead of giant conditional route logic (patterns-explicit-variants), e.g. AlbumsRoute, AlbumDetailRoute, ArtistsRoute, ArtistDetailRoute.
+Comprehensive Fix Guide (Combined Profiling + Skills)
+- Phase 1: Rebuild startup pipeline around FCP
+- Keep only critical boot payload for initial route and shell chrome; defer stats/settings/theme extraction/library secondary pages until after paint.
+- Add a single backend bootstrap endpoint returning minimal initial state snapshot (queue/player/scan/theme mode + initial albums page), replacing startup fan-out.
+- Convert routes and heavy panels to lazy chunks with React.lazy + Suspense; preload likely next routes on hover/intent (skill: bundle-preload).
+- Gate shader load with requestIdleCallback/post-paint and dynamically import shader modules only when enabled (skills: bundle-conditional, bundle-dynamic-imports).
+- Phase 2: Break App.tsx into domain boundaries
+- Create dedicated providers: PlaybackProvider, LibraryProvider, StatsProvider, ScannerProvider, ThemeProvider; each exposes state/actions/meta.
+- Move all side effects from App into provider-level hooks (composition skill: lift state into providers).
+- Keep AppShell mostly declarative (layout + router + suspense boundaries); no business logic in shell.
+- Replace route conditionals with explicit route components (composition skill patterns-explicit-variants).
+- Phase 3: Data layer redesign
+- Introduce typed API modules using generated bindings (frontend/bindings/ben/*.ts) and centralize request cancellation, dedupe, stale policy, error shaping.
+- Adopt a query/cache layer for request dedup + cache invalidation (SWR/TanStack style patterns from best-practices skill).
+- Batch/aggregate startup fetches server-side; use one call for initial state and route-specific queries afterward.
+- Define cache keys by domain + params; invalidate by event type (queue/player/scanner).
+- Phase 4: Render-path optimization
+- Stop global rerenders from playback ticker: move high-frequency fields (position/progress) into local store slice used only by player UI.
+- Remove redundant client sorting where backend already orders data (internal/library/browse_repository.go:159, internal/library/browse_repository.go:242, internal/library/browse_repository.go:333 vs local resort in frontend/src/App.tsx:1065).
+- Add content-visibility: auto + contain-intrinsic-size for long lists/panels (skill: rendering-content-visibility).
+- Virtualize heavy lists where data grows beyond current limits (tracks/queue/stats tables), and avoid mounting offscreen-heavy subtrees.
+- Phase 5: Perceived performance and boot UX
+- Render intentional boot/skeleton immediately in frontend/index.html + CSS, aligned with app theme.
+- Match native window background and HTML boot color so no black flash even if JS is busy.
+- Keep static fallback background as first visual; shader fades in after ready.
+- Phase 6: Cleanup and hardening
+- Remove dead files and obsolete store paths (LibraryView, libraryUIStore) to reduce cognitive load.
+- Standardize error/retry/timeout policy in data layer.
+- Add performance budgets in CI (startup JS cost, first route bundle size, startup RPC count, FCP threshold).
+What Not To Keep
+- App-wide init inside a component useEffect without one-time guard strategy for dev strict replay (skill advanced-init-once).
+- Eagerly importing every route/module into startup path.
+- A single root component as global source of truth for all domain state.
+- String-based RPC access from UI layer when typed generated bindings exist.
