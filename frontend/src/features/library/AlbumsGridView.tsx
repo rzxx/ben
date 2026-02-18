@@ -31,6 +31,7 @@ export function AlbumsGridView(props: AlbumsGridViewProps) {
             <CoverArt
               coverPath={album.coverPath}
               alt={`${album.title} cover`}
+              variant="grid"
               className="mb-2 aspect-square rounded-lg border border-black/7 dark:border-white/7"
             />
             <p className="text-theme-900 dark:text-theme-100 line-clamp-1 text-base font-medium">

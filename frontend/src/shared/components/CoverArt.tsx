@@ -1,17 +1,18 @@
 import { useState } from "react";
-import { coverPathToURL } from "../cover";
+import { CoverVariant, coverPathToURL } from "../cover";
 
 type CoverArtProps = {
   coverPath?: string;
   alt: string;
   className?: string;
   loading?: "eager" | "lazy";
+  variant?: CoverVariant;
 };
 
 export function CoverArt(props: CoverArtProps) {
   const [failedSource, setFailedSource] = useState<string | null>(null);
 
-  const source = coverPathToURL(props.coverPath);
+  const source = coverPathToURL(props.coverPath, props.variant ?? "original");
   const canRenderImage = !!source && source !== failedSource;
 
   const placeholderClassName = props.className

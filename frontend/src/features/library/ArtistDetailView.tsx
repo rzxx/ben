@@ -114,6 +114,7 @@ export function ArtistDetailView(props: ArtistDetailViewProps) {
               <CoverArt
                 coverPath={album.coverPath}
                 alt={`${album.title} cover`}
+                variant="grid"
                 className="mb-2 aspect-square w-full rounded-md"
               />
               <p className="text-theme-900 dark:text-theme-100 truncate text-sm font-medium">

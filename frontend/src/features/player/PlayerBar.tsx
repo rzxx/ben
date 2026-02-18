@@ -48,6 +48,7 @@ export function PlayerBar(props: PlayerBarProps) {
                 ? `${props.currentTrack.album} cover`
                 : "No cover"
             }
+            variant="player"
             className="h-12 w-12 rounded-md"
             loading="eager"
           />

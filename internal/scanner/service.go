@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"ben/internal/coverart"
 	"ben/internal/library"
 	"bytes"
 	"context"
@@ -11,7 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/draw"
+	"image/jpeg"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -24,7 +28,6 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"go.senan.xyz/taglib"
-	_ "image/jpeg"
 	_ "image/png"
 )
 
@@ -60,6 +63,24 @@ var supportedExtensions = map[string]struct{}{
 	".opus": {},
 	".wav":  {},
 	".wma":  {},
+}
+
+var supportedArtworkExtensions = map[string]struct{}{
+	".jpg":  {},
+	".jpeg": {},
+	".png":  {},
+}
+
+var multiDiscFolderPattern = regexp.MustCompile(`^(cd|disc|disk)[\s._-]*\d+$`)
+
+func isSupportedAudioExtension(extension string) bool {
+	_, ok := supportedExtensions[strings.ToLower(strings.TrimSpace(extension))]
+	return ok
+}
+
+func isSupportedArtworkExtension(extension string) bool {
+	_, ok := supportedArtworkExtensions[strings.ToLower(strings.TrimSpace(extension))]
+	return ok
 }
 
 type Progress struct {
@@ -551,8 +572,11 @@ func shouldTriggerIncremental(path string, op fsnotify.Op) bool {
 	}
 
 	extension := strings.ToLower(filepath.Ext(path))
-	_, supported := supportedExtensions[extension]
-	return supported
+	if isSupportedAudioExtension(extension) {
+		return true
+	}
+
+	return isSupportedArtworkExtension(extension)
 }
 
 func (s *Service) scheduleWatcherIncrementalScan() {
@@ -1142,8 +1166,19 @@ func scanDirtyPathsIncremental(
 ) (scanTotals, error) {
 	rootListByDepth := sortRootsByDepth(enabledRoots)
 	affectedRootIDs := make(map[int64]struct{})
+	coverRefreshTargets := make(map[string]coverRefreshTarget)
 	totals := scanTotals{}
 	scannedAt := time.Now().UTC().Format(time.RFC3339)
+
+	markCoverRefresh := func(root library.WatchedRoot, directoryPath string) {
+		cleanDirectory := filepath.Clean(strings.TrimSpace(directoryPath))
+		if cleanDirectory == "" || cleanDirectory == "." {
+			return
+		}
+
+		key := strconv.FormatInt(root.ID, 10) + "|" + pathCompareKey(cleanDirectory)
+		coverRefreshTargets[key] = coverRefreshTarget{rootID: root.ID, directoryPath: cleanDirectory}
+	}
 
 	for _, dirtyPath := range dirtyPaths {
 		cleanPath := filepath.Clean(dirtyPath)
@@ -1170,7 +1205,11 @@ func scanDirtyPathsIncremental(
 			}
 
 			extension := strings.ToLower(filepath.Ext(cleanPath))
-			if _, supported := supportedExtensions[extension]; !supported {
+			if isSupportedArtworkExtension(extension) {
+				markCoverRefresh(root, filepath.Dir(cleanPath))
+				continue
+			}
+			if !isSupportedAudioExtension(extension) {
 				continue
 			}
 
@@ -1192,6 +1231,12 @@ func scanDirtyPathsIncremental(
 			continue
 		}
 
+		extension := strings.ToLower(filepath.Ext(cleanPath))
+		if isSupportedArtworkExtension(extension) {
+			markCoverRefresh(root, filepath.Dir(cleanPath))
+			continue
+		}
+
 		changed, err := markPathMissingIncremental(ctx, tx, root.ID, cleanPath)
 		if err != nil {
 			return scanTotals{}, err
@@ -1200,6 +1245,15 @@ func scanDirtyPathsIncremental(
 			totals.libraryChanged = true
 			affectedRootIDs[root.ID] = struct{}{}
 		}
+	}
+
+	if len(coverRefreshTargets) > 0 {
+		refreshed, changed, err := refreshCoverArtForDirectories(ctx, tx, coverRefreshTargets, coverCacheDir)
+		if err != nil {
+			return scanTotals{}, err
+		}
+		totals.indexed += refreshed
+		totals.libraryChanged = totals.libraryChanged || changed
 	}
 
 	if len(affectedRootIDs) == 0 {
@@ -1221,6 +1275,94 @@ func scanDirtyPathsIncremental(
 	totals.libraryChanged = totals.libraryChanged || tracksCleaned
 
 	return totals, nil
+}
+
+type coverRefreshTarget struct {
+	rootID        int64
+	directoryPath string
+}
+
+func refreshCoverArtForDirectories(
+	ctx context.Context,
+	tx *sql.Tx,
+	targets map[string]coverRefreshTarget,
+	coverCacheDir string,
+) (int, bool, error) {
+	if strings.TrimSpace(coverCacheDir) == "" || len(targets) == 0 {
+		return 0, false, nil
+	}
+
+	orderedTargets := make([]coverRefreshTarget, 0, len(targets))
+	for _, target := range targets {
+		orderedTargets = append(orderedTargets, target)
+	}
+
+	sort.Slice(orderedTargets, func(i int, j int) bool {
+		if orderedTargets[i].rootID == orderedTargets[j].rootID {
+			if len(orderedTargets[i].directoryPath) == len(orderedTargets[j].directoryPath) {
+				return pathCompareKey(orderedTargets[i].directoryPath) < pathCompareKey(orderedTargets[j].directoryPath)
+			}
+			return len(orderedTargets[i].directoryPath) < len(orderedTargets[j].directoryPath)
+		}
+
+		return orderedTargets[i].rootID < orderedTargets[j].rootID
+	})
+
+	processedFileIDs := make(map[int64]struct{})
+	changed := false
+	refreshed := 0
+
+	for _, target := range orderedTargets {
+		pattern := likePrefixPattern(target.directoryPath)
+		rows, err := tx.QueryContext(
+			ctx,
+			`SELECT id, path
+			 FROM files
+			 WHERE root_id = ?
+			   AND file_exists = 1
+			   AND (path = ? OR path LIKE ? ESCAPE '\\')`,
+			target.rootID,
+			target.directoryPath,
+			pattern,
+		)
+		if err != nil {
+			return 0, false, fmt.Errorf("query tracks for cover refresh in %s: %w", target.directoryPath, err)
+		}
+
+		for rows.Next() {
+			var fileID int64
+			var path string
+			if scanErr := rows.Scan(&fileID, &path); scanErr != nil {
+				rows.Close()
+				return 0, false, fmt.Errorf("scan cover refresh row in %s: %w", target.directoryPath, scanErr)
+			}
+
+			if _, alreadyProcessed := processedFileIDs[fileID]; alreadyProcessed {
+				continue
+			}
+			processedFileIDs[fileID] = struct{}{}
+
+			coverChanged, coverErr := syncCoverForFile(ctx, tx, fileID, filepath.Clean(path), coverCacheDir, true)
+			if coverErr != nil {
+				rows.Close()
+				return 0, false, coverErr
+			}
+
+			if coverChanged {
+				changed = true
+				refreshed++
+			}
+		}
+
+		if rowsErr := rows.Err(); rowsErr != nil {
+			rows.Close()
+			return 0, false, fmt.Errorf("iterate cover refresh rows in %s: %w", target.directoryPath, rowsErr)
+		}
+
+		rows.Close()
+	}
+
+	return refreshed, changed, nil
 }
 
 func scanIncrementalDirectory(
@@ -1248,7 +1390,7 @@ func scanIncrementalDirectory(
 		}
 
 		extension := strings.ToLower(filepath.Ext(path))
-		if _, supported := supportedExtensions[extension]; !supported {
+		if !isSupportedAudioExtension(extension) {
 			return nil
 		}
 
@@ -1366,6 +1508,7 @@ func cleanupOrphanedCoverFiles(ctx context.Context, database *sql.DB, coverCache
 	defer rows.Close()
 
 	referenced := make(map[string]struct{})
+	referencedHashes := make(map[string]struct{})
 	for rows.Next() {
 		var cachePath sql.NullString
 		if scanErr := rows.Scan(&cachePath); scanErr != nil {
@@ -1382,6 +1525,9 @@ func cleanupOrphanedCoverFiles(ctx context.Context, database *sql.DB, coverCache
 		}
 
 		referenced[resolvedPath] = struct{}{}
+		if coverHash := coverart.HashFromCachePath(resolvedPath); coverHash != "" {
+			referencedHashes[coverHash] = struct{}{}
+		}
 	}
 
 	if rowsErr := rows.Err(); rowsErr != nil {
@@ -1401,6 +1547,13 @@ func cleanupOrphanedCoverFiles(ctx context.Context, database *sql.DB, coverCache
 
 		if _, keep := referenced[resolvedCandidate]; keep {
 			continue
+		}
+
+		candidateHash := coverart.HashFromCachePath(resolvedCandidate)
+		if candidateHash != "" {
+			if _, keep := referencedHashes[candidateHash]; keep {
+				continue
+			}
 		}
 
 		if removeErr := os.Remove(resolvedCandidate); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
@@ -1504,9 +1657,21 @@ func rebuildDerivedLibrary(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-func syncCoverForFile(ctx context.Context, tx *sql.Tx, fileID int64, fullPath string, coverCacheDir string, force bool) error {
+type coverCandidate struct {
+	imageData   []byte
+	mimeType    string
+	format      string
+	width       int
+	height      int
+	source      string
+	sourcePath  string
+	confidence  int
+	minDimScore int
+}
+
+func syncCoverForFile(ctx context.Context, tx *sql.Tx, fileID int64, fullPath string, coverCacheDir string, force bool) (bool, error) {
 	if strings.TrimSpace(coverCacheDir) == "" {
-		return nil
+		return false, nil
 	}
 
 	var (
@@ -1525,76 +1690,87 @@ func syncCoverForFile(ctx context.Context, tx *sql.Tx, fileID int64, fullPath st
 		if errors.Is(err, sql.ErrNoRows) {
 			existingFound = false
 		} else {
-			return fmt.Errorf("get cover row for file %d: %w", fileID, err)
+			return false, fmt.Errorf("get cover row for file %d: %w", fileID, err)
 		}
 	}
 
 	if existingFound && !force {
-		return nil
-	}
-
-	properties, propertiesErr := taglib.ReadProperties(fullPath)
-	if propertiesErr != nil || len(properties.Images) == 0 {
-		if existingFound {
-			if _, deleteErr := tx.ExecContext(ctx, "DELETE FROM covers WHERE id = ?", existingID); deleteErr != nil {
-				return fmt.Errorf("delete cover row for file %d: %w", fileID, deleteErr)
+		existingCachePath := strings.TrimSpace(existingPath.String)
+		if existingCachePath != "" {
+			if _, statErr := os.Stat(existingCachePath); statErr == nil {
+				_ = ensureCoverThumbnailsFromCachePath(existingCachePath)
+				return false, nil
 			}
 		}
-		return nil
 	}
 
-	imageData, imageErr := taglib.ReadImage(fullPath)
-	if imageErr != nil || len(imageData) == 0 {
+	embeddedCandidate := readEmbeddedCoverCandidate(fullPath)
+	sidecarCandidates := readSidecarCoverCandidates(fullPath)
+	selectedCandidate := selectCoverCandidate(embeddedCandidate, sidecarCandidates)
+
+	if selectedCandidate == nil {
 		if existingFound {
 			if _, deleteErr := tx.ExecContext(ctx, "DELETE FROM covers WHERE id = ?", existingID); deleteErr != nil {
-				return fmt.Errorf("delete cover row for file %d: %w", fileID, deleteErr)
+				return false, fmt.Errorf("delete cover row for file %d: %w", fileID, deleteErr)
 			}
+			return true, nil
 		}
-		return nil
+
+		return false, nil
 	}
 
-	hashBytes := sha256.Sum256(imageData)
+	hashBytes := sha256.Sum256(selectedCandidate.imageData)
 	hash := hex.EncodeToString(hashBytes[:])
 
-	format, width, height := decodeCoverImage(imageData)
-	mimeType := strings.TrimSpace(properties.Images[0].MIMEType)
+	mimeType := strings.TrimSpace(selectedCandidate.mimeType)
 	if mimeType == "" {
-		mimeType = mimeTypeFromImageFormat(format)
+		mimeType = mimeTypeFromImageFormat(selectedCandidate.format)
 	}
 
-	extension := extensionForCover(mimeType, format)
+	extension := extensionForCover(mimeType, selectedCandidate.format)
 	if extension == "" {
 		extension = ".img"
 	}
 
 	cachePath := filepath.Join(coverCacheDir, hash+extension)
-	if existingFound && existingHash.Valid && existingHash.String == hash && strings.TrimSpace(existingPath.String) != "" {
+	if existingFound && existingHash.Valid && strings.EqualFold(strings.TrimSpace(existingHash.String), hash) && strings.TrimSpace(existingPath.String) != "" {
 		cachePath = strings.TrimSpace(existingPath.String)
 	}
 
 	if err := os.MkdirAll(coverCacheDir, 0o755); err != nil {
-		return fmt.Errorf("create cover cache dir: %w", err)
+		return false, fmt.Errorf("create cover cache dir: %w", err)
 	}
 
-	if statErr := ensureCoverFile(cachePath, imageData); statErr != nil {
-		return nil
+	if statErr := ensureCoverFile(cachePath, selectedCandidate.imageData); statErr != nil {
+		return false, nil
 	}
 
+	if thumbErr := ensureCoverThumbnails(cachePath, hash, selectedCandidate.imageData); thumbErr != nil {
+		return false, nil
+	}
+
+	coverChanged := !existingFound
 	if existingFound {
+		previousHash := strings.TrimSpace(existingHash.String)
+		previousPath := strings.TrimSpace(existingPath.String)
+		if !strings.EqualFold(previousHash, hash) || previousPath != cachePath {
+			coverChanged = true
+		}
+
 		if _, updateErr := tx.ExecContext(
 			ctx,
 			"UPDATE covers SET mime = ?, width = ?, height = ?, cache_path = ?, hash = ? WHERE id = ?",
 			nullableString(mimeType),
-			nullablePositiveInt(width),
-			nullablePositiveInt(height),
+			nullablePositiveInt(selectedCandidate.width),
+			nullablePositiveInt(selectedCandidate.height),
 			cachePath,
 			hash,
 			existingID,
 		); updateErr != nil {
-			return fmt.Errorf("update cover row for file %d: %w", fileID, updateErr)
+			return false, fmt.Errorf("update cover row for file %d: %w", fileID, updateErr)
 		}
 
-		return nil
+		return coverChanged, nil
 	}
 
 	if _, insertErr := tx.ExecContext(
@@ -1602,15 +1778,367 @@ func syncCoverForFile(ctx context.Context, tx *sql.Tx, fileID int64, fullPath st
 		"INSERT INTO covers(source_file_id, mime, width, height, cache_path, hash) VALUES (?, ?, ?, ?, ?, ?)",
 		fileID,
 		nullableString(mimeType),
-		nullablePositiveInt(width),
-		nullablePositiveInt(height),
+		nullablePositiveInt(selectedCandidate.width),
+		nullablePositiveInt(selectedCandidate.height),
 		cachePath,
 		hash,
 	); insertErr != nil {
-		return fmt.Errorf("insert cover row for file %d: %w", fileID, insertErr)
+		return false, fmt.Errorf("insert cover row for file %d: %w", fileID, insertErr)
 	}
 
-	return nil
+	return true, nil
+}
+
+func readEmbeddedCoverCandidate(fullPath string) *coverCandidate {
+	properties, propertiesErr := taglib.ReadProperties(fullPath)
+	if propertiesErr != nil || len(properties.Images) == 0 {
+		return nil
+	}
+
+	imageData, imageErr := taglib.ReadImage(fullPath)
+	if imageErr != nil || len(imageData) == 0 {
+		return nil
+	}
+
+	format, width, height := decodeCoverImage(imageData)
+	if width <= 0 || height <= 0 {
+		return nil
+	}
+
+	mimeType := strings.TrimSpace(properties.Images[0].MIMEType)
+	if mimeType == "" {
+		mimeType = mimeTypeFromImageFormat(format)
+	}
+
+	return &coverCandidate{
+		imageData:   imageData,
+		mimeType:    mimeType,
+		format:      format,
+		width:       width,
+		height:      height,
+		source:      "embedded",
+		confidence:  100,
+		minDimScore: coverMinDimension(width, height),
+	}
+}
+
+func readSidecarCoverCandidates(fullPath string) []coverCandidate {
+	trackDirectory := filepath.Clean(filepath.Dir(fullPath))
+	if trackDirectory == "" || trackDirectory == "." {
+		return nil
+	}
+
+	candidateDirs := []string{trackDirectory}
+	if shouldSearchParentForSidecar(trackDirectory) {
+		parentDirectory := filepath.Clean(filepath.Dir(trackDirectory))
+		if parentDirectory != "" && parentDirectory != "." && parentDirectory != trackDirectory {
+			candidateDirs = append(candidateDirs, parentDirectory)
+		}
+	}
+
+	seenDirectories := make(map[string]struct{}, len(candidateDirs))
+	candidates := make([]coverCandidate, 0, 4)
+
+	for _, directory := range candidateDirs {
+		directoryKey := pathCompareKey(directory)
+		if _, alreadySeen := seenDirectories[directoryKey]; alreadySeen {
+			continue
+		}
+		seenDirectories[directoryKey] = struct{}{}
+
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			continue
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+
+			filename := entry.Name()
+			extension := strings.ToLower(filepath.Ext(filename))
+			if !isSupportedArtworkExtension(extension) {
+				continue
+			}
+
+			confidence := sidecarNameConfidence(filename)
+			if confidence <= 0 {
+				continue
+			}
+
+			info, infoErr := entry.Info()
+			if infoErr != nil || info.Size() <= 0 || info.Size() > 32<<20 {
+				continue
+			}
+
+			sidecarPath := filepath.Join(directory, filename)
+			imageData, readErr := os.ReadFile(sidecarPath)
+			if readErr != nil || len(imageData) == 0 {
+				continue
+			}
+
+			format, width, height := decodeCoverImage(imageData)
+			if width <= 0 || height <= 0 {
+				continue
+			}
+
+			mimeType := mimeTypeFromImageFormat(format)
+			if mimeType == "" {
+				mimeType = mimeTypeFromExtension(extension)
+			}
+
+			candidates = append(candidates, coverCandidate{
+				imageData:   imageData,
+				mimeType:    mimeType,
+				format:      format,
+				width:       width,
+				height:      height,
+				source:      "sidecar",
+				sourcePath:  sidecarPath,
+				confidence:  confidence,
+				minDimScore: coverMinDimension(width, height),
+			})
+		}
+	}
+
+	return candidates
+}
+
+func shouldSearchParentForSidecar(directoryPath string) bool {
+	baseName := strings.ToLower(strings.TrimSpace(filepath.Base(directoryPath)))
+	if baseName == "" || baseName == "." {
+		return false
+	}
+
+	return multiDiscFolderPattern.MatchString(baseName)
+}
+
+func sidecarNameConfidence(filename string) int {
+	baseName := strings.TrimSpace(strings.TrimSuffix(filename, filepath.Ext(filename)))
+	if baseName == "" {
+		return 0
+	}
+
+	tokens := tokenizeFilenameBase(baseName)
+	if len(tokens) == 0 {
+		return 0
+	}
+
+	disallowed := map[string]struct{}{
+		"back":    {},
+		"disc":    {},
+		"booklet": {},
+		"tray":    {},
+		"inside":  {},
+		"spine":   {},
+		"sticker": {},
+	}
+	for _, token := range tokens {
+		if _, blocked := disallowed[token]; blocked {
+			return 0
+		}
+	}
+
+	joined := strings.Join(tokens, "")
+	switch joined {
+	case "cover":
+		return 100
+	case "folder":
+		return 98
+	case "front":
+		return 96
+	case "albumart", "albumcover":
+		return 92
+	case "artwork":
+		return 90
+	}
+
+	if len(tokens) == 1 {
+		switch tokens[0] {
+		case "cover":
+			return 100
+		case "folder":
+			return 98
+		case "front":
+			return 96
+		case "album", "art":
+			return 80
+		}
+	}
+
+	primary := tokens[0]
+	if primary == "cover" || primary == "folder" || primary == "front" {
+		return 92
+	}
+
+	if containsToken(tokens, "cover") && containsToken(tokens, "front") {
+		return 90
+	}
+
+	if containsToken(tokens, "album") && containsToken(tokens, "art") {
+		return 88
+	}
+
+	if containsToken(tokens, "artwork") {
+		return 85
+	}
+
+	return 0
+}
+
+func tokenizeFilenameBase(baseName string) []string {
+	normalized := strings.ToLower(strings.TrimSpace(baseName))
+	if normalized == "" {
+		return nil
+	}
+
+	tokens := strings.FieldsFunc(normalized, func(char rune) bool {
+		isLower := char >= 'a' && char <= 'z'
+		isDigit := char >= '0' && char <= '9'
+		return !isLower && !isDigit
+	})
+
+	filtered := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		if token == "" {
+			continue
+		}
+		filtered = append(filtered, token)
+	}
+
+	return filtered
+}
+
+func containsToken(tokens []string, target string) bool {
+	for _, token := range tokens {
+		if token == target {
+			return true
+		}
+	}
+
+	return false
+}
+
+func selectCoverCandidate(embedded *coverCandidate, sidecars []coverCandidate) *coverCandidate {
+	bestSidecar := bestSidecarCandidate(sidecars)
+	if embedded == nil {
+		if bestSidecar == nil || bestSidecar.confidence < 88 {
+			return nil
+		}
+		return bestSidecar
+	}
+	if bestSidecar == nil {
+		return embedded
+	}
+
+	if shouldPreferSidecarOverEmbedded(*bestSidecar, *embedded) {
+		return bestSidecar
+	}
+
+	return embedded
+}
+
+func bestSidecarCandidate(candidates []coverCandidate) *coverCandidate {
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	best := candidates[0]
+	for _, candidate := range candidates[1:] {
+		if compareSidecarCandidates(candidate, best) {
+			best = candidate
+		}
+	}
+
+	copyCandidate := best
+	return &copyCandidate
+}
+
+func compareSidecarCandidates(left coverCandidate, right coverCandidate) bool {
+	if left.confidence != right.confidence {
+		return left.confidence > right.confidence
+	}
+
+	if left.minDimScore != right.minDimScore {
+		return left.minDimScore > right.minDimScore
+	}
+
+	leftAspectDistance := coverAspectDistanceFromSquare(left.width, left.height)
+	rightAspectDistance := coverAspectDistanceFromSquare(right.width, right.height)
+	if leftAspectDistance != rightAspectDistance {
+		return leftAspectDistance < rightAspectDistance
+	}
+
+	leftArea := left.width * left.height
+	rightArea := right.width * right.height
+	if leftArea != rightArea {
+		return leftArea > rightArea
+	}
+
+	return pathCompareKey(left.sourcePath) < pathCompareKey(right.sourcePath)
+}
+
+func shouldPreferSidecarOverEmbedded(sidecar coverCandidate, embedded coverCandidate) bool {
+	if sidecar.confidence < 88 {
+		return false
+	}
+
+	sidecarMin := coverMinDimension(sidecar.width, sidecar.height)
+	embeddedMin := coverMinDimension(embedded.width, embedded.height)
+	if sidecarMin <= 0 {
+		return false
+	}
+	if embeddedMin <= 0 {
+		return true
+	}
+
+	sidecarAspectDistance := coverAspectDistanceFromSquare(sidecar.width, sidecar.height)
+	embeddedAspectDistance := coverAspectDistanceFromSquare(embedded.width, embedded.height)
+	if sidecarAspectDistance > 0.25 {
+		return false
+	}
+
+	if embeddedMin < 450 && sidecarMin >= 550 {
+		return true
+	}
+
+	if sidecarMin >= embeddedMin+220 && sidecarAspectDistance <= embeddedAspectDistance+0.04 {
+		return true
+	}
+
+	if float64(sidecarMin) >= float64(embeddedMin)*1.35 && sidecarAspectDistance <= 0.16 {
+		return true
+	}
+
+	if embeddedAspectDistance > 0.18 && sidecarAspectDistance <= 0.08 && sidecarMin >= embeddedMin {
+		return true
+	}
+
+	return false
+}
+
+func coverMinDimension(width int, height int) int {
+	if width <= 0 || height <= 0 {
+		return 0
+	}
+	if width < height {
+		return width
+	}
+	return height
+}
+
+func coverAspectDistanceFromSquare(width int, height int) float64 {
+	if width <= 0 || height <= 0 {
+		return math.MaxFloat64
+	}
+
+	ratio := float64(width) / float64(height)
+	if ratio < 1 {
+		ratio = 1 / ratio
+	}
+
+	return math.Abs(ratio - 1)
 }
 
 func decodeCoverImage(imageData []byte) (string, int, int) {
@@ -1634,11 +2162,196 @@ func ensureCoverFile(path string, contents []byte) error {
 	return nil
 }
 
+func ensureCoverThumbnailsFromCachePath(cachePath string) error {
+	coverHash := coverart.HashFromCachePath(cachePath)
+	if coverHash == "" {
+		return errors.New("invalid cover cache hash")
+	}
+
+	cacheDirectory := filepath.Dir(cachePath)
+	hasMissingThumbnail := false
+	for _, spec := range coverart.DefaultThumbnailSpecs() {
+		thumbnailPath := coverart.VariantPathForHash(cacheDirectory, coverHash, spec.Variant)
+		if _, err := os.Stat(thumbnailPath); err == nil {
+			continue
+		}
+		hasMissingThumbnail = true
+		break
+	}
+	if !hasMissingThumbnail {
+		return nil
+	}
+
+	imageData, err := os.ReadFile(cachePath)
+	if err != nil {
+		return err
+	}
+
+	return ensureCoverThumbnails(cachePath, coverHash, imageData)
+}
+
+func ensureCoverThumbnails(cachePath string, coverHash string, imageData []byte) error {
+	if strings.TrimSpace(cachePath) == "" || strings.TrimSpace(coverHash) == "" || len(imageData) == 0 {
+		return nil
+	}
+
+	specs := coverart.DefaultThumbnailSpecs()
+	missingSpecs := make([]coverart.ThumbnailSpec, 0, len(specs))
+	cacheDirectory := filepath.Dir(cachePath)
+
+	for _, spec := range specs {
+		thumbPath := coverart.VariantPathForHash(cacheDirectory, coverHash, spec.Variant)
+		if _, err := os.Stat(thumbPath); err == nil {
+			continue
+		}
+		missingSpecs = append(missingSpecs, spec)
+	}
+
+	if len(missingSpecs) == 0 {
+		return nil
+	}
+
+	decoded, _, err := image.Decode(bytes.NewReader(imageData))
+	if err != nil {
+		return err
+	}
+
+	source := toNRGBAImage(decoded)
+	for _, spec := range missingSpecs {
+		thumbPath := coverart.VariantPathForHash(cacheDirectory, coverHash, spec.Variant)
+		if err := writeCoverThumbnail(thumbPath, source, spec.Size); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func writeCoverThumbnail(path string, source *image.NRGBA, size int) error {
+	if source == nil || size <= 0 {
+		return errors.New("invalid cover thumbnail input")
+	}
+
+	thumbnail := resizeCoverToSquare(source, size)
+	if thumbnail == nil {
+		return errors.New("failed to resize cover thumbnail")
+	}
+
+	buffer := bytes.Buffer{}
+	if err := jpeg.Encode(&buffer, thumbnail, &jpeg.Options{Quality: 88}); err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(path, buffer.Bytes(), 0o644); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func toNRGBAImage(source image.Image) *image.NRGBA {
+	bounds := source.Bounds()
+	result := image.NewNRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+	draw.Draw(result, result.Bounds(), source, bounds.Min, draw.Src)
+	return result
+}
+
+func resizeCoverToSquare(source *image.NRGBA, size int) *image.NRGBA {
+	if source == nil || size <= 0 {
+		return nil
+	}
+
+	sourceWidth := source.Bounds().Dx()
+	sourceHeight := source.Bounds().Dy()
+	if sourceWidth <= 0 || sourceHeight <= 0 {
+		return nil
+	}
+
+	cropSize := sourceWidth
+	if sourceHeight < cropSize {
+		cropSize = sourceHeight
+	}
+
+	cropOffsetX := (sourceWidth - cropSize) / 2
+	cropOffsetY := (sourceHeight - cropSize) / 2
+
+	result := image.NewNRGBA(image.Rect(0, 0, size, size))
+	scale := float64(cropSize) / float64(size)
+
+	for y := 0; y < size; y++ {
+		sampleY := (float64(y)+0.5)*scale - 0.5 + float64(cropOffsetY)
+		for x := 0; x < size; x++ {
+			sampleX := (float64(x)+0.5)*scale - 0.5 + float64(cropOffsetX)
+			red, green, blue, alpha := bilinearSampleNRGBA(source, sampleX, sampleY)
+			offset := y*result.Stride + x*4
+			result.Pix[offset] = red
+			result.Pix[offset+1] = green
+			result.Pix[offset+2] = blue
+			result.Pix[offset+3] = alpha
+		}
+	}
+
+	return result
+}
+
+func bilinearSampleNRGBA(source *image.NRGBA, x float64, y float64) (uint8, uint8, uint8, uint8) {
+	width := source.Bounds().Dx()
+	height := source.Bounds().Dy()
+	if width <= 0 || height <= 0 {
+		return 0, 0, 0, 0
+	}
+
+	x = clampFloat(x, 0, float64(width-1))
+	y = clampFloat(y, 0, float64(height-1))
+
+	x0 := int(math.Floor(x))
+	y0 := int(math.Floor(y))
+	x1 := x0 + 1
+	y1 := y0 + 1
+	if x1 >= width {
+		x1 = width - 1
+	}
+	if y1 >= height {
+		y1 = height - 1
+	}
+
+	tx := x - float64(x0)
+	ty := y - float64(y0)
+
+	offset00 := y0*source.Stride + x0*4
+	offset10 := y0*source.Stride + x1*4
+	offset01 := y1*source.Stride + x0*4
+	offset11 := y1*source.Stride + x1*4
+
+	weight00 := (1 - tx) * (1 - ty)
+	weight10 := tx * (1 - ty)
+	weight01 := (1 - tx) * ty
+	weight11 := tx * ty
+
+	red := weight00*float64(source.Pix[offset00]) + weight10*float64(source.Pix[offset10]) + weight01*float64(source.Pix[offset01]) + weight11*float64(source.Pix[offset11])
+	green := weight00*float64(source.Pix[offset00+1]) + weight10*float64(source.Pix[offset10+1]) + weight01*float64(source.Pix[offset01+1]) + weight11*float64(source.Pix[offset11+1])
+	blue := weight00*float64(source.Pix[offset00+2]) + weight10*float64(source.Pix[offset10+2]) + weight01*float64(source.Pix[offset01+2]) + weight11*float64(source.Pix[offset11+2])
+	alpha := weight00*float64(source.Pix[offset00+3]) + weight10*float64(source.Pix[offset10+3]) + weight01*float64(source.Pix[offset01+3]) + weight11*float64(source.Pix[offset11+3])
+
+	return uint8(math.Round(red)), uint8(math.Round(green)), uint8(math.Round(blue)), uint8(math.Round(alpha))
+}
+
 func mimeTypeFromImageFormat(format string) string {
 	switch strings.ToLower(strings.TrimSpace(format)) {
 	case "jpeg", "jpg":
 		return "image/jpeg"
 	case "png":
+		return "image/png"
+	default:
+		return ""
+	}
+}
+
+func mimeTypeFromExtension(extension string) string {
+	switch strings.ToLower(strings.TrimSpace(extension)) {
+	case ".jpg", ".jpeg", ".jpe":
+		return "image/jpeg"
+	case ".png":
 		return "image/png"
 	default:
 		return ""
@@ -1672,6 +2385,17 @@ func nullablePositiveInt(value int) any {
 	return value
 }
 
+func clampFloat(value float64, minimum float64, maximum float64) float64 {
+	if value < minimum {
+		return minimum
+	}
+	if value > maximum {
+		return maximum
+	}
+
+	return value
+}
+
 func scanRoot(ctx context.Context, tx *sql.Tx, root library.WatchedRoot, mode scanMode, coverCacheDir string) (scanTotals, error) {
 	rootTotals := scanTotals{}
 	scannedAt := time.Now().UTC().Format(time.RFC3339)
@@ -1693,7 +2417,7 @@ func scanRoot(ctx context.Context, tx *sql.Tx, root library.WatchedRoot, mode sc
 		}
 
 		extension := strings.ToLower(filepath.Ext(path))
-		if _, ok := supportedExtensions[extension]; !ok {
+		if !isSupportedAudioExtension(extension) {
 			return nil
 		}
 
@@ -1830,11 +2554,12 @@ func upsertFileAndTrack(
 	}
 
 	if !metadataNeedsUpdate {
-		if err := syncCoverForFile(ctx, tx, fileID, cleanPath, coverCacheDir, false); err != nil {
+		coverChanged, err := syncCoverForFile(ctx, tx, fileID, cleanPath, coverCacheDir, false)
+		if err != nil {
 			return false, err
 		}
 
-		return false, nil
+		return coverChanged, nil
 	}
 
 	metadata, metaErr := deriveMetadata(rootPath, cleanPath)
@@ -1904,7 +2629,7 @@ func upsertFileAndTrack(
 		return false, fmt.Errorf("upsert track %s: %w", cleanPath, upsertErr)
 	}
 
-	if err := syncCoverForFile(ctx, tx, fileID, cleanPath, coverCacheDir, true); err != nil {
+	if _, err := syncCoverForFile(ctx, tx, fileID, cleanPath, coverCacheDir, true); err != nil {
 		return false, err
 	}
 

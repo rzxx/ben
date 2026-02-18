@@ -1,6 +1,7 @@
 package main
 
 import (
+	"ben/internal/coverart"
 	"errors"
 	"net/http"
 	"os"
@@ -28,6 +29,7 @@ func (s *CoverService) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		http.Error(rw, "missing cover path", http.StatusBadRequest)
 		return
 	}
+	variant := coverart.NormalizeVariant(req.URL.Query().Get("variant"))
 
 	resolvedPath, err := s.resolveCoverPath(coverPath)
 	if err != nil {
@@ -35,8 +37,18 @@ func (s *CoverService) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	pathToServe := resolvedPath
+	if variant != coverart.VariantOriginal {
+		variantPath, ok := coverart.VariantPathFromCachePath(resolvedPath, variant)
+		if ok {
+			if info, statErr := os.Stat(variantPath); statErr == nil && !info.IsDir() {
+				pathToServe = variantPath
+			}
+		}
+	}
+
 	rw.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	http.ServeFile(rw, req, resolvedPath)
+	http.ServeFile(rw, req, pathToServe)
 }
 
 func (s *CoverService) resolveCoverPath(requestedPath string) (string, error) {

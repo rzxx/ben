@@ -55,6 +55,7 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
           <CoverArt
             coverPath={album.coverPath}
             alt={`${album.title} cover`}
+            variant="detail"
             className="mt-4 aspect-square w-full rounded-2xl border border-black/7 dark:border-white/7"
             loading="eager"
           />

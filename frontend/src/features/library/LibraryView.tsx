@@ -144,6 +144,7 @@ export function LibraryView(props: LibraryViewProps) {
                       <CoverArt
                         coverPath={album.coverPath}
                         alt={`${album.title} cover`}
+                        variant="grid"
                         className="album-cover"
                       />
                       <div className="entity-copy">
@@ -234,6 +235,7 @@ export function LibraryView(props: LibraryViewProps) {
                     <CoverArt
                       coverPath={album.coverPath}
                       alt={`${album.title} cover`}
+                      variant="grid"
                       className="album-cover"
                     />
                     <div className="entity-copy">
@@ -262,6 +264,7 @@ export function LibraryView(props: LibraryViewProps) {
               <CoverArt
                 coverPath={props.albumDetail.coverPath}
                 alt={`${props.albumDetail.title} cover`}
+                variant="detail"
                 className="album-detail-cover"
                 loading="eager"
               />
