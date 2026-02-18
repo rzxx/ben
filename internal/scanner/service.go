@@ -15,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,10 +34,13 @@ const metadataVersion = 2
 
 const watcherDebounceDelay = 1200 * time.Millisecond
 
+const verificationScanInterval = 6 * time.Hour
+
 type scanMode string
 
 const (
 	scanModeFull        scanMode = "full"
+	scanModeRepair      scanMode = "repair"
 	scanModeIncremental scanMode = "incremental"
 )
 
@@ -82,7 +87,7 @@ type Emitter func(eventName string, payload any)
 type Service struct {
 	mu            sync.Mutex
 	running       bool
-	pendingScan   bool
+	pendingMode   scanMode
 	lastRun       time.Time
 	lastMode      string
 	lastError     string
@@ -99,6 +104,7 @@ type Service struct {
 	rootsChanged  chan struct{}
 	watchDebounce *time.Timer
 	watchedDirs   map[string]struct{}
+	dirtyPaths    map[string]struct{}
 }
 
 type scanTotals struct {
@@ -114,6 +120,7 @@ func NewService(database *sql.DB, roots *library.WatchedRootRepository, coverCac
 		coverCacheDir: coverCacheDir,
 		rootsChanged:  make(chan struct{}, 1),
 		watchedDirs:   make(map[string]struct{}),
+		dirtyPaths:    make(map[string]struct{}),
 	}
 }
 
@@ -148,10 +155,14 @@ func (s *Service) StartWatching() error {
 	s.watching = true
 	s.watchStop = stopCh
 	s.watchedDirs = make(map[string]struct{})
+	s.dirtyPaths = make(map[string]struct{})
 	s.mu.Unlock()
 
 	go s.watchLoop(watcher, stopCh)
 	s.NotifyWatchedRootsChanged()
+	if err := s.markEnabledRootsDirty(context.Background()); err == nil {
+		s.scheduleWatcherIncrementalScan()
+	}
 
 	return nil
 }
@@ -172,6 +183,7 @@ func (s *Service) StopWatching() error {
 	s.watchStop = nil
 	s.watchDebounce = nil
 	s.watchedDirs = make(map[string]struct{})
+	s.dirtyPaths = make(map[string]struct{})
 	s.mu.Unlock()
 
 	if debounce != nil {
@@ -206,6 +218,9 @@ func (s *Service) NotifyWatchedRootsChanged() {
 }
 
 func (s *Service) watchLoop(watcher *fsnotify.Watcher, stopCh <-chan struct{}) {
+	verificationTicker := time.NewTicker(verificationScanInterval)
+	defer verificationTicker.Stop()
+
 	for {
 		select {
 		case <-stopCh:
@@ -219,15 +234,31 @@ func (s *Service) watchLoop(watcher *fsnotify.Watcher, stopCh <-chan struct{}) {
 					Status:  "failed",
 					At:      time.Now().UTC().Format(time.RFC3339),
 				})
+				continue
 			}
+
+			if err := s.markEnabledRootsDirty(context.Background()); err != nil {
+				s.emitProgress(Progress{
+					Phase:   "watcher",
+					Message: fmt.Sprintf("watch root sync failed: %v", err),
+					Percent: 0,
+					Status:  "failed",
+					At:      time.Now().UTC().Format(time.RFC3339),
+				})
+			}
+
+			s.scheduleWatcherIncrementalScan()
 		case event, ok := <-watcher.Events:
 			if !ok {
 				return
 			}
 
 			if s.handleWatcherEvent(watcher, event) {
+				s.markDirtyPath(event.Name)
 				s.scheduleWatcherIncrementalScan()
 			}
+		case <-verificationTicker.C:
+			s.queueVerificationScan()
 		case err, ok := <-watcher.Errors:
 			if !ok {
 				return
@@ -335,6 +366,116 @@ func copyStringSet(input map[string]struct{}) map[string]struct{} {
 	return output
 }
 
+func (s *Service) markEnabledRootsDirty(ctx context.Context) error {
+	roots, err := s.roots.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list watched roots for dirty queue: %w", err)
+	}
+
+	for _, root := range roots {
+		if !root.Enabled {
+			continue
+		}
+		s.markDirtyPath(root.Path)
+	}
+
+	return nil
+}
+
+func (s *Service) markDirtyPath(path string) {
+	cleanPath := filepath.Clean(strings.TrimSpace(path))
+	if cleanPath == "" || cleanPath == "." {
+		return
+	}
+
+	s.mu.Lock()
+	s.dirtyPaths[cleanPath] = struct{}{}
+	s.mu.Unlock()
+}
+
+func (s *Service) consumeDirtyPaths() []string {
+	s.mu.Lock()
+	if len(s.dirtyPaths) == 0 {
+		s.mu.Unlock()
+		return nil
+	}
+
+	paths := make([]string, 0, len(s.dirtyPaths))
+	for path := range s.dirtyPaths {
+		paths = append(paths, path)
+	}
+	s.dirtyPaths = make(map[string]struct{})
+	s.mu.Unlock()
+
+	return compactDirtyPaths(paths)
+}
+
+func compactDirtyPaths(paths []string) []string {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for _, rawPath := range paths {
+		cleanPath := filepath.Clean(strings.TrimSpace(rawPath))
+		if cleanPath == "" || cleanPath == "." {
+			continue
+		}
+
+		key := pathCompareKey(cleanPath)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, cleanPath)
+	}
+
+	sort.Slice(normalized, func(i int, j int) bool {
+		if len(normalized[i]) == len(normalized[j]) {
+			return pathCompareKey(normalized[i]) < pathCompareKey(normalized[j])
+		}
+		return len(normalized[i]) < len(normalized[j])
+	})
+
+	compacted := make([]string, 0, len(normalized))
+	for _, candidate := range normalized {
+		covered := false
+		for _, parent := range compacted {
+			if isSameOrNestedPath(candidate, parent) {
+				covered = true
+				break
+			}
+		}
+		if covered {
+			continue
+		}
+
+		compacted = append(compacted, candidate)
+	}
+
+	return compacted
+}
+
+func pathCompareKey(path string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(path)
+	}
+
+	return path
+}
+
+func isSameOrNestedPath(path string, parent string) bool {
+	pathKey := pathCompareKey(filepath.Clean(path))
+	parentKey := pathCompareKey(filepath.Clean(parent))
+	if pathKey == parentKey {
+		return true
+	}
+
+	prefix := parentKey + string(filepath.Separator)
+	return strings.HasPrefix(pathKey, prefix)
+}
+
 func (s *Service) handleWatcherEvent(watcher *fsnotify.Watcher, event fsnotify.Event) bool {
 	if event.Op&fsnotify.Create != 0 {
 		if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
@@ -437,18 +578,43 @@ func (s *Service) scheduleWatcherIncrementalScan() {
 func (s *Service) queueIncrementalScan() {
 	s.mu.Lock()
 	s.watchDebounce = nil
+	s.queueScanLocked(scanModeIncremental)
+	s.mu.Unlock()
+}
+
+func (s *Service) queueVerificationScan() {
+	s.mu.Lock()
+	s.queueScanLocked(scanModeFull)
+	s.mu.Unlock()
+}
+
+func (s *Service) queueScanLocked(mode scanMode) {
 	if s.running {
-		s.pendingScan = true
-		s.mu.Unlock()
+		s.pendingMode = pickPendingMode(s.pendingMode, mode)
 		return
 	}
 
-	s.startScanLocked(scanModeIncremental)
-	s.mu.Unlock()
+	s.startScanLocked(mode)
+}
+
+func pickPendingMode(current scanMode, next scanMode) scanMode {
+	if current == scanModeFull || next == scanModeFull {
+		return scanModeFull
+	}
+
+	if current == scanModeIncremental {
+		return current
+	}
+
+	return next
 }
 
 func (s *Service) TriggerFullScan() error {
 	return s.triggerScan(scanModeFull)
+}
+
+func (s *Service) TriggerScan() error {
+	return s.triggerScan(scanModeRepair)
 }
 
 func (s *Service) TriggerIncrementalScan() error {
@@ -498,8 +664,8 @@ func (s *Service) runScan(mode scanMode) {
 
 	s.mu.Lock()
 	s.running = false
-	shouldRunPending := s.pendingScan
-	s.pendingScan = false
+	nextMode := s.pendingMode
+	s.pendingMode = ""
 	if err != nil {
 		s.lastError = err.Error()
 	} else {
@@ -510,8 +676,8 @@ func (s *Service) runScan(mode scanMode) {
 		s.lastIndexed = totals.indexed
 		s.lastSkipped = totals.skipped
 	}
-	if shouldRunPending {
-		s.startScanLocked(scanModeIncremental)
+	if nextMode != "" {
+		s.startScanLocked(nextMode)
 	}
 	s.mu.Unlock()
 
@@ -545,6 +711,9 @@ func scanModeLabel(mode scanMode) string {
 	if mode == scanModeIncremental {
 		return "Incremental"
 	}
+	if mode == scanModeRepair {
+		return "Repair"
+	}
 
 	return "Full"
 }
@@ -553,6 +722,8 @@ func (s *Service) performScan(ctx context.Context, mode scanMode) (scanTotals, e
 	startMessage := "Starting full scan"
 	if mode == scanModeIncremental {
 		startMessage = "Starting incremental scan"
+	} else if mode == scanModeRepair {
+		startMessage = "Starting repair scan"
 	}
 
 	s.emitProgress(Progress{
@@ -597,42 +768,87 @@ func (s *Service) performScan(ctx context.Context, mode scanMode) (scanTotals, e
 		}
 	}()
 
-	if mode == scanModeFull {
+	if isFullTraversalMode(mode) {
 		if err := markRootsAsMissing(ctx, tx, enabledRoots); err != nil {
-			return scanTotals{}, err
-		}
-	} else {
-		if err := prepareIncrementalSeenTable(ctx, tx); err != nil {
 			return scanTotals{}, err
 		}
 	}
 
+	if err := prepareIncrementalSeenTable(ctx, tx); err != nil {
+		return scanTotals{}, err
+	}
+
 	totals := scanTotals{}
-	for i, root := range enabledRoots {
-		progress := 10 + ((i * 70) / len(enabledRoots))
-		s.emitProgress(Progress{
-			Phase:   "scan",
-			Message: fmt.Sprintf("Scanning %s", root.Path),
-			Percent: progress,
-			Status:  "running",
-			At:      time.Now().UTC().Format(time.RFC3339),
-		})
+	if mode == scanModeIncremental {
+		dirtyPaths := s.consumeDirtyPaths()
+		if len(dirtyPaths) > 0 {
+			s.emitProgress(Progress{
+				Phase:   "scan",
+				Message: fmt.Sprintf("Applying %d filesystem change(s)", len(dirtyPaths)),
+				Percent: 14,
+				Status:  "running",
+				At:      time.Now().UTC().Format(time.RFC3339),
+			})
 
-		rootTotals, scanErr := scanRoot(ctx, tx, root, mode, s.coverCacheDir)
-		totals.filesSeen += rootTotals.filesSeen
-		totals.indexed += rootTotals.indexed
-		totals.skipped += rootTotals.skipped
-		if scanErr != nil {
-			return scanTotals{}, scanErr
-		}
-
-		if mode == scanModeIncremental {
-			if err := reconcileMissingFilesIncremental(ctx, tx, root.ID); err != nil {
-				return scanTotals{}, err
+			incrementalTotals, scanErr := scanDirtyPathsIncremental(ctx, tx, enabledRoots, dirtyPaths, s.coverCacheDir)
+			if scanErr != nil {
+				return scanTotals{}, scanErr
 			}
 
-			if err := cleanupMissingTracks(ctx, tx, []library.WatchedRoot{root}); err != nil {
-				return scanTotals{}, err
+			totals = incrementalTotals
+		} else {
+			s.emitProgress(Progress{
+				Phase:   "scan",
+				Message: "No queued filesystem events, running full incremental verification",
+				Percent: 12,
+				Status:  "running",
+				At:      time.Now().UTC().Format(time.RFC3339),
+			})
+
+			for i, root := range enabledRoots {
+				progress := 14 + ((i * 66) / len(enabledRoots))
+				s.emitProgress(Progress{
+					Phase:   "scan",
+					Message: fmt.Sprintf("Scanning %s", root.Path),
+					Percent: progress,
+					Status:  "running",
+					At:      time.Now().UTC().Format(time.RFC3339),
+				})
+
+				rootTotals, scanErr := scanRoot(ctx, tx, root, mode, s.coverCacheDir)
+				totals.filesSeen += rootTotals.filesSeen
+				totals.indexed += rootTotals.indexed
+				totals.skipped += rootTotals.skipped
+				if scanErr != nil {
+					return scanTotals{}, scanErr
+				}
+
+				if err := reconcileMissingFilesIncremental(ctx, tx, root.ID); err != nil {
+					return scanTotals{}, err
+				}
+
+				if err := cleanupMissingTracks(ctx, tx, []library.WatchedRoot{root}); err != nil {
+					return scanTotals{}, err
+				}
+			}
+		}
+	} else {
+		for i, root := range enabledRoots {
+			progress := 10 + ((i * 70) / len(enabledRoots))
+			s.emitProgress(Progress{
+				Phase:   "scan",
+				Message: fmt.Sprintf("Scanning %s", root.Path),
+				Percent: progress,
+				Status:  "running",
+				At:      time.Now().UTC().Format(time.RFC3339),
+			})
+
+			rootTotals, scanErr := scanRoot(ctx, tx, root, mode, s.coverCacheDir)
+			totals.filesSeen += rootTotals.filesSeen
+			totals.indexed += rootTotals.indexed
+			totals.skipped += rootTotals.skipped
+			if scanErr != nil {
+				return scanTotals{}, scanErr
 			}
 		}
 	}
@@ -645,7 +861,7 @@ func (s *Service) performScan(ctx context.Context, mode scanMode) (scanTotals, e
 		At:      time.Now().UTC().Format(time.RFC3339),
 	})
 
-	if mode == scanModeFull {
+	if isFullTraversalMode(mode) {
 		if err := cleanupMissingTracks(ctx, tx, enabledRoots); err != nil {
 			return scanTotals{}, err
 		}
@@ -683,6 +899,10 @@ func (s *Service) performScan(ctx context.Context, mode scanMode) (scanTotals, e
 	}
 
 	return totals, nil
+}
+
+func isFullTraversalMode(mode scanMode) bool {
+	return mode == scanModeFull || mode == scanModeRepair
 }
 
 func markRootsAsMissing(ctx context.Context, tx *sql.Tx, roots []library.WatchedRoot) error {
@@ -744,6 +964,249 @@ func reconcileMissingFilesIncremental(ctx context.Context, tx *sql.Tx, rootID in
 	}
 
 	return nil
+}
+
+func reconcileMissingFilesIncrementalByPrefix(ctx context.Context, tx *sql.Tx, rootID int64, prefix string) (bool, error) {
+	cleanPrefix := filepath.Clean(prefix)
+	pattern := likePrefixPattern(cleanPrefix)
+
+	result, err := tx.ExecContext(
+		ctx,
+		`UPDATE files
+		 SET file_exists = 0
+		 WHERE root_id = ?
+		   AND file_exists = 1
+		   AND (path = ? OR path LIKE ? ESCAPE '\\')
+		   AND path NOT IN (SELECT path FROM scan_seen_paths)`,
+		rootID,
+		cleanPrefix,
+		pattern,
+	)
+	if err != nil {
+		return false, fmt.Errorf("reconcile missing files for root %d prefix %s: %w", rootID, cleanPrefix, err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read reconciled missing file count for root %d prefix %s: %w", rootID, cleanPrefix, err)
+	}
+
+	return rowsAffected > 0, nil
+}
+
+func markPathMissingIncremental(ctx context.Context, tx *sql.Tx, rootID int64, path string) (bool, error) {
+	cleanPath := filepath.Clean(path)
+	pattern := likePrefixPattern(cleanPath)
+
+	result, err := tx.ExecContext(
+		ctx,
+		`UPDATE files
+		 SET file_exists = 0
+		 WHERE root_id = ?
+		   AND file_exists = 1
+		   AND (path = ? OR path LIKE ? ESCAPE '\\')`,
+		rootID,
+		cleanPath,
+		pattern,
+	)
+	if err != nil {
+		return false, fmt.Errorf("mark path missing for root %d path %s: %w", rootID, cleanPath, err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read missing file update count for root %d path %s: %w", rootID, cleanPath, err)
+	}
+
+	return rowsAffected > 0, nil
+}
+
+func likePrefixPattern(path string) string {
+	escaped := escapeLikePattern(filepath.Clean(path))
+	separator := escapeLikePattern(string(filepath.Separator))
+	return escaped + separator + "%"
+}
+
+func escapeLikePattern(input string) string {
+	replacer := strings.NewReplacer(
+		`\`, `\\`,
+		`%`, `\%`,
+		`_`, `\_`,
+	)
+
+	return replacer.Replace(input)
+}
+
+func findOwningRoot(path string, roots []library.WatchedRoot) (library.WatchedRoot, bool) {
+	for _, root := range roots {
+		if isSameOrNestedPath(path, root.Path) {
+			return root, true
+		}
+	}
+
+	return library.WatchedRoot{}, false
+}
+
+func sortRootsByDepth(roots []library.WatchedRoot) []library.WatchedRoot {
+	sortedRoots := make([]library.WatchedRoot, len(roots))
+	copy(sortedRoots, roots)
+
+	sort.Slice(sortedRoots, func(i int, j int) bool {
+		leftPath := filepath.Clean(sortedRoots[i].Path)
+		rightPath := filepath.Clean(sortedRoots[j].Path)
+		if len(leftPath) == len(rightPath) {
+			return pathCompareKey(leftPath) < pathCompareKey(rightPath)
+		}
+		return len(leftPath) > len(rightPath)
+	})
+
+	return sortedRoots
+}
+
+func scanDirtyPathsIncremental(
+	ctx context.Context,
+	tx *sql.Tx,
+	enabledRoots []library.WatchedRoot,
+	dirtyPaths []string,
+	coverCacheDir string,
+) (scanTotals, error) {
+	rootListByDepth := sortRootsByDepth(enabledRoots)
+	affectedRootIDs := make(map[int64]struct{})
+	totals := scanTotals{}
+	scannedAt := time.Now().UTC().Format(time.RFC3339)
+
+	for _, dirtyPath := range dirtyPaths {
+		cleanPath := filepath.Clean(dirtyPath)
+		root, hasRoot := findOwningRoot(cleanPath, rootListByDepth)
+		if !hasRoot {
+			continue
+		}
+
+		info, statErr := os.Stat(cleanPath)
+		if statErr == nil {
+			if info.IsDir() {
+				dirTotals, err := scanIncrementalDirectory(ctx, tx, root, cleanPath, coverCacheDir)
+				if err != nil {
+					return scanTotals{}, err
+				}
+				totals.filesSeen += dirTotals.filesSeen
+				totals.indexed += dirTotals.indexed
+				totals.skipped += dirTotals.skipped
+				affectedRootIDs[root.ID] = struct{}{}
+				continue
+			}
+
+			extension := strings.ToLower(filepath.Ext(cleanPath))
+			if _, supported := supportedExtensions[extension]; !supported {
+				continue
+			}
+
+			totals.filesSeen++
+			indexed, upsertErr := upsertFileAndTrack(ctx, tx, root.ID, root.Path, cleanPath, info, scannedAt, scanModeIncremental, coverCacheDir)
+			if upsertErr != nil {
+				return scanTotals{}, upsertErr
+			}
+			if indexed {
+				totals.indexed++
+			}
+
+			affectedRootIDs[root.ID] = struct{}{}
+			continue
+		}
+
+		if !errors.Is(statErr, os.ErrNotExist) {
+			totals.skipped++
+			continue
+		}
+
+		changed, err := markPathMissingIncremental(ctx, tx, root.ID, cleanPath)
+		if err != nil {
+			return scanTotals{}, err
+		}
+		if changed {
+			affectedRootIDs[root.ID] = struct{}{}
+		}
+	}
+
+	if len(affectedRootIDs) == 0 {
+		return totals, nil
+	}
+
+	affectedRoots := make([]library.WatchedRoot, 0, len(affectedRootIDs))
+	for _, root := range enabledRoots {
+		if _, ok := affectedRootIDs[root.ID]; !ok {
+			continue
+		}
+		affectedRoots = append(affectedRoots, root)
+	}
+
+	if err := cleanupMissingTracks(ctx, tx, affectedRoots); err != nil {
+		return scanTotals{}, err
+	}
+
+	return totals, nil
+}
+
+func scanIncrementalDirectory(
+	ctx context.Context,
+	tx *sql.Tx,
+	root library.WatchedRoot,
+	directoryPath string,
+	coverCacheDir string,
+) (scanTotals, error) {
+	if err := clearIncrementalSeenTable(ctx, tx); err != nil {
+		return scanTotals{}, err
+	}
+
+	totals := scanTotals{}
+	scannedAt := time.Now().UTC().Format(time.RFC3339)
+
+	err := filepath.WalkDir(directoryPath, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			totals.skipped++
+			return nil
+		}
+
+		if entry.IsDir() {
+			return nil
+		}
+
+		extension := strings.ToLower(filepath.Ext(path))
+		if _, supported := supportedExtensions[extension]; !supported {
+			return nil
+		}
+
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			totals.skipped++
+			return nil
+		}
+
+		cleanPath := filepath.Clean(path)
+		totals.filesSeen++
+		indexed, upsertErr := upsertFileAndTrack(ctx, tx, root.ID, root.Path, cleanPath, info, scannedAt, scanModeIncremental, coverCacheDir)
+		if upsertErr != nil {
+			return upsertErr
+		}
+		if indexed {
+			totals.indexed++
+		}
+
+		if seenErr := markPathSeenIncremental(ctx, tx, cleanPath); seenErr != nil {
+			return seenErr
+		}
+
+		return nil
+	})
+	if err != nil {
+		return scanTotals{}, fmt.Errorf("walk incremental directory %s: %w", directoryPath, err)
+	}
+
+	if _, err := reconcileMissingFilesIncrementalByPrefix(ctx, tx, root.ID, directoryPath); err != nil {
+		return scanTotals{}, err
+	}
+
+	return totals, nil
 }
 
 func cleanupMissingTracks(ctx context.Context, tx *sql.Tx, roots []library.WatchedRoot) error {
@@ -1228,7 +1691,7 @@ func upsertFileAndTrack(
 		metadataNeedsUpdate = currentSize != newSize || currentMTime != newMTime
 
 		rootChanged := !currentRoot.Valid || currentRoot.Int64 != rootID
-		fileNeedsRefresh := metadataNeedsUpdate || rootChanged || currentExists == 0 || mode == scanModeFull
+		fileNeedsRefresh := metadataNeedsUpdate || rootChanged || currentExists == 0 || isFullTraversalMode(mode)
 
 		if fileNeedsRefresh {
 			if _, updateErr := tx.ExecContext(
@@ -1244,6 +1707,12 @@ func upsertFileAndTrack(
 			); updateErr != nil {
 				return false, fmt.Errorf("update file %s: %w", cleanPath, updateErr)
 			}
+		}
+	}
+
+	if !metadataNeedsUpdate {
+		if mode == scanModeRepair {
+			metadataNeedsUpdate = true
 		}
 	}
 

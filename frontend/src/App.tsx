@@ -712,20 +712,10 @@ function AppContent() {
     }
   };
 
-  const onRunFullScan = async () => {
+  const onRunScan = async () => {
     try {
       setErrorMessage(null);
-      await Call.ByName(`${scannerService}.TriggerFullScan`);
-      await loadScanStatus();
-    } catch (error) {
-      setErrorMessage(parseError(error));
-    }
-  };
-
-  const onRunIncrementalScan = async () => {
-    try {
-      setErrorMessage(null);
-      await Call.ByName(`${scannerService}.TriggerIncrementalScan`);
+      await Call.ByName(`${scannerService}.TriggerScan`);
       await loadScanStatus();
     } catch (error) {
       setErrorMessage(parseError(error));
@@ -1107,9 +1097,6 @@ function AppContent() {
         <LeftSidebar
           location={location}
           onNavigate={navigate}
-          scanRunning={scanStatus.running}
-          onRunIncrementalScan={onRunIncrementalScan}
-          onRunFullScan={onRunFullScan}
         />
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -1199,6 +1186,7 @@ function AppContent() {
                         onAddWatchedRoot={onAddWatchedRoot}
                         onToggleWatchedRoot={onToggleWatchedRoot}
                         onRemoveWatchedRoot={onRemoveWatchedRoot}
+                        onRunScan={onRunScan}
                         onThemeOptionsChange={setThemeOptions}
                         onGenerateThemePalette={onGenerateThemePalette}
                         themeModePreference={themeModePreference}

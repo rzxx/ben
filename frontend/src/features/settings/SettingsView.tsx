@@ -35,6 +35,7 @@ type SettingsViewProps = {
   onAddWatchedRoot: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onToggleWatchedRoot: (root: WatchedRoot) => Promise<void>;
   onRemoveWatchedRoot: (id: number) => Promise<void>;
+  onRunScan: () => Promise<void>;
   onThemeOptionsChange: (next: ThemeExtractOptions) => void;
   onGenerateThemePalette: () => Promise<void>;
   onThemeModePreferenceChange: (next: ThemeModePreference) => void;
@@ -152,6 +153,18 @@ export function SettingsView(props: SettingsViewProps) {
             {props.scanStatus.lastError}
           </p>
         ) : null}
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => {
+              void props.onRunScan();
+            }}
+            disabled={props.scanStatus.running}
+            className="bg-theme-900 text-theme-100 hover:bg-theme-800 dark:bg-theme-100 dark:text-theme-900 dark:hover:bg-theme-200 disabled:bg-theme-700 disabled:text-theme-300 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed"
+          >
+            {props.scanStatus.running ? "Scanning..." : "Scan Library"}
+          </button>
+        </div>
       </section>
 
       <section className="border-theme-300 bg-theme-50/80 dark:border-theme-800 dark:bg-theme-900/70 rounded-xl border p-4">

@@ -14,6 +14,10 @@ func (s *ScannerService) TriggerFullScan() error {
 	return s.scanner.TriggerFullScan()
 }
 
+func (s *ScannerService) TriggerScan() error {
+	return s.scanner.TriggerScan()
+}
+
 func (s *ScannerService) TriggerIncrementalScan() error {
 	return s.scanner.TriggerIncrementalScan()
 }
