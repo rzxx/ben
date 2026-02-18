@@ -125,6 +125,8 @@ export function createBackgroundShaderRenderer(
   let initializePromise: Promise<void> | null = null;
   let hasRenderLoopStarted = false;
   let lastDiagnosticMessage = "";
+  let isDocumentVisible =
+    typeof document === "undefined" || document.visibilityState === "visible";
 
   let lastTemporalSceneVariant:
     | BackgroundShaderSettings["sceneVariant"]
@@ -192,6 +194,45 @@ export function createBackgroundShaderRenderer(
     if (!disposed) {
       options.onUnsupportedChange(next);
     }
+  };
+
+  const shouldRender = () => isDocumentVisible;
+
+  const stopRenderLoop = () => {
+    window.cancelAnimationFrame(animationFrameId);
+    animationFrameId = 0;
+    hasRenderLoopStarted = false;
+    lastRenderAtMs = 0;
+    renderState.historyValid = false;
+    renderState.historyFrameCount = 0;
+  };
+
+  const scheduleRenderFrame = () => {
+    if (disposed || !shouldRender()) {
+      stopRenderLoop();
+      return;
+    }
+
+    animationFrameId = window.requestAnimationFrame(render);
+  };
+
+  const startRenderLoop = () => {
+    if (hasRenderLoopStarted || disposed || !shouldRender()) {
+      return;
+    }
+
+    hasRenderLoopStarted = true;
+    lastRenderAtMs = 0;
+    animationFrameId = window.requestAnimationFrame(render);
+  };
+
+  const syncRenderLoopWithVisibility = () => {
+    if (shouldRender()) {
+      startRenderLoop();
+      return;
+    }
+
+    stopRenderLoop();
   };
 
   const writeSceneUniforms = (nowMs: number, width: number, height: number) => {
@@ -533,7 +574,12 @@ export function createBackgroundShaderRenderer(
 
   const render = (time: number) => {
     if (disposed) {
-      hasRenderLoopStarted = false;
+      stopRenderLoop();
+      return;
+    }
+
+    if (!shouldRender()) {
+      stopRenderLoop();
       return;
     }
 
@@ -541,7 +587,7 @@ export function createBackgroundShaderRenderer(
     const frameIntervalMs = 1000 / clamp(settingsValue.targetFrameRate, 15, 60);
 
     if (time - lastRenderAtMs < frameIntervalMs) {
-      animationFrameId = window.requestAnimationFrame(render);
+      scheduleRenderFrame();
       return;
     }
 
@@ -580,12 +626,12 @@ export function createBackgroundShaderRenderer(
       !temporalUniformBuffer ||
       !compositeUniformBuffer
     ) {
-      animationFrameId = window.requestAnimationFrame(render);
+      scheduleRenderFrame();
       return;
     }
 
     if (gl.isContextLost() || renderState.contextLost) {
-      animationFrameId = window.requestAnimationFrame(render);
+      scheduleRenderFrame();
       return;
     }
 
@@ -596,14 +642,14 @@ export function createBackgroundShaderRenderer(
       const message = error instanceof Error ? error.message : String(error);
       reportDiagnostic(`Failed to allocate render targets: ${message}`);
       setUnsupported(true);
-      animationFrameId = window.requestAnimationFrame(render);
+      scheduleRenderFrame();
       return;
     }
 
     const sceneTarget = renderState.sceneTarget;
     const postTarget = renderState.postTarget;
     if (!sceneTarget) {
-      animationFrameId = window.requestAnimationFrame(render);
+      scheduleRenderFrame();
       return;
     }
 
@@ -703,7 +749,7 @@ export function createBackgroundShaderRenderer(
     gl.bindVertexArray(vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-    animationFrameId = window.requestAnimationFrame(render);
+    scheduleRenderFrame();
   };
 
   const initialize = async () => {
@@ -714,7 +760,7 @@ export function createBackgroundShaderRenderer(
         antialias: false,
         depth: false,
         stencil: false,
-        powerPreference: "high-performance",
+        powerPreference: "low-power",
       });
 
       if (!context || disposed) {
@@ -916,10 +962,7 @@ export function createBackgroundShaderRenderer(
       resizeObserver.observe(canvas);
 
       setUnsupported(false);
-      if (!hasRenderLoopStarted) {
-        hasRenderLoopStarted = true;
-        animationFrameId = window.requestAnimationFrame(render);
-      }
+      startRenderLoop();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       reportDiagnostic(`Background shader initialization failed: ${message}`);
@@ -954,8 +997,14 @@ export function createBackgroundShaderRenderer(
     void startInitialize();
   };
 
+  const handleVisibilityChange = () => {
+    isDocumentVisible = document.visibilityState === "visible";
+    syncRenderLoopWithVisibility();
+  };
+
   canvas.addEventListener("webglcontextlost", handleContextLost, false);
   canvas.addEventListener("webglcontextrestored", handleContextRestored, false);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
 
   void startInitialize();
 
@@ -964,6 +1013,7 @@ export function createBackgroundShaderRenderer(
       disposed = true;
       hasRenderLoopStarted = false;
       window.cancelAnimationFrame(animationFrameId);
+      animationFrameId = 0;
       resizeObserver?.disconnect();
       canvas.removeEventListener("webglcontextlost", handleContextLost, false);
       canvas.removeEventListener(
@@ -971,6 +1021,7 @@ export function createBackgroundShaderRenderer(
         handleContextRestored,
         false,
       );
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       resetGlState();
     },
   };
