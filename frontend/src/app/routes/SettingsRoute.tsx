@@ -1,0 +1,46 @@
+import { FormEvent } from "react";
+import { SettingsView } from "../../features/settings/SettingsView";
+import { usePlayback } from "../providers/PlaybackContext";
+import { useScanner } from "../providers/ScannerContext";
+import { useStats } from "../providers/StatsContext";
+import { useTheme } from "../providers/ThemeContext";
+
+export function SettingsRoute() {
+  const { state: scannerState, actions: scannerActions } = useScanner();
+  const { state: playbackState } = usePlayback();
+  const { state: statsState } = useStats();
+  const { state: themeState, actions: themeActions } = useTheme();
+
+  const onAddWatchedRoot = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await scannerActions.addWatchedRoot(scannerState.newRootPath);
+  };
+
+  return (
+    <SettingsView
+      lastProgress={scannerState.lastProgress}
+      scanStatus={scannerState.scanStatus}
+      watchedRoots={scannerState.watchedRoots}
+      newRootPath={scannerState.newRootPath}
+      errorMessage={scannerState.errorMessage}
+      queueState={playbackState.queueState}
+      playerState={playbackState.playerState}
+      statsOverview={statsState.overview}
+      currentCoverPath={playbackState.playerState.currentTrack?.coverPath}
+      themeOptions={themeState.themeOptions}
+      themePalette={themeState.themePalette}
+      themeBusy={themeState.themeBusy}
+      themeErrorMessage={themeState.themeErrorMessage}
+      onNewRootPathChange={scannerActions.setNewRootPath}
+      onAddWatchedRoot={onAddWatchedRoot}
+      onToggleWatchedRoot={scannerActions.toggleWatchedRoot}
+      onRemoveWatchedRoot={scannerActions.removeWatchedRoot}
+      onRunScan={scannerActions.runScan}
+      onThemeOptionsChange={themeActions.setThemeOptions}
+      onGenerateThemePalette={themeActions.generateThemePalette}
+      themeModePreference={themeState.themeModePreference}
+      resolvedThemeMode={themeState.resolvedThemeMode}
+      onThemeModePreferenceChange={themeActions.setThemeModePreference}
+    />
+  );
+}
