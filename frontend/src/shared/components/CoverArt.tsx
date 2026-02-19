@@ -26,7 +26,7 @@ type CoverArtProps = {
 export function CoverArt(props: CoverArtProps) {
   const [failedSources, setFailedSources] = useState<Record<string, true>>({});
   const [, setLoadedVersion] = useState(0);
-  const [isPrimaryElementLoaded, setIsPrimaryElementLoaded] = useState(false);
+  const [loadedPrimarySource, setLoadedPrimarySource] = useState<string | null>(null);
 
   const primarySource = coverPathToURL(
     props.coverPath,
@@ -40,12 +40,6 @@ export function CoverArt(props: CoverArtProps) {
   const loadingFallback = props.loadingFallback ?? "none";
   const imageLoading = props.loading ?? "lazy";
   const imageDecoding = props.decoding ?? "async";
-
-  useEffect(() => {
-    setIsPrimaryElementLoaded(
-      !!primarySource && loadedCoverSources.has(primarySource),
-    );
-  }, [primarySource]);
 
   const shouldPreloadPrimary = !!primarySource && canUseFallback;
   const isPrimaryReady =
@@ -148,6 +142,10 @@ export function CoverArt(props: CoverArtProps) {
     shouldRenderLayeredSwap && primarySource ? primarySource : undefined;
   const layeredFallbackSource =
     shouldRenderLayeredSwap && fallbackSource ? fallbackSource : undefined;
+  const isPrimaryElementLoaded =
+    !!layeredPrimarySource &&
+    (loadedCoverSources.has(layeredPrimarySource) ||
+      loadedPrimarySource === layeredPrimarySource);
 
   if (layeredPrimarySource && layeredFallbackSource) {
     return (
@@ -184,13 +182,12 @@ export function CoverArt(props: CoverArtProps) {
           loading={imageLoading}
           decoding={imageDecoding}
           onLoad={() => {
-            setIsPrimaryElementLoaded(true);
+            setLoadedPrimarySource(layeredPrimarySource);
             if (rememberLoadedCoverSource(layeredPrimarySource)) {
               setLoadedVersion((current) => current + 1);
             }
           }}
           onError={() => {
-            setIsPrimaryElementLoaded(false);
             setFailedSources((current) => {
               if (current[layeredPrimarySource]) {
                 return current;
