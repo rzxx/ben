@@ -8,8 +8,16 @@ import { TitleBar } from "../features/layout/TitleBar";
 import { useRouteModulePreloader } from "./hooks/useRouteModulePreloader";
 import { useShellDomainErrorMessage } from "./hooks/useShellDomainErrorMessage";
 import { useBootstrap } from "./providers/BootstrapContext";
-import { usePlayback } from "./providers/PlaybackContext";
 import { useTheme } from "./providers/ThemeContext";
+import {
+  usePlaybackActions,
+  usePlaybackHasCurrentTrack,
+  usePlaybackPlayerState,
+  usePlaybackQueueState,
+  usePlaybackSeekMax,
+  usePlaybackSeekValue,
+  usePlaybackTransportBusy,
+} from "./state/playback/playbackSelectors";
 import { formatDuration } from "./utils/appUtils";
 import { buildAlbumDetailPath, buildArtistDetailPath } from "./utils/routePaths";
 
@@ -168,15 +176,17 @@ export function AppShell() {
 }
 
 function ShellRightSidebar() {
-  const { state: playbackState, actions: playbackActions } = usePlayback();
+  const playbackActions = usePlaybackActions();
+  const queueState = usePlaybackQueueState();
+  const playerState = usePlaybackPlayerState();
   const [rightSidebarTab, setRightSidebarTab] = useState<"queue" | "details">("queue");
 
   return (
     <RightSidebar
       tab={rightSidebarTab}
       onTabChange={setRightSidebarTab}
-      queueState={playbackState.queueState}
-      playerState={playbackState.playerState}
+      queueState={queueState}
+      playerState={playerState}
       onSelectQueueIndex={playbackActions.selectQueueIndex}
       onRemoveQueueTrack={playbackActions.removeQueueTrack}
       onClearQueue={playbackActions.clearQueue}
@@ -201,17 +211,23 @@ function ShellDomainErrorBanner() {
 
 function ShellPlayerBar() {
   const [, navigate] = useLocation();
-  const { state: playbackState, actions: playbackActions, meta: playbackMeta } = usePlayback();
+  const playbackActions = usePlaybackActions();
+  const playerState = usePlaybackPlayerState();
+  const queueState = usePlaybackQueueState();
+  const transportBusy = usePlaybackTransportBusy();
+  const hasCurrentTrack = usePlaybackHasCurrentTrack();
+  const seekMax = usePlaybackSeekMax();
+  const seekValue = usePlaybackSeekValue();
 
   return (
     <PlayerBar
-      currentTrack={playbackState.playerState.currentTrack}
-      playerState={playbackState.playerState}
-      queueState={playbackState.queueState}
-      transportBusy={playbackState.transportBusy}
-      hasCurrentTrack={playbackMeta.hasCurrentTrack}
-      seekMax={playbackMeta.seekMax}
-      seekValue={playbackMeta.seekValue}
+      currentTrack={playerState.currentTrack}
+      playerState={playerState}
+      queueState={queueState}
+      transportBusy={transportBusy}
+      hasCurrentTrack={hasCurrentTrack}
+      seekMax={seekMax}
+      seekValue={seekValue}
       onPreviousTrack={playbackActions.previousTrack}
       onTogglePlayback={playbackActions.togglePlayback}
       onNextTrack={playbackActions.nextTrack}

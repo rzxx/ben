@@ -41,6 +41,6 @@
       "searchPath": "docs",
     },
   ],
-  "model": "gpt-5.3-codex",
+  "model": "gpt-5.2-codex",
   "provider": "openai",
 }

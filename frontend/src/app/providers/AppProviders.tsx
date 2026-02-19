@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { BootstrapProvider } from "./BootstrapProvider";
 import { LibraryProvider } from "./LibraryProvider";
-import { PlaybackProvider } from "./PlaybackProvider";
+import { PlaybackStoreProvider } from "./PlaybackStoreProvider";
 import { QueryProvider } from "./QueryProvider";
 import { ScannerProvider } from "./ScannerProvider";
 import { StatsProvider } from "./StatsProvider";
@@ -15,7 +15,7 @@ export function AppProviders(props: AppProvidersProps) {
   return (
     <QueryProvider>
       <BootstrapProvider>
-        <PlaybackProvider>
+        <PlaybackStoreProvider>
           <ScannerProvider>
             <LibraryProvider>
               <StatsProvider>
@@ -23,7 +23,7 @@ export function AppProviders(props: AppProvidersProps) {
               </StatsProvider>
             </LibraryProvider>
           </ScannerProvider>
-        </PlaybackProvider>
+        </PlaybackStoreProvider>
       </BootstrapProvider>
     </QueryProvider>
   );

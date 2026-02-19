@@ -76,6 +76,8 @@ export const queryKeys = {
     watchedRoots: () => ["scanner", "watched-roots"] as const,
   },
   stats: {
+    overviewRoot: () => ["stats", "overview"] as const,
+    dashboardRoot: () => ["stats", "dashboard"] as const,
     overview: (input: StatsOverviewQueryInput) => ["stats", "overview", input] as const,
     dashboard: (input: StatsDashboardQueryInput) => ["stats", "dashboard", input] as const,
   },

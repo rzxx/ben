@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { ArtistDetailView } from "../../features/library/ArtistDetailView";
 import { useLibrary } from "../providers/LibraryContext";
-import { usePlayback } from "../providers/PlaybackContext";
+import { usePlaybackActions } from "../state/playback/playbackSelectors";
 import { formatPlayedTime } from "../utils/appUtils";
 import { buildAlbumDetailPath, decodePathSegment } from "../utils/routePaths";
 
@@ -13,7 +13,7 @@ type ArtistDetailRouteProps = {
 export function ArtistDetailRoute(props: ArtistDetailRouteProps) {
   const [, navigate] = useLocation();
   const { state: libraryState, actions: libraryActions } = useLibrary();
-  const { actions: playbackActions } = usePlayback();
+  const playbackActions = usePlaybackActions();
   const loadArtistDetail = libraryActions.loadArtistDetail;
 
   const artistName = decodePathSegment(props.artistNameParam);

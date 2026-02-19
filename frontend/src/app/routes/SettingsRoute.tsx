@@ -1,13 +1,19 @@
 import { FormEvent } from "react";
 import { SettingsView } from "../../features/settings/SettingsView";
-import { usePlayback } from "../providers/PlaybackContext";
 import { useScanner } from "../providers/ScannerContext";
 import { useStats } from "../providers/StatsContext";
 import { useTheme } from "../providers/ThemeContext";
+import {
+  usePlaybackCoverPath,
+  usePlaybackPlayerState,
+  usePlaybackQueueState,
+} from "../state/playback/playbackSelectors";
 
 export function SettingsRoute() {
   const { state: scannerState, actions: scannerActions } = useScanner();
-  const { state: playbackState } = usePlayback();
+  const playbackQueueState = usePlaybackQueueState();
+  const playbackPlayerState = usePlaybackPlayerState();
+  const playbackCoverPath = usePlaybackCoverPath() ?? undefined;
   const { state: statsState } = useStats();
   const { state: themeState, actions: themeActions } = useTheme();
 
@@ -23,10 +29,10 @@ export function SettingsRoute() {
       watchedRoots={scannerState.watchedRoots}
       newRootPath={scannerState.newRootPath}
       errorMessage={scannerState.errorMessage}
-      queueState={playbackState.queueState}
-      playerState={playbackState.playerState}
+      queueState={playbackQueueState}
+      playerState={playbackPlayerState}
       statsOverview={statsState.overview}
-      currentCoverPath={playbackState.playerState.currentTrack?.coverPath}
+      currentCoverPath={playbackCoverPath}
       themeOptions={themeState.themeOptions}
       themePalette={themeState.themePalette}
       themeBusy={themeState.themeBusy}
