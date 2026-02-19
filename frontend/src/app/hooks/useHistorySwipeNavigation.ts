@@ -120,15 +120,20 @@ export function useHistorySwipeNavigation(options: HistorySwipeNavigationOptions
 
     const onWheel = (event: WheelEvent) => {
       const now = performance.now();
+      const hasHorizontalIntent =
+        Math.abs(event.deltaX) >= 6 &&
+        Math.abs(event.deltaX) >= Math.abs(event.deltaY) * wheelDominanceRatio;
 
       if (wheelNeedsReset) {
-        if (now - lastWheelAt <= wheelResetIdleMS) {
-          lastWheelAt = now;
+        if (now - lastWheelAt > wheelResetIdleMS) {
+          wheelNeedsReset = false;
+          resetWheelAccumulator();
+        } else {
+          if (hasHorizontalIntent) {
+            lastWheelAt = now;
+          }
           return;
         }
-
-        wheelNeedsReset = false;
-        resetWheelAccumulator();
       }
 
       if (Math.abs(event.deltaX) < 6) {
