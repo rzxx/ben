@@ -20,7 +20,7 @@ import {
   statsRefreshIntervalMS,
 } from "../utils/appUtils";
 import { useBootstrap } from "./BootstrapContext";
-import { usePlaybackStatsRefreshKey } from "./PlaybackContext";
+import { usePlaybackStatsRefreshKey } from "../state/playback/playbackSelectors";
 import { StatsContext, StatsContextValue } from "./StatsContext";
 
 type StatsProviderProps = {

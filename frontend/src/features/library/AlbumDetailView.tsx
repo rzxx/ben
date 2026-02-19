@@ -56,6 +56,7 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
             coverPath={album.coverPath}
             alt={`${album.title} cover`}
             variant="detail"
+            fallbackVariant="grid"
             className="mt-4 aspect-square w-full rounded-2xl border border-black/7 dark:border-white/7"
             loading="eager"
           />

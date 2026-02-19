@@ -30,8 +30,8 @@ import {
   scheduleAfterPaintAndIdle,
   themeModeStorageKey,
 } from "../utils/appUtils";
+import { usePlaybackCoverPath } from "../state/playback/playbackSelectors";
 import { useBootstrap } from "./BootstrapContext";
-import { usePlaybackCoverPath } from "./PlaybackContext";
 import { ThemeContext, ThemeContextValue } from "./ThemeContext";
 
 type ThemeProviderProps = {

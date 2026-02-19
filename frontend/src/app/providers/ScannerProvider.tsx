@@ -15,6 +15,8 @@ import {
   setWatchedRootEnabled,
   triggerScan,
 } from "../services/gateway/scannerGateway";
+import { appQueryClient } from "../query/client";
+import { queryKeys } from "../query/keys";
 import { ScanProgress, ScanStatus, WatchedRoot } from "../../features/types";
 import { parseError, scanProgressEvent, scheduleAfterPaintAndIdle } from "../utils/appUtils";
 import { useBootstrap } from "./BootstrapContext";
@@ -70,6 +72,24 @@ export function ScannerProvider(props: ScannerProviderProps) {
 
       if (progress.status === "completed") {
         setScanCompletionCount((count) => count + 1);
+        void appQueryClient.invalidateQueries({
+          queryKey: queryKeys.library.albumsRoot(),
+        });
+        void appQueryClient.invalidateQueries({
+          queryKey: queryKeys.library.artistsRoot(),
+        });
+        void appQueryClient.invalidateQueries({
+          queryKey: queryKeys.library.tracksRoot(),
+        });
+        void appQueryClient.invalidateQueries({
+          queryKey: queryKeys.library.albumDetailRoot(),
+        });
+        void appQueryClient.invalidateQueries({
+          queryKey: queryKeys.library.artistDetailRoot(),
+        });
+        void appQueryClient.invalidateQueries({
+          queryKey: queryKeys.library.artistTopTracksRoot(),
+        });
       }
     });
 

@@ -16,6 +16,8 @@ import {
   parseThemeModePreference,
   normalizePagedResult,
 } from "../utils/appUtils";
+import { appQueryClient } from "../query/client";
+import { queryKeys } from "../query/keys";
 import { BootstrapContext, BootstrapState } from "./BootstrapContext";
 
 type BootstrapProviderProps = {
@@ -45,12 +47,24 @@ export function BootstrapProvider(props: BootstrapProviderProps) {
     const initialize = async () => {
       try {
         const snapshot = await getAppBootstrap(browseLimit, bootstrapAlbumsOffset);
+        const albumsPage = normalizePagedResult<LibraryAlbum>(snapshot?.albumsPage, browseLimit);
+
+        appQueryClient.setQueryData(
+          queryKeys.library.albums({
+            search: "",
+            artist: "",
+            limit: browseLimit,
+            offset: bootstrapAlbumsOffset,
+          }),
+          albumsPage,
+        );
+
         setState((currentState) => ({
           ...currentState,
           queueState: (snapshot?.queueState ?? createEmptyQueueState()) as QueueState,
           playerState: (snapshot?.playerState ?? createEmptyPlayerState()) as PlayerState,
           scanStatus: (snapshot?.scanStatus ?? { running: false }) as ScanStatus,
-          albumsPage: normalizePagedResult<LibraryAlbum>(snapshot?.albumsPage, browseLimit),
+          albumsPage,
           themeModePreference: parseThemeModePreference(snapshot?.themeModePreference ?? null),
           errorMessage: null,
         }));

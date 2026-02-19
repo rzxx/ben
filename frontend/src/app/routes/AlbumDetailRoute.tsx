@@ -1,9 +1,9 @@
-import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { AlbumDetailView } from "../../features/library/AlbumDetailView";
-import { useLibrary } from "../providers/LibraryContext";
+import { libraryQueries } from "../query/libraryQueries";
 import { usePlaybackActions } from "../state/playback/playbackSelectors";
-import { formatDuration } from "../utils/appUtils";
+import { detailLimit, formatDuration, parseError } from "../utils/appUtils";
 import { decodePathSegment } from "../utils/routePaths";
 
 type AlbumDetailRouteProps = {
@@ -13,24 +13,32 @@ type AlbumDetailRouteProps = {
 
 export function AlbumDetailRoute(props: AlbumDetailRouteProps) {
   const [, navigate] = useLocation();
-  const { state: libraryState, actions: libraryActions } = useLibrary();
   const playbackActions = usePlaybackActions();
-  const loadAlbumDetail = libraryActions.loadAlbumDetail;
 
   const albumArtist = decodePathSegment(props.albumArtistParam);
   const albumTitle = decodePathSegment(props.albumTitleParam);
 
-  useEffect(() => {
-    void loadAlbumDetail(albumTitle, albumArtist);
-  }, [albumArtist, albumTitle, loadAlbumDetail]);
+  const albumDetailQuery = useQuery({
+    ...libraryQueries.albumDetail({
+      title: albumTitle,
+      albumArtist,
+      limit: detailLimit,
+      offset: 0,
+    }),
+    enabled: albumTitle.length > 0 && albumArtist.length > 0,
+  });
 
-  const detailMatchesRoute =
-    libraryState.albumDetail?.title === albumTitle &&
-    libraryState.albumDetail?.albumArtist === albumArtist;
+  if (albumDetailQuery.isError) {
+    return <p className="text-sm text-red-400">{parseError(albumDetailQuery.error)}</p>;
+  }
+
+  if (albumDetailQuery.isSuccess && !albumDetailQuery.data) {
+    return <p className="text-theme-600 dark:text-theme-400 text-sm">Album not found.</p>;
+  }
 
   return (
     <AlbumDetailView
-      albumDetail={detailMatchesRoute ? libraryState.albumDetail : null}
+      albumDetail={albumDetailQuery.data ?? null}
       onBack={() => navigate("/albums")}
       onPlayAlbum={playbackActions.playAlbum}
       onPlayTrackFromAlbum={playbackActions.playTrackFromAlbum}

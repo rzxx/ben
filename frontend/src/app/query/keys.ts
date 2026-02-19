@@ -63,6 +63,13 @@ export const queryKeys = {
     snapshot: (input: BootstrapQueryInput) => ["bootstrap", "snapshot", input] as const,
   },
   library: {
+    root: () => ["library"] as const,
+    albumsRoot: () => ["library", "albums"] as const,
+    artistsRoot: () => ["library", "artists"] as const,
+    tracksRoot: () => ["library", "tracks"] as const,
+    albumDetailRoot: () => ["library", "album-detail"] as const,
+    artistDetailRoot: () => ["library", "artist-detail"] as const,
+    artistTopTracksRoot: () => ["library", "artist-top-tracks"] as const,
     albums: (input: LibraryAlbumsQueryInput) => ["library", "albums", input] as const,
     artists: (input: LibraryArtistsQueryInput) => ["library", "artists", input] as const,
     tracks: (input: LibraryTracksQueryInput) => ["library", "tracks", input] as const,
