@@ -26,6 +26,29 @@ export const postPaintIdleTimeoutMS = 1200;
 export const maxThemePaletteCacheEntries = 48;
 export const themeModeStorageKey = "ben.theme-mode";
 export const darkColorSchemeMediaQuery = "(prefers-color-scheme: dark)";
+export const themeExtractOptionsDefaults: ThemeExtractOptions = {
+  maxDimension: 220,
+  quality: 2,
+  colorCount: 5,
+  candidateCount: 24,
+  quantizationBits: 5,
+  alphaThreshold: 16,
+  ignoreNearWhite: true,
+  ignoreNearBlack: false,
+  minLuma: 0.02,
+  maxLuma: 0.98,
+  minChroma: 0.03,
+  targetChroma: 0.14,
+  maxChroma: 0.32,
+  minDelta: 0.08,
+  darkBaseLightness: 0.145,
+  lightBaseLightness: 0.968,
+  darkLightnessDeviation: 0.045,
+  lightLightnessDeviation: 0.03,
+  darkChromaScale: 0.6,
+  lightChromaScale: 0.35,
+  workerCount: 0,
+};
 
 const tailwindThemeTones = [
   50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950,
@@ -147,39 +170,6 @@ export function createEmptyStatsDashboard(range: StatsRange): StatsDashboard {
     },
     behaviorWindowDays: 30,
   };
-}
-
-export function createDefaultThemeExtractOptions(): ThemeExtractOptions {
-  return {
-    maxDimension: 220,
-    quality: 2,
-    colorCount: 5,
-    candidateCount: 24,
-    quantizationBits: 5,
-    alphaThreshold: 16,
-    ignoreNearWhite: true,
-    ignoreNearBlack: false,
-    minLuma: 0.02,
-    maxLuma: 0.98,
-    minChroma: 0.03,
-    targetChroma: 0.14,
-    maxChroma: 0.32,
-    minDelta: 0.08,
-    darkBaseLightness: 0.145,
-    lightBaseLightness: 0.968,
-    darkLightnessDeviation: 0.045,
-    lightLightnessDeviation: 0.03,
-    darkChromaScale: 0.6,
-    lightChromaScale: 0.35,
-    workerCount: 0,
-  };
-}
-
-export function buildThemePaletteCacheKey(
-  coverPath: string,
-  options: ThemeExtractOptions,
-): string {
-  return `${coverPath}|${JSON.stringify(options)}`;
 }
 
 export function normalizePagedResult<T>(

@@ -8,7 +8,7 @@ import {
 } from "../features/layout/RightSidebar";
 import { PlayerBar } from "../features/player/PlayerBar";
 import { TitleBar } from "../features/layout/TitleBar";
-import { useAppBootstrapQuery } from "./hooks/useAppBootstrapQuery";
+import { useAppStartup } from "./hooks/useAppStartup";
 import { useRouteModulePreloader } from "./hooks/useRouteModulePreloader";
 import { useShellDomainErrorMessage } from "./hooks/useShellDomainErrorMessage";
 import {
@@ -68,7 +68,7 @@ const DeferredBackgroundShader = lazy(() =>
 
 export function AppShell() {
   const [location, navigate] = useLocation();
-  const { bootstrapErrorMessage, isBootstrapped } = useAppBootstrapQuery();
+  const { startupErrorMessage, isStartupReady } = useAppStartup();
   const isShaderReady = useThemeIsShaderReady();
   const preloadRouteModuleByPath = useRouteModulePreloader();
 
@@ -99,15 +99,15 @@ export function AppShell() {
             <ScrollArea.Viewport className="h-full">
               <ScrollArea.Content className="min-w-full px-4 pt-4 pb-36 lg:px-6">
                 <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-3">
-                  {bootstrapErrorMessage ? (
+                  {startupErrorMessage ? (
                     <p className="rounded-md border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-300">
-                      {bootstrapErrorMessage}
+                      {startupErrorMessage}
                     </p>
                   ) : null}
 
                   <ShellDomainErrorBanner />
 
-                  {!isBootstrapped ? (
+                  {!isStartupReady ? (
                     <p className="text-theme-600 dark:text-theme-400 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm">
                       Loading your library shell...
                     </p>

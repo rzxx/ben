@@ -28,6 +28,22 @@ export function useScannerLastProgress() {
   return useScannerRuntimeStoreSelector((state) => state.lastProgress);
 }
 
+export function useScannerScanStatus() {
+  return useScannerRuntimeStoreSelector((state) => state.scanStatus);
+}
+
+export function useScannerWatchedRoots() {
+  return useScannerRuntimeStoreSelector((state) => state.watchedRoots);
+}
+
+export function useScannerIsRefreshing(): boolean {
+  return useScannerRuntimeStoreSelector((state) => state.isRefreshing);
+}
+
+export function useScannerIsMutating(): boolean {
+  return useScannerRuntimeStoreSelector((state) => state.isMutating);
+}
+
 export function useScannerErrorMessage(): string | null {
   return useScannerRuntimeStoreSelector((state) => state.errorMessage);
 }

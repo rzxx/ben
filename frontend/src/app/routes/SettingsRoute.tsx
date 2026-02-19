@@ -1,29 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useState } from "react";
 import { SettingsView } from "../../features/settings/SettingsView";
-import type { ScanStatus, ThemeExtractOptions } from "../../features/types";
 import { useBackgroundShaderStore } from "../../shared/store/backgroundShaderStore";
-import { useAppBootstrapQuery } from "../hooks/useAppBootstrapQuery";
 import { queryKeys } from "../query/keys";
-import { scannerQueries } from "../query/scannerQueries";
 import { statsQueries } from "../query/statsQueries";
 import { themeQueries } from "../query/themeQueries";
-import {
-  addWatchedRoot,
-  removeWatchedRoot,
-  setWatchedRootEnabled,
-  triggerScan,
-} from "../services/gateway/scannerGateway";
 import { generateThemeFromCover } from "../services/gateway/themeGateway";
 import {
   useScannerErrorMessage,
   useScannerLastProgress,
   useScannerNewRootPath,
   useScannerRuntimeActions,
+  useScannerScanStatus,
+  useScannerWatchedRoots,
 } from "../state/scanner/scannerSelectors";
 import {
   applyTailwindThemePaletteVariables,
-  createDefaultThemeExtractOptions,
+  themeExtractOptionsDefaults,
   createEmptyStatsOverview,
   parseError,
 } from "../utils/appUtils";
@@ -42,16 +35,16 @@ const statsOverviewLimit = 5;
 
 type GenerateThemePaletteInput = {
   coverPath: string;
-  options: ThemeExtractOptions;
 };
 
 export function SettingsRoute() {
   const queryClient = useQueryClient();
-  const { bootstrapSnapshot, isBootstrapped } = useAppBootstrapQuery();
 
   const scannerActions = useScannerRuntimeActions();
   const scannerNewRootPath = useScannerNewRootPath();
   const scannerLastProgress = useScannerLastProgress();
+  const scannerStatus = useScannerScanStatus();
+  const watchedRoots = useScannerWatchedRoots();
   const scannerRuntimeErrorMessage = useScannerErrorMessage();
 
   const playbackQueueState = usePlaybackQueueState();
@@ -66,48 +59,23 @@ export function SettingsRoute() {
   const themeModePreference = useThemeModePreference();
   const resolvedThemeMode = useResolvedThemeMode();
 
-  const [fallbackThemeOptions] = useState<ThemeExtractOptions>(() =>
-    createDefaultThemeExtractOptions(),
-  );
-  const [themeOptions, setThemeOptions] = useState<ThemeExtractOptions>(
-    fallbackThemeOptions,
-  );
-  const [hasEditedThemeOptions, setHasEditedThemeOptions] = useState(false);
   const [themeManualErrorMessage, setThemeManualErrorMessage] = useState<string | null>(
     null,
   );
 
-  const themeDefaultsQuery = useQuery({
-    ...themeQueries.defaultOptions(),
-    enabled: false,
-  });
-
   const autoThemePaletteQuery = useQuery({
-    ...themeQueries.palette({
-      coverPath: resolvedCoverPath,
-      options: themeDefaultsQuery.data ?? fallbackThemeOptions,
-    }),
+    ...themeQueries.palette(resolvedCoverPath),
     enabled: false,
   });
-
-  const effectiveThemeOptions = hasEditedThemeOptions
-    ? themeOptions
-    : themeDefaultsQuery.data ?? fallbackThemeOptions;
 
   const generateThemePaletteMutation = useMutation({
     mutationFn: (input: GenerateThemePaletteInput) =>
-      generateThemeFromCover(input.coverPath, input.options),
+      generateThemeFromCover(input.coverPath, themeExtractOptionsDefaults),
     onMutate: () => {
       setThemeManualErrorMessage(null);
     },
     onSuccess: (palette, input) => {
-      queryClient.setQueryData(
-        queryKeys.theme.palette({
-          coverPath: input.coverPath,
-          options: input.options,
-        }),
-        palette,
-      );
+      queryClient.setQueryData(queryKeys.theme.palette(input.coverPath), palette);
 
       const nextPalette = palette ?? null;
       setBackgroundThemePalette(nextPalette);
@@ -118,91 +86,6 @@ export function SettingsRoute() {
     },
   });
 
-  const scannerStatusQuery = useQuery({
-    ...scannerQueries.status(),
-    enabled: isBootstrapped,
-  });
-
-  const watchedRootsQuery = useQuery({
-    ...scannerQueries.watchedRoots(),
-    enabled: isBootstrapped,
-  });
-
-  const addWatchedRootMutation = useMutation({
-    mutationFn: (path: string) => addWatchedRoot(path),
-    onMutate: () => {
-      scannerActions.clearErrorMessage();
-    },
-    onSuccess: async () => {
-      scannerActions.setNewRootPath("");
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.scanner.watchedRoots(),
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.scanner.status(),
-      });
-    },
-    onError: (error: unknown) => {
-      scannerActions.setErrorMessage(parseError(error));
-    },
-  });
-
-  const toggleWatchedRootMutation = useMutation({
-    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
-      setWatchedRootEnabled(id, enabled),
-    onMutate: () => {
-      scannerActions.clearErrorMessage();
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.scanner.watchedRoots(),
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.scanner.status(),
-      });
-    },
-    onError: (error: unknown) => {
-      scannerActions.setErrorMessage(parseError(error));
-    },
-  });
-
-  const removeWatchedRootMutation = useMutation({
-    mutationFn: (id: number) => removeWatchedRoot(id),
-    onMutate: () => {
-      scannerActions.clearErrorMessage();
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.scanner.watchedRoots(),
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.scanner.status(),
-      });
-    },
-    onError: (error: unknown) => {
-      scannerActions.setErrorMessage(parseError(error));
-    },
-  });
-
-  const runScanMutation = useMutation({
-    mutationFn: () => triggerScan(),
-    onMutate: () => {
-      scannerActions.clearErrorMessage();
-      queryClient.setQueryData(queryKeys.scanner.status(), (current: ScanStatus | undefined) => ({
-        ...(current ?? { running: false }),
-        running: true,
-      }));
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.scanner.status(),
-      });
-    },
-    onError: (error: unknown) => {
-      scannerActions.setErrorMessage(parseError(error));
-    },
-  });
-
   const statsOverviewQuery = useQuery({
     ...statsQueries.overview({
       limit: statsOverviewLimit,
@@ -210,16 +93,7 @@ export function SettingsRoute() {
   });
 
   const statsOverview = statsOverviewQuery.data ?? createEmptyStatsOverview();
-  const scannerStatus = scannerStatusQuery.data ?? bootstrapSnapshot.scanStatus;
-  const watchedRoots = watchedRootsQuery.data ?? [];
-  const watchedRootsErrorMessage = watchedRootsQuery.isError
-    ? parseError(watchedRootsQuery.error)
-    : null;
-  const scannerStatusErrorMessage = scannerStatusQuery.isError
-    ? parseError(scannerStatusQuery.error)
-    : null;
-  const scannerErrorMessage =
-    scannerRuntimeErrorMessage || watchedRootsErrorMessage || scannerStatusErrorMessage;
+  const scannerErrorMessage = scannerRuntimeErrorMessage;
 
   const autoThemeErrorMessage = autoThemePaletteQuery.isError
     ? parseError(autoThemePaletteQuery.error)
@@ -243,7 +117,7 @@ export function SettingsRoute() {
       return;
     }
 
-    await addWatchedRootMutation.mutateAsync(path);
+    await scannerActions.addWatchedRoot(path);
   };
 
   return (
@@ -257,25 +131,16 @@ export function SettingsRoute() {
       playerStatus={playbackPlayerStatus}
       statsOverview={statsOverview}
       currentCoverPath={playbackCoverPath ?? undefined}
-      themeOptions={effectiveThemeOptions}
       themePalette={themePalette}
       themeBusy={themeBusy}
       themeErrorMessage={themeErrorMessage}
       onNewRootPathChange={scannerActions.setNewRootPath}
       onAddWatchedRoot={onAddWatchedRoot}
       onToggleWatchedRoot={(root) =>
-        toggleWatchedRootMutation.mutateAsync({
-          id: root.id,
-          enabled: !root.enabled,
-        })
+        scannerActions.setWatchedRootEnabled(root.id, !root.enabled)
       }
-      onRemoveWatchedRoot={(id) => removeWatchedRootMutation.mutateAsync(id)}
-      onRunScan={() => runScanMutation.mutateAsync()}
-      onThemeOptionsChange={(next) => {
-        setHasEditedThemeOptions(true);
-        setThemeManualErrorMessage(null);
-        setThemeOptions(next);
-      }}
+      onRemoveWatchedRoot={(id) => scannerActions.removeWatchedRoot(id)}
+      onRunScan={() => scannerActions.runScan()}
       onGenerateThemePalette={async () => {
         if (!resolvedCoverPath) {
           setThemeManualErrorMessage("No cover art available for the current track.");
@@ -284,7 +149,6 @@ export function SettingsRoute() {
 
         await generateThemePaletteMutation.mutateAsync({
           coverPath: resolvedCoverPath,
-          options: effectiveThemeOptions,
         });
       }}
       themeModePreference={themeModePreference}

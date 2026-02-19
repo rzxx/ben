@@ -5,7 +5,6 @@ import {
   ScanProgress,
   ScanStatus,
   StatsOverview,
-  ThemeExtractOptions,
   ThemeModePreference,
   ThemePalette,
   ThemePaletteColor,
@@ -24,7 +23,6 @@ type SettingsViewProps = {
   playerStatus: string;
   statsOverview: StatsOverview;
   currentCoverPath?: string;
-  themeOptions: ThemeExtractOptions;
   themePalette: ThemePalette | null;
   themeBusy: boolean;
   themeErrorMessage: string | null;
@@ -35,7 +33,6 @@ type SettingsViewProps = {
   onToggleWatchedRoot: (root: WatchedRoot) => Promise<void>;
   onRemoveWatchedRoot: (id: number) => Promise<void>;
   onRunScan: () => Promise<void>;
-  onThemeOptionsChange: (next: ThemeExtractOptions) => void;
   onGenerateThemePalette: () => Promise<void>;
   onThemeModePreferenceChange: (next: ThemeModePreference) => void;
 };
@@ -231,284 +228,9 @@ export function SettingsView(props: SettingsViewProps) {
           Backend-generated palette from the active track cover.
         </p>
 
-        <div className="text-theme-700 dark:text-theme-300 mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <NumericSetting
-            label="Max Dimension"
-            value={props.themeOptions.maxDimension}
-            min={64}
-            max={1024}
-            step={1}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                maxDimension: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Quality"
-            value={props.themeOptions.quality}
-            min={1}
-            max={12}
-            step={1}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                quality: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Color Count"
-            value={props.themeOptions.colorCount}
-            min={3}
-            max={10}
-            step={1}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                colorCount: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Candidates"
-            value={props.themeOptions.candidateCount}
-            min={3}
-            max={128}
-            step={1}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                candidateCount: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Quantization Bits"
-            value={props.themeOptions.quantizationBits}
-            min={4}
-            max={6}
-            step={1}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                quantizationBits: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Min Chroma"
-            value={props.themeOptions.minChroma}
-            min={0}
-            max={0.4}
-            step={0.01}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                minChroma: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Target Chroma"
-            value={props.themeOptions.targetChroma}
-            min={0.02}
-            max={0.42}
-            step={0.01}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                targetChroma: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Max Chroma"
-            value={props.themeOptions.maxChroma}
-            min={0.06}
-            max={0.5}
-            step={0.01}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                maxChroma: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Min Delta (OKLab)"
-            value={props.themeOptions.minDelta}
-            min={0.01}
-            max={0.45}
-            step={0.01}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                minDelta: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Alpha Threshold"
-            value={props.themeOptions.alphaThreshold}
-            min={0}
-            max={254}
-            step={1}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                alphaThreshold: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Min Luma"
-            value={props.themeOptions.minLuma}
-            min={0}
-            max={1}
-            step={0.01}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                minLuma: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Max Luma"
-            value={props.themeOptions.maxLuma}
-            min={0}
-            max={1}
-            step={0.01}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                maxLuma: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Dark Base Lightness"
-            value={props.themeOptions.darkBaseLightness}
-            min={0.02}
-            max={0.35}
-            step={0.005}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                darkBaseLightness: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Light Base Lightness"
-            value={props.themeOptions.lightBaseLightness}
-            min={0.75}
-            max={0.99}
-            step={0.005}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                lightBaseLightness: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Dark Lightness Deviation"
-            value={props.themeOptions.darkLightnessDeviation}
-            min={0.005}
-            max={0.3}
-            step={0.005}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                darkLightnessDeviation: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Light Lightness Deviation"
-            value={props.themeOptions.lightLightnessDeviation}
-            min={0.005}
-            max={0.2}
-            step={0.005}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                lightLightnessDeviation: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Dark Chroma Scale"
-            value={props.themeOptions.darkChromaScale}
-            min={0.05}
-            max={1.4}
-            step={0.01}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                darkChromaScale: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Light Chroma Scale"
-            value={props.themeOptions.lightChromaScale}
-            min={0.05}
-            max={1.2}
-            step={0.01}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                lightChromaScale: next,
-              })
-            }
-          />
-          <NumericSetting
-            label="Workers"
-            value={props.themeOptions.workerCount}
-            min={0}
-            max={32}
-            step={1}
-            onChange={(next) =>
-              props.onThemeOptionsChange({
-                ...props.themeOptions,
-                workerCount: next,
-              })
-            }
-          />
-        </div>
-
-        <div className="text-theme-700 dark:text-theme-300 mt-3 flex flex-wrap items-center gap-4 text-sm">
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={props.themeOptions.ignoreNearWhite}
-              onChange={(event) =>
-                props.onThemeOptionsChange({
-                  ...props.themeOptions,
-                  ignoreNearWhite: event.target.checked,
-                })
-              }
-            />
-            Ignore near white
-          </label>
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={props.themeOptions.ignoreNearBlack}
-              onChange={(event) =>
-                props.onThemeOptionsChange({
-                  ...props.themeOptions,
-                  ignoreNearBlack: event.target.checked,
-                })
-              }
-            />
-            Ignore near black
-          </label>
-        </div>
+        <p className="text-theme-600 dark:text-theme-400 mt-3 text-sm">
+          Palette extraction runs with the app defaults.
+        </p>
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <button
@@ -648,40 +370,6 @@ function MetricCard(props: MetricProps) {
         {props.value}
       </p>
     </div>
-  );
-}
-
-type NumericSettingProps = {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (next: number) => void;
-};
-
-function NumericSetting(props: NumericSettingProps) {
-  return (
-    <label className="border-theme-300 bg-theme-100 dark:border-theme-800 dark:bg-theme-900 rounded-md border px-2 py-2">
-      <p className="text-theme-600 dark:text-theme-500 text-xs tracking-wide uppercase">
-        {props.label}
-      </p>
-      <input
-        type="number"
-        value={props.value}
-        min={props.min}
-        max={props.max}
-        step={props.step}
-        onChange={(event) => {
-          const parsed = Number(event.target.value);
-          if (!Number.isFinite(parsed)) {
-            return;
-          }
-          props.onChange(parsed);
-        }}
-        className="border-theme-300 bg-theme-50 text-theme-800 focus:border-theme-500 dark:border-theme-700 dark:bg-theme-950 dark:text-theme-200 dark:focus:border-theme-500 mt-1 w-full rounded border px-2 py-1 text-sm outline-none"
-      />
-    </label>
   );
 }
 

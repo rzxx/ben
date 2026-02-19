@@ -2,14 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { useBackgroundShaderStore } from "../../shared/store/backgroundShaderStore";
-import { useAppBootstrapQuery } from "../hooks/useAppBootstrapQuery";
+import { useAppStartup } from "../hooks/useAppStartup";
 import { themeQueries } from "../query/themeQueries";
 import { usePlaybackCoverPath } from "../state/playback/playbackSelectors";
 import { ThemeStoreContext } from "../state/theme/themeSelectors";
 import { createThemeStore } from "../state/theme/themeStore";
 import {
   applyTailwindThemePaletteVariables,
-  createDefaultThemeExtractOptions,
   darkColorSchemeMediaQuery,
   parseError,
   parseThemeModePreference,
@@ -23,12 +22,11 @@ type ThemeStoreProviderProps = {
 };
 
 export function ThemeStoreProvider(props: ThemeStoreProviderProps) {
-  const { bootstrapSnapshot, isBootstrapped } = useAppBootstrapQuery();
+  const { startupSnapshot, isStartupReady } = useAppStartup();
   const playbackCoverPath = usePlaybackCoverPath();
   const resolvedCoverPath = playbackCoverPath?.trim() ?? "";
 
   const [themeStore] = useState(() => createThemeStore());
-  const [fallbackThemeOptions] = useState(() => createDefaultThemeExtractOptions());
 
   const setBackgroundThemePalette = useBackgroundShaderStore(
     (state) => state.setThemePalette,
@@ -41,35 +39,27 @@ export function ThemeStoreProvider(props: ThemeStoreProviderProps) {
     (state) => state.hasHydratedThemePreference,
   );
 
-  const themeDefaultsQuery = useQuery({
-    ...themeQueries.defaultOptions(),
-    enabled: isBootstrapped,
-  });
-
   const themePaletteQuery = useQuery({
-    ...themeQueries.palette({
-      coverPath: resolvedCoverPath,
-      options: themeDefaultsQuery.data ?? fallbackThemeOptions,
-    }),
-    enabled: isBootstrapped && resolvedCoverPath.length > 0,
+    ...themeQueries.palette(resolvedCoverPath),
+    enabled: isStartupReady && resolvedCoverPath.length > 0,
   });
 
   useEffect(() => {
-    if (!isBootstrapped || hasHydratedThemePreference) {
+    if (!isStartupReady || hasHydratedThemePreference) {
       return;
     }
 
     const storedThemeMode = window.localStorage.getItem(themeModeStorageKey);
     const nextPreference =
       storedThemeMode === null
-        ? bootstrapSnapshot.themeModePreference
+        ? startupSnapshot.themeModePreference
         : parseThemeModePreference(storedThemeMode);
 
     themeStore.getState().actions.hydrateThemeModePreference(nextPreference);
   }, [
-    bootstrapSnapshot.themeModePreference,
     hasHydratedThemePreference,
-    isBootstrapped,
+    isStartupReady,
+    startupSnapshot.themeModePreference,
     themeStore,
   ]);
 
@@ -118,23 +108,23 @@ export function ThemeStoreProvider(props: ThemeStoreProviderProps) {
   }, [setBackgroundThemePalette, themePaletteQuery.data]);
 
   useEffect(() => {
-    if (themeDefaultsQuery.isError) {
-      themeStore.getState().actions.setErrorMessage(parseError(themeDefaultsQuery.error));
+    if (themePaletteQuery.isError) {
+      themeStore.getState().actions.setErrorMessage(parseError(themePaletteQuery.error));
       return;
     }
 
     themeStore.getState().actions.clearErrorMessage();
-  }, [themeDefaultsQuery.error, themeDefaultsQuery.isError, themeStore]);
+  }, [themePaletteQuery.error, themePaletteQuery.isError, themeStore]);
 
   useEffect(() => {
-    if (!isBootstrapped) {
+    if (!isStartupReady) {
       return;
     }
 
     return scheduleAfterPaintAndIdle(() => {
       themeStore.getState().actions.setShaderReady(true);
     });
-  }, [isBootstrapped, themeStore]);
+  }, [isStartupReady, themeStore]);
 
   return (
     <ThemeStoreContext.Provider value={themeStore}>

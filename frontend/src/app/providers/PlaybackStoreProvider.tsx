@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useState } from "react";
-import { useAppBootstrapQuery } from "../hooks/useAppBootstrapQuery";
+import { useAppStartup } from "../hooks/useAppStartup";
 import { appQueryClient } from "../query/client";
 import { bindPlaybackEvents } from "../state/playback/playbackEvents";
 import { createPlaybackProgressStore } from "../state/playback/playbackProgressStore";
@@ -14,7 +14,7 @@ type PlaybackStoreProviderProps = {
 };
 
 export function PlaybackStoreProvider(props: PlaybackStoreProviderProps) {
-  const { bootstrapSnapshot, isBootstrapped } = useAppBootstrapQuery();
+  const { startupSnapshot, isStartupReady } = useAppStartup();
 
   const [playbackStore] = useState(() => createPlaybackStore());
   const [playbackProgressStore] = useState(() => createPlaybackProgressStore());
@@ -28,23 +28,23 @@ export function PlaybackStoreProvider(props: PlaybackStoreProviderProps) {
   }, [playbackProgressStore, playbackStore]);
 
   useEffect(() => {
-    if (!isBootstrapped) {
+    if (!isStartupReady) {
       return;
     }
 
     playbackStore.getState().actions.hydrateFromBootstrap({
-      queueState: bootstrapSnapshot.queueState,
-      playerState: bootstrapSnapshot.playerState,
+      queueState: startupSnapshot.queueState,
+      playerState: startupSnapshot.playerState,
     });
     playbackProgressStore.getState().actions.hydrateFromBootstrap({
-      playerState: bootstrapSnapshot.playerState,
+      playerState: startupSnapshot.playerState,
     });
   }, [
-    bootstrapSnapshot.playerState,
-    bootstrapSnapshot.queueState,
-    isBootstrapped,
+    isStartupReady,
     playbackProgressStore,
     playbackStore,
+    startupSnapshot.playerState,
+    startupSnapshot.queueState,
   ]);
 
   return (

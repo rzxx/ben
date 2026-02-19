@@ -1,9 +1,4 @@
-import type { StatsRange, ThemeExtractOptions } from "../../features/types";
-
-export type BootstrapQueryInput = {
-  albumsLimit: number;
-  albumsOffset: number;
-};
+import type { StatsRange } from "../../features/types";
 
 export type LibraryAlbumsQueryInput = {
   search: string;
@@ -53,15 +48,7 @@ export type StatsDashboardQueryInput = {
   limit: number;
 };
 
-export type ThemePaletteQueryInput = {
-  coverPath: string;
-  options: ThemeExtractOptions;
-};
-
 export const queryKeys = {
-  bootstrap: {
-    snapshot: (input: BootstrapQueryInput) => ["bootstrap", "snapshot", input] as const,
-  },
   library: {
     root: () => ["library"] as const,
     albumsRoot: () => ["library", "albums"] as const,
@@ -78,10 +65,6 @@ export const queryKeys = {
     artistTopTracks: (input: ArtistTopTracksQueryInput) =>
       ["library", "artist-top-tracks", input] as const,
   },
-  scanner: {
-    status: () => ["scanner", "status"] as const,
-    watchedRoots: () => ["scanner", "watched-roots"] as const,
-  },
   stats: {
     overviewRoot: () => ["stats", "overview"] as const,
     dashboardRoot: () => ["stats", "dashboard"] as const,
@@ -89,7 +72,7 @@ export const queryKeys = {
     dashboard: (input: StatsDashboardQueryInput) => ["stats", "dashboard", input] as const,
   },
   theme: {
-    defaultOptions: () => ["theme", "default-options"] as const,
-    palette: (input: ThemePaletteQueryInput) => ["theme", "palette", input] as const,
+    paletteRoot: () => ["theme", "palette"] as const,
+    palette: (coverPath: string) => ["theme", "palette", coverPath] as const,
   },
 } as const;

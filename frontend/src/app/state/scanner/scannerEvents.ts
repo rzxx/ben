@@ -40,9 +40,7 @@ export function bindScannerEvents(options: ScannerEventSyncOptions): () => void 
       return;
     }
 
-    void options.queryClient.invalidateQueries({
-      queryKey: queryKeys.scanner.status(),
-    });
+    void options.scannerRuntimeStore.getState().actions.refreshStatus();
     invalidateLibraryQueries();
   });
 
