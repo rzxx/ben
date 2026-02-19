@@ -11,6 +11,7 @@ import { TitleBar } from "../features/layout/TitleBar";
 import { useAppStartup } from "./hooks/useAppStartup";
 import { useHistoryScrollRestoration } from "./hooks/useHistoryScrollRestoration";
 import { useHistoryShortcuts } from "./hooks/useHistoryShortcuts";
+import { useHistorySwipeNavigation } from "./hooks/useHistorySwipeNavigation";
 import { useRouteModulePreloader } from "./hooks/useRouteModulePreloader";
 import { useShellDomainErrorMessage } from "./hooks/useShellDomainErrorMessage";
 import {
@@ -86,6 +87,7 @@ export function AppShell() {
 
   useHistoryScrollRestoration(mainViewportRef);
   useHistoryShortcuts({ back, forward });
+  useHistorySwipeNavigation({ viewportRef: mainViewportRef, back, forward });
 
   return (
     <div className="bg-theme-50 text-theme-900 dark:bg-theme-950 dark:text-theme-100 relative isolate flex h-dvh flex-col overflow-hidden">
