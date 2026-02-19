@@ -104,7 +104,7 @@ export function ArtistDetailView(props: ArtistDetailViewProps) {
           Albums
         </h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {artist.albums.map((album) => (
+          {artist.albums.map((album, index) => (
             <button
               key={`${album.albumArtist}-${album.title}`}
               type="button"
@@ -115,6 +115,7 @@ export function ArtistDetailView(props: ArtistDetailViewProps) {
                 coverPath={album.coverPath}
                 alt={`${album.title} cover`}
                 variant="grid"
+                loading={index < 8 ? "eager" : "lazy"}
                 className="mb-2 aspect-square w-full rounded-md"
               />
               <p className="text-theme-900 dark:text-theme-100 truncate text-sm font-medium">

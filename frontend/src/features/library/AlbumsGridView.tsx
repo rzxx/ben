@@ -5,6 +5,7 @@ type AlbumsGridViewProps = {
   albums: LibraryAlbum[];
   onSelectAlbum: (album: LibraryAlbum) => void;
   onAlbumIntent?: (album: LibraryAlbum) => void;
+  onAlbumIntentEnd?: () => void;
 };
 
 export function AlbumsGridView(props: AlbumsGridViewProps) {
@@ -22,19 +23,22 @@ export function AlbumsGridView(props: AlbumsGridViewProps) {
         Albums
       </h1>
       <div className="grid grid-cols-2 gap-8 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
-        {props.albums.map((album) => (
+        {props.albums.map((album, index) => (
           <button
             key={`${album.albumArtist}-${album.title}`}
             type="button"
             onClick={() => props.onSelectAlbum(album)}
             onPointerEnter={() => props.onAlbumIntent?.(album)}
             onFocus={() => props.onAlbumIntent?.(album)}
+            onPointerLeave={props.onAlbumIntentEnd}
+            onBlur={props.onAlbumIntentEnd}
             className="text-left"
           >
             <CoverArt
               coverPath={album.coverPath}
               alt={`${album.title} cover`}
               variant="grid"
+              loading={index < 12 ? "eager" : "lazy"}
               loadingFallback="skeleton"
               className="mb-2 aspect-square w-full rounded-lg border border-black/7 dark:border-white/7"
             />

@@ -59,6 +59,7 @@ export function AlbumDetailView(props: AlbumDetailViewProps) {
             fallbackVariant="grid"
             className="mt-4 aspect-square w-full rounded-2xl border border-black/7 dark:border-white/7"
             loading="eager"
+            decoding="sync"
           />
           <div className="mt-4 space-y-1">
             <h1 className="text-theme-900 dark:text-theme-100 text-xl font-bold lg:text-2xl">

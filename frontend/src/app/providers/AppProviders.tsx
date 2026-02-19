@@ -1,6 +1,5 @@
 import { ReactNode } from "react";
 import { BootstrapProvider } from "./BootstrapProvider";
-import { LibraryProvider } from "./LibraryProvider";
 import { PlaybackStoreProvider } from "./PlaybackStoreProvider";
 import { QueryProvider } from "./QueryProvider";
 import { ScannerProvider } from "./ScannerProvider";
@@ -17,11 +16,9 @@ export function AppProviders(props: AppProvidersProps) {
       <BootstrapProvider>
         <PlaybackStoreProvider>
           <ScannerProvider>
-            <LibraryProvider>
-              <StatsProvider>
-                <ThemeProvider>{props.children}</ThemeProvider>
-              </StatsProvider>
-            </LibraryProvider>
+            <StatsProvider>
+              <ThemeProvider>{props.children}</ThemeProvider>
+            </StatsProvider>
           </ScannerProvider>
         </PlaybackStoreProvider>
       </BootstrapProvider>

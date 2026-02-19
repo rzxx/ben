@@ -1,8 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import type { LibraryAlbum } from "../../features/types";
+import { warmCoverPath } from "../../shared/cover";
 import { AlbumsGridView } from "../../features/library/AlbumsGridView";
+import { useIntentPrefetch } from "../hooks/useIntentPrefetch";
 import { libraryQueries } from "../query/libraryQueries";
 import { browseLimit, detailLimit, normalizePagedResult, parseError } from "../utils/appUtils";
 import { buildAlbumDetailPath } from "../utils/routePaths";
@@ -32,15 +34,9 @@ export function AlbumsRoute() {
     [albumsPage.items],
   );
 
-  if (albumsQuery.isError && sortedAlbums.length === 0) {
-    return <p className="text-sm text-red-400">{parseError(albumsQuery.error)}</p>;
-  }
+  const prefetchAlbumDetail = useCallback((album: LibraryAlbum) => {
+    warmCoverPath(album.coverPath, "detail");
 
-  if (albumsQuery.isPending && sortedAlbums.length === 0) {
-    return <p className="text-theme-600 dark:text-theme-400 text-sm">Loading albums...</p>;
-  }
-
-  const prefetchAlbumDetail = (album: LibraryAlbum) => {
     void queryClient.prefetchQuery(
       libraryQueries.albumDetail({
         title: album.title,
@@ -49,13 +45,25 @@ export function AlbumsRoute() {
         offset: 0,
       }),
     );
-  };
+  }, [queryClient]);
+
+  const albumIntentPrefetch = useIntentPrefetch(prefetchAlbumDetail);
+
+  if (albumsQuery.isError && sortedAlbums.length === 0) {
+    return <p className="text-sm text-red-400">{parseError(albumsQuery.error)}</p>;
+  }
+
+  if (albumsQuery.isPending && sortedAlbums.length === 0) {
+    return <p className="text-theme-600 dark:text-theme-400 text-sm">Loading albums...</p>;
+  }
 
   return (
     <AlbumsGridView
       albums={sortedAlbums}
-      onAlbumIntent={prefetchAlbumDetail}
+      onAlbumIntent={albumIntentPrefetch.schedule}
+      onAlbumIntentEnd={albumIntentPrefetch.cancel}
       onSelectAlbum={(album) => {
+        albumIntentPrefetch.cancel();
         prefetchAlbumDetail(album);
         navigate(buildAlbumDetailPath(album.title, album.albumArtist));
       }}

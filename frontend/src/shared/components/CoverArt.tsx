@@ -17,6 +17,7 @@ type CoverArtProps = {
   alt: string;
   className?: string;
   loading?: "eager" | "lazy";
+  decoding?: "async" | "sync" | "auto";
   variant?: CoverVariant;
   fallbackVariant?: CoverVariant;
   loadingFallback?: "none" | "skeleton";
@@ -25,6 +26,7 @@ type CoverArtProps = {
 export function CoverArt(props: CoverArtProps) {
   const [failedSources, setFailedSources] = useState<Record<string, true>>({});
   const [, setLoadedVersion] = useState(0);
+  const [isPrimaryElementLoaded, setIsPrimaryElementLoaded] = useState(false);
 
   const primarySource = coverPathToURL(
     props.coverPath,
@@ -36,9 +38,16 @@ export function CoverArt(props: CoverArtProps) {
   const canUseFallback =
     !!fallbackSource && !!primarySource && fallbackSource !== primarySource;
   const loadingFallback = props.loadingFallback ?? "none";
+  const imageLoading = props.loading ?? "lazy";
+  const imageDecoding = props.decoding ?? "async";
 
-  const shouldPreloadPrimary =
-    !!primarySource && (canUseFallback || loadingFallback === "skeleton");
+  useEffect(() => {
+    setIsPrimaryElementLoaded(
+      !!primarySource && loadedCoverSources.has(primarySource),
+    );
+  }, [primarySource]);
+
+  const shouldPreloadPrimary = !!primarySource && canUseFallback;
   const isPrimaryReady =
     !primarySource ||
     !shouldPreloadPrimary ||
@@ -60,11 +69,22 @@ export function CoverArt(props: CoverArtProps) {
     const preloader = new Image();
     preloader.src = primarySource;
     preloader.onload = () => {
-      if (!cancelled) {
-        if (rememberLoadedCoverSource(primarySource)) {
+      if (cancelled) {
+        return;
+      }
+
+      const markPrimaryReady = () => {
+        if (!cancelled && rememberLoadedCoverSource(primarySource)) {
           setLoadedVersion((current) => current + 1);
         }
+      };
+
+      if (typeof preloader.decode === "function") {
+        void preloader.decode().catch(() => undefined).finally(markPrimaryReady);
+        return;
       }
+
+      markPrimaryReady();
     };
     preloader.onerror = () => {
       if (!cancelled) {
@@ -116,6 +136,77 @@ export function CoverArt(props: CoverArtProps) {
     ? `block shrink-0 object-cover object-center ${props.className}`
     : "block h-12 w-12 shrink-0 rounded-md object-cover object-center";
 
+  const layeredWrapperClassName = props.className
+    ? `relative block shrink-0 overflow-hidden ${props.className}`
+    : "relative block h-12 w-12 shrink-0 overflow-hidden rounded-md";
+
+  const canRenderFallback =
+    !!fallbackSource && failedSources[fallbackSource] !== true;
+  const shouldRenderLayeredSwap =
+    !!primarySource && canUseFallback && canRenderFallback && !hasPrimaryFailed;
+  const layeredPrimarySource =
+    shouldRenderLayeredSwap && primarySource ? primarySource : undefined;
+  const layeredFallbackSource =
+    shouldRenderLayeredSwap && fallbackSource ? fallbackSource : undefined;
+
+  if (layeredPrimarySource && layeredFallbackSource) {
+    return (
+      <div className={layeredWrapperClassName}>
+        <img
+          className="absolute inset-0 h-full w-full object-cover object-center"
+          src={layeredFallbackSource}
+          alt=""
+          aria-hidden="true"
+          loading={imageLoading}
+          decoding={imageDecoding}
+          onLoad={() => {
+            if (rememberLoadedCoverSource(layeredFallbackSource)) {
+              setLoadedVersion((current) => current + 1);
+            }
+          }}
+          onError={() => {
+            setFailedSources((current) => {
+              if (current[layeredFallbackSource]) {
+                return current;
+              }
+
+              return {
+                ...current,
+                [layeredFallbackSource]: true,
+              };
+            });
+          }}
+        />
+        <img
+          className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-150 ${isPrimaryElementLoaded ? "opacity-100" : "opacity-0"}`}
+          src={layeredPrimarySource}
+          alt={props.alt}
+          loading={imageLoading}
+          decoding={imageDecoding}
+          onLoad={() => {
+            setIsPrimaryElementLoaded(true);
+            if (rememberLoadedCoverSource(layeredPrimarySource)) {
+              setLoadedVersion((current) => current + 1);
+            }
+          }}
+          onError={() => {
+            setIsPrimaryElementLoaded(false);
+            setFailedSources((current) => {
+              if (current[layeredPrimarySource]) {
+                return current;
+              }
+
+              return {
+                ...current,
+                [layeredPrimarySource]: true,
+              };
+            });
+          }}
+        />
+      </div>
+    );
+  }
+
   if (!canRenderImage) {
     if (showLoadingFallback) {
       return (
@@ -140,7 +231,8 @@ export function CoverArt(props: CoverArtProps) {
       className={imageClassName}
       src={source}
       alt={props.alt}
-      loading={props.loading ?? "lazy"}
+      loading={imageLoading}
+      decoding={imageDecoding}
       onLoad={() => {
         if (!source) {
           return;
