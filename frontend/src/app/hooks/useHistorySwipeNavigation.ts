@@ -37,6 +37,7 @@ export function useHistorySwipeNavigation(options: HistorySwipeNavigationOptions
     let wheelAccumulator = 0;
     let wheelDirection: -1 | 0 | 1 = 0;
     let lastWheelAt = 0;
+    let wheelNeedsReset = false;
 
     const triggerNavigation = (direction: -1 | 1): boolean => {
       const now = performance.now();
@@ -120,6 +121,16 @@ export function useHistorySwipeNavigation(options: HistorySwipeNavigationOptions
     const onWheel = (event: WheelEvent) => {
       const now = performance.now();
 
+      if (wheelNeedsReset) {
+        if (now - lastWheelAt <= wheelResetIdleMS) {
+          lastWheelAt = now;
+          return;
+        }
+
+        wheelNeedsReset = false;
+        resetWheelAccumulator();
+      }
+
       if (Math.abs(event.deltaX) < 6) {
         if (now - lastWheelAt > wheelResetIdleMS) {
           resetWheelAccumulator();
@@ -154,6 +165,8 @@ export function useHistorySwipeNavigation(options: HistorySwipeNavigationOptions
       resetWheelAccumulator();
 
       if (didNavigate) {
+        wheelNeedsReset = true;
+        lastWheelAt = now;
         event.preventDefault();
       }
     };
