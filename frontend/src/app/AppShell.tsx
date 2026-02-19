@@ -1,5 +1,5 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { Redirect, Route, Switch, useLocation } from "wouter";
 import { LeftSidebar } from "../features/layout/LeftSidebar";
 import {
@@ -9,6 +9,8 @@ import {
 import { PlayerBar } from "../features/player/PlayerBar";
 import { TitleBar } from "../features/layout/TitleBar";
 import { useAppStartup } from "./hooks/useAppStartup";
+import { useHistoryScrollRestoration } from "./hooks/useHistoryScrollRestoration";
+import { useHistoryShortcuts } from "./hooks/useHistoryShortcuts";
 import { useRouteModulePreloader } from "./hooks/useRouteModulePreloader";
 import { useShellDomainErrorMessage } from "./hooks/useShellDomainErrorMessage";
 import {
@@ -22,6 +24,9 @@ import {
   usePlaybackVolume,
 } from "./state/playback/playbackSelectors";
 import { useThemeIsShaderReady } from "./state/theme/themeSelectors";
+import {
+  useAppHistoryNavigation,
+} from "./routing/appLocation";
 import { formatDuration } from "./utils/appUtils";
 import { buildAlbumDetailPath, buildArtistDetailPath } from "./utils/routePaths";
 
@@ -68,9 +73,19 @@ const DeferredBackgroundShader = lazy(() =>
 
 export function AppShell() {
   const [location, navigate] = useLocation();
+  const {
+    canGoBack,
+    canGoForward,
+    back,
+    forward,
+  } = useAppHistoryNavigation();
+  const mainViewportRef = useRef<HTMLDivElement | null>(null);
   const { startupErrorMessage, isStartupReady } = useAppStartup();
   const isShaderReady = useThemeIsShaderReady();
   const preloadRouteModuleByPath = useRouteModulePreloader();
+
+  useHistoryScrollRestoration(mainViewportRef);
+  useHistoryShortcuts({ back, forward });
 
   return (
     <div className="bg-theme-50 text-theme-900 dark:bg-theme-950 dark:text-theme-100 relative isolate flex h-dvh flex-col overflow-hidden">
@@ -92,11 +107,15 @@ export function AppShell() {
           location={location}
           onNavigate={navigate}
           onNavigateIntent={preloadRouteModuleByPath}
+          canGoBack={canGoBack}
+          canGoForward={canGoForward}
+          onBack={back}
+          onForward={forward}
         />
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           <ScrollArea.Root className="min-h-0 flex-1">
-            <ScrollArea.Viewport className="h-full">
+            <ScrollArea.Viewport ref={mainViewportRef} className="h-full">
               <ScrollArea.Content className="min-w-full px-4 pt-4 pb-36 lg:px-6">
                 <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-3">
                   {startupErrorMessage ? (

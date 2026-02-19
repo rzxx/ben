@@ -1,15 +1,13 @@
 import { Router } from "wouter";
-import { memoryLocation } from "wouter/memory-location";
 import { AppShell } from "./app/AppShell";
 import { AppProviders } from "./app/providers/AppProviders";
-
-const appMemoryLocation = memoryLocation({ path: "/albums" });
+import { appLocation } from "./app/routing/appLocation";
 
 function App() {
   return (
     <Router
-      hook={appMemoryLocation.hook}
-      searchHook={appMemoryLocation.searchHook}
+      hook={appLocation.hook}
+      searchHook={appLocation.searchHook}
     >
       <AppProviders>
         <AppShell />
