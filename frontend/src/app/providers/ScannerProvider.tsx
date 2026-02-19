@@ -8,15 +8,13 @@ import {
 } from "react";
 import { useLocation } from "wouter";
 import {
-  GetStatus as getScannerStatus,
-  TriggerScan as triggerScan,
-} from "../../../bindings/ben/scannerservice";
-import {
-  AddWatchedRoot as addWatchedRoot,
-  ListWatchedRoots as listWatchedRoots,
-  RemoveWatchedRoot as removeWatchedRoot,
-  SetWatchedRootEnabled as setWatchedRootEnabled,
-} from "../../../bindings/ben/settingsservice";
+  addWatchedRoot,
+  getScannerStatus,
+  listWatchedRoots,
+  removeWatchedRoot,
+  setWatchedRootEnabled,
+  triggerScan,
+} from "../services/gateway/scannerGateway";
 import { ScanProgress, ScanStatus, WatchedRoot } from "../../features/types";
 import { parseError, scanProgressEvent, scheduleAfterPaintAndIdle } from "../utils/appUtils";
 import { useBootstrap } from "./BootstrapContext";

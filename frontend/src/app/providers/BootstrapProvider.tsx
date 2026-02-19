@@ -1,11 +1,11 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { GetInitialState as getAppBootstrap } from "../../../bindings/ben/bootstrapservice";
 import {
   LibraryAlbum,
   PlayerState,
   QueueState,
   ScanStatus,
 } from "../../features/types";
+import { getAppBootstrap } from "../services/gateway/bootstrapGateway";
 import {
   bootstrapAlbumsOffset,
   browseLimit,

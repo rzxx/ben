@@ -8,9 +8,9 @@ import {
 } from "react";
 import { useLocation } from "wouter";
 import {
-  DefaultOptions as getThemeDefaultOptions,
-  GenerateFromCover as generateThemeFromCover,
-} from "../../../bindings/ben/themeservice";
+  generateThemeFromCover,
+  getThemeDefaultOptions,
+} from "../services/gateway/themeGateway";
 import {
   ThemeExtractOptions,
   ThemeModePreference,

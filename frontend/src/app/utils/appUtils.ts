@@ -11,10 +11,12 @@ import {
   ThemeModePreference,
   ThemePalette,
 } from "../../features/types";
+import { toDomainErrorMessage } from "../services/domainError";
+import { gatewayEvents } from "../services/gateway/events";
 
-export const scanProgressEvent = "scanner:progress";
-export const queueStateEvent = "queue:state";
-export const playerStateEvent = "player:state";
+export const scanProgressEvent = gatewayEvents.scanProgress;
+export const queueStateEvent = gatewayEvents.queueState;
+export const playerStateEvent = gatewayEvents.playerState;
 
 export const browseLimit = 200;
 export const detailLimit = 200;
@@ -308,11 +310,7 @@ export function formatPlayedTime(durationMS: number): string {
 }
 
 export function parseError(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return "Something went wrong.";
+  return toDomainErrorMessage(error);
 }
 
 export function createEmptyAlbumsPage(): PagedResult<LibraryAlbum> {

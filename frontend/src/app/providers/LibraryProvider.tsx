@@ -8,13 +8,13 @@ import {
 } from "react";
 import { useLocation } from "wouter";
 import {
-  GetAlbumDetail as getAlbumDetail,
-  GetArtistDetail as getArtistDetail,
-  GetArtistTopTracks as getArtistTopTracks,
-  ListAlbums as listAlbums,
-  ListArtists as listArtists,
-  ListTracks as listTracks,
-} from "../../../bindings/ben/libraryservice";
+  getAlbumDetail,
+  getArtistDetail,
+  getArtistTopTracks,
+  listAlbums,
+  listArtists,
+  listTracks,
+} from "../services/gateway/libraryGateway";
 import {
   AlbumDetail,
   ArtistDetail,

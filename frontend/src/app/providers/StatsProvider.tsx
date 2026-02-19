@@ -8,9 +8,9 @@ import {
 } from "react";
 import { useLocation } from "wouter";
 import {
-  GetDashboard as getStatsDashboard,
-  GetOverview as getStatsOverview,
-} from "../../../bindings/ben/statsservice";
+  getStatsDashboard,
+  getStatsOverview,
+} from "../services/gateway/statsGateway";
 import { StatsDashboard, StatsOverview, StatsRange } from "../../features/types";
 import {
   createEmptyStatsDashboard,

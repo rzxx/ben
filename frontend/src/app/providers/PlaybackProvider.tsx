@@ -8,28 +8,24 @@ import {
   useState,
 } from "react";
 import {
-  GetAlbumQueueTrackIDs as getAlbumQueueTrackIDs,
-  GetAlbumQueueTrackIDsFromTrack as getAlbumQueueTrackIDsFromTrack,
-  GetArtistQueueTrackIDs as getArtistQueueTrackIDs,
-  GetArtistQueueTrackIDsFromTopTrack as getArtistQueueTrackIDsFromTopTrack,
-} from "../../../bindings/ben/libraryservice";
-import {
-  Next as nextTrack,
-  Play as play,
-  Previous as previousTrack,
-  Seek as seek,
-  SetVolume as setVolume,
-  TogglePlayback as togglePlayback,
-} from "../../../bindings/ben/playerservice";
-import {
-  AppendTracks as appendTracks,
-  Clear as clearQueue,
-  RemoveTrack as removeQueueTrack,
-  SetCurrentIndex as setCurrentQueueIndex,
-  SetQueue as setQueue,
-  SetRepeatMode as setQueueRepeatMode,
-  SetShuffle as setQueueShuffle,
-} from "../../../bindings/ben/queueservice";
+  appendTracks,
+  clearQueue,
+  getAlbumQueueTrackIDs,
+  getAlbumQueueTrackIDsFromTrack,
+  getArtistQueueTrackIDs,
+  getArtistQueueTrackIDsFromTopTrack,
+  nextTrack,
+  play,
+  previousTrack,
+  removeQueueTrack,
+  seek,
+  setCurrentQueueIndex,
+  setQueue,
+  setQueueRepeatMode,
+  setQueueShuffle,
+  setVolume,
+  togglePlayback,
+} from "../services/gateway/playbackGateway";
 import { PlayerState, QueueState } from "../../features/types";
 import {
   parseError,

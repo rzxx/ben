@@ -19,7 +19,7 @@ export default defineConfig(
 
   eslint.configs.recommended,
   tseslint.configs.recommended,
-  tanstackQuery.configs.recommended,
+  ...tanstackQuery.configs["flat/recommended"],
 
   {
     files: ["**/*.{js,mjs,cjs,ts,tsx,jsx}"],
