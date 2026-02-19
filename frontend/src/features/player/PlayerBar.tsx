@@ -10,11 +10,14 @@ import {
   Volume2,
 } from "lucide-react";
 import { CoverArt } from "../../shared/components/CoverArt";
-import { LibraryTrack, PlayerState, QueueState } from "../types";
+import { LibraryTrack, QueueState } from "../types";
 
 type PlayerBarProps = {
   currentTrack?: LibraryTrack;
-  playerState: PlayerState;
+  playerStatus: string;
+  positionMs: number;
+  durationMs: number;
+  volume: number;
   queueState: QueueState;
   transportBusy: boolean;
   hasCurrentTrack: boolean;
@@ -33,7 +36,7 @@ type PlayerBarProps = {
 };
 
 export function PlayerBar(props: PlayerBarProps) {
-  const isPlaying = props.playerState.status === "playing";
+  const isPlaying = props.playerStatus === "playing";
   const RepeatIcon = props.queueState.repeatMode === "one" ? Repeat1 : Repeat;
   const currentTrack = props.currentTrack;
 
@@ -147,7 +150,7 @@ export function PlayerBar(props: PlayerBarProps) {
 
           <div className="flex items-center justify-center gap-3">
             <span className="text-theme-700 dark:text-theme-300 -mt-0.5 w-10 shrink-0 text-right text-xs">
-              {props.formatDuration(props.playerState.positionMs)}
+              {props.formatDuration(props.positionMs)}
             </span>
             <span className="max-w-160 flex-1">
               <SingleValueSlider
@@ -163,7 +166,7 @@ export function PlayerBar(props: PlayerBarProps) {
               />
             </span>
             <span className="text-theme-600 dark:text-theme-400 -mt-0.5 w-10 shrink-0 text-xs">
-              {props.formatDuration(props.playerState.durationMs)}
+              {props.formatDuration(props.durationMs)}
             </span>
           </div>
         </div>
@@ -175,7 +178,7 @@ export function PlayerBar(props: PlayerBarProps) {
             min={0}
             max={100}
             step={1}
-            value={props.playerState.volume}
+            value={props.volume}
             onValueChange={(nextValue) => {
               void props.onSetVolume(nextValue);
             }}

@@ -1,6 +1,6 @@
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext } from "react";
 import { useStore } from "zustand";
-import type { PlayerState, QueueState } from "../../../features/types";
+import type { QueueState } from "../../../features/types";
 import type { PlaybackProgressStore, PlaybackProgressStoreState } from "./playbackProgressStore";
 import type { PlaybackActions, PlaybackStore, PlaybackStoreState } from "./playbackStore";
 
@@ -28,25 +28,6 @@ export function usePlaybackActions(): PlaybackActions {
 
 export function usePlaybackQueueState(): QueueState {
   return usePlaybackStoreSelector((state) => state.queueState);
-}
-
-export function usePlaybackPlayerStateSnapshot(): PlayerState {
-  return usePlaybackStoreSelector((state) => state.playerState);
-}
-
-export function usePlaybackPlayerState(): PlayerState {
-  const playerState = usePlaybackPlayerStateSnapshot();
-  const positionMs = usePlaybackProgressPositionMS();
-  const durationMs = usePlaybackProgressDurationMS();
-
-  return useMemo(
-    () => ({
-      ...playerState,
-      positionMs,
-      durationMs,
-    }),
-    [durationMs, playerState, positionMs],
-  );
 }
 
 export function usePlaybackTransportBusy(): boolean {

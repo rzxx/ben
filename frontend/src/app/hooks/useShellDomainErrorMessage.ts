@@ -1,11 +1,11 @@
-import { useTheme } from "../providers/ThemeContext";
 import { usePlaybackErrorMessage } from "../state/playback/playbackSelectors";
 import { useScannerErrorMessage } from "../state/scanner/scannerSelectors";
+import { useThemeErrorMessage } from "../state/theme/themeSelectors";
 
 export function useShellDomainErrorMessage(): string | null {
   const playbackErrorMessage = usePlaybackErrorMessage();
   const scannerErrorMessage = useScannerErrorMessage();
-  const { state: themeState } = useTheme();
+  const themeErrorMessage = useThemeErrorMessage();
 
-  return playbackErrorMessage || scannerErrorMessage || themeState.errorMessage;
+  return playbackErrorMessage || scannerErrorMessage || themeErrorMessage;
 }

@@ -11,21 +11,17 @@ import { TitleBar } from "../features/layout/TitleBar";
 import { useRouteModulePreloader } from "./hooks/useRouteModulePreloader";
 import { useShellDomainErrorMessage } from "./hooks/useShellDomainErrorMessage";
 import { useBootstrap } from "./providers/BootstrapContext";
-import { useTheme } from "./providers/ThemeContext";
 import {
   usePlaybackActions,
   usePlaybackCurrentTrack,
-  usePlaybackHasCurrentTrack,
-  usePlaybackPlayerState,
   usePlaybackProgressDurationMS,
   usePlaybackProgressPositionMS,
   usePlaybackQueueState,
-  usePlaybackSeekMax,
-  usePlaybackSeekValue,
   usePlaybackStatus,
   usePlaybackTransportBusy,
   usePlaybackVolume,
 } from "./state/playback/playbackSelectors";
+import { useThemeIsShaderReady } from "./state/theme/themeSelectors";
 import { formatDuration } from "./utils/appUtils";
 import { buildAlbumDetailPath, buildArtistDetailPath } from "./utils/routePaths";
 
@@ -73,7 +69,7 @@ const DeferredBackgroundShader = lazy(() =>
 export function AppShell() {
   const [location, navigate] = useLocation();
   const { state: bootstrapState } = useBootstrap();
-  const { meta: themeMeta } = useTheme();
+  const isShaderReady = useThemeIsShaderReady();
   const preloadRouteModuleByPath = useRouteModulePreloader();
 
   return (
@@ -86,7 +82,7 @@ export function AppShell() {
         }}
       />
       <Suspense fallback={null}>
-        {themeMeta.isShaderReady ? <DeferredBackgroundShader /> : null}
+        {isShaderReady ? <DeferredBackgroundShader /> : null}
       </Suspense>
 
       <TitleBar />
@@ -239,17 +235,24 @@ function ShellDomainErrorBanner() {
 function ShellPlayerBar() {
   const [, navigate] = useLocation();
   const playbackActions = usePlaybackActions();
-  const playerState = usePlaybackPlayerState();
+  const currentTrack = usePlaybackCurrentTrack();
+  const playerStatus = usePlaybackStatus();
+  const positionMs = usePlaybackProgressPositionMS();
+  const durationMs = usePlaybackProgressDurationMS();
+  const volume = usePlaybackVolume();
   const queueState = usePlaybackQueueState();
   const transportBusy = usePlaybackTransportBusy();
-  const hasCurrentTrack = usePlaybackHasCurrentTrack();
-  const seekMax = usePlaybackSeekMax();
-  const seekValue = usePlaybackSeekValue();
+  const hasCurrentTrack = currentTrack !== undefined;
+  const seekMax = Math.max(durationMs, 1);
+  const seekValue = Math.min(positionMs, seekMax);
 
   return (
     <PlayerBar
-      currentTrack={playerState.currentTrack}
-      playerState={playerState}
+      currentTrack={currentTrack}
+      playerStatus={playerStatus}
+      positionMs={positionMs}
+      durationMs={durationMs}
+      volume={volume}
       queueState={queueState}
       transportBusy={transportBusy}
       hasCurrentTrack={hasCurrentTrack}

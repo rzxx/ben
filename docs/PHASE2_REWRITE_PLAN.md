@@ -20,29 +20,29 @@ This plan keeps the new app shell and route split from Phase 2, but replaces pro
 
 ### Current gaps
 
-- Query builders are consumed in library and stats routes, but scanner/theme query ownership is still incomplete.
-- `ScannerProvider` and `ThemeProvider` still own large business state via `useState` + effects.
-- `LibraryProvider` is now largely legacy/dead path and should be removed during cleanup.
-- Provider tree is still heavy and business-state-centric, not DI-only.
-- Playback hot/cold split exists, but some selectors recombine hot progress into broad player objects, causing wider rerenders than needed.
+- Legacy business-state providers/contexts for library, scanner, theme, and playback adapter were removed.
+- Theme defaults/palette fetch ownership is consolidated in provider flow; settings route now observes cache and performs manual palette mutation only.
+- Playback hot/cold recomposition in shell player path was removed; rerender-budget verification is still ongoing.
+- One-time DI store creation policy is now standardized as lint-safe lazy `useState(() => createStore())` initialization.
+- Docs/checklist and test coverage status still needs periodic refresh to reflect remaining validation work.
 
 ### Rewrite state
 
-- Phase 2R-0: mostly done (foundation is present, but not consistently consumed).
-- Phase 2R-1: partially done (store/events landed; selector usage still needs tightening).
+- Phase 2R-0: done (foundation is present; DI provider one-time store policy is standardized and lint-safe).
+- Phase 2R-1: mostly done (store/events landed; broad hot+cold player selector usage removed in shell path; perf validation ongoing).
 - Phase 2R-2: mostly done (library + detail routes are query-driven).
-- Phase 2R-3: in progress (scanner runtime/event split underway; full scanner provider removal pending).
-- Phase 2R-4: pending.
-- Phase 2R-5: pending.
+- Phase 2R-3: done (scanner runtime/event split + query ownership landed; stats route polling scoped correctly).
+- Phase 2R-4: mostly done (theme mode moved to tiny Zustand store; defaults/palette are query/mutation driven with provider-owned fetch lifecycle; parity validation ongoing).
+- Phase 2R-5: mostly done (legacy context/provider business-state files removed; cleanup verification/docs updates still ongoing).
 
 ### Architecture status checklist
 
-- Playback (store topology + selectors): partial.
+- Playback (store topology + selectors): mostly done.
 - Library routes/details via query: mostly done.
-- Scanner via query + runtime slice: in progress.
-- Stats via query + scoped polling: mostly done.
-- Theme via query + tiny store split: pending.
-- Legacy context/provider removal: pending.
+- Scanner via query + runtime slice: done.
+- Stats via query + scoped polling: done.
+- Theme via query + tiny store split: mostly done.
+- Legacy context/provider removal: mostly done.
 
 ## What Zustand v5 Docs Changed for Our Direction (via btca)
 
@@ -83,7 +83,9 @@ This plan keeps the new app shell and route split from Phase 2, but replaces pro
   - `QueryClientProvider`
   - small `*StoreProvider` wrappers that expose store instances via context
 - Providers do not own business state with large `useState` + `useMemo` value objects.
-- Store instances in providers should be created once per provider lifetime (use `useRef` pattern).
+- Store instances in providers must be created once per provider lifetime.
+- Codebase policy: use lint-safe lazy initialization (`useState(() => createStore())`) for provider store instances.
+- `useRef`-based initialization is only acceptable if lint rules allow ref access patterns in render.
 
 ### 4) Typed service gateway
 
@@ -151,14 +153,14 @@ frontend/src/app/
 ## Phase 2R-0: Foundation (Tighten and adopt)
 
 - Keep existing Query packages, client defaults, key factory, gateways, and domain error normalization.
-- Convert any remaining provider-created store instances to one-time `useRef` creation for DI providers.
+- Convert any remaining provider-created store instances to one-time lint-safe lazy initialization (`useState(() => createStore())`) for DI providers.
 - Add a short architecture status checklist in docs (done/partial/pending by domain) to prevent drift.
 
 Exit criteria:
 
 - App boots with Query provider.
 - All new data access goes through gateways.
-- DI providers follow one-time store instance creation.
+- DI providers follow one-time store instance creation with the lint-safe lazy-initialization policy.
 
 ## Phase 2R-1: Playback hardening (highest ROI)
 

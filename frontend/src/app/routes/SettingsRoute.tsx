@@ -1,32 +1,49 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent } from "react";
+import { FormEvent, useState } from "react";
 import { SettingsView } from "../../features/settings/SettingsView";
-import type { ScanStatus } from "../../features/types";
+import type { ScanStatus, ThemeExtractOptions } from "../../features/types";
+import { useBackgroundShaderStore } from "../../shared/store/backgroundShaderStore";
 import { useBootstrap } from "../providers/BootstrapContext";
-import { useTheme } from "../providers/ThemeContext";
 import { queryKeys } from "../query/keys";
 import { scannerQueries } from "../query/scannerQueries";
 import { statsQueries } from "../query/statsQueries";
+import { themeQueries } from "../query/themeQueries";
 import {
   addWatchedRoot,
   removeWatchedRoot,
   setWatchedRootEnabled,
   triggerScan,
 } from "../services/gateway/scannerGateway";
+import { generateThemeFromCover } from "../services/gateway/themeGateway";
 import {
   useScannerErrorMessage,
   useScannerLastProgress,
   useScannerNewRootPath,
   useScannerRuntimeActions,
 } from "../state/scanner/scannerSelectors";
-import { createEmptyStatsOverview, parseError } from "../utils/appUtils";
+import {
+  applyTailwindThemePaletteVariables,
+  createDefaultThemeExtractOptions,
+  createEmptyStatsOverview,
+  parseError,
+} from "../utils/appUtils";
 import {
   usePlaybackCoverPath,
   usePlaybackQueueState,
   usePlaybackStatus,
 } from "../state/playback/playbackSelectors";
+import {
+  useResolvedThemeMode,
+  useThemeActions,
+  useThemeModePreference,
+} from "../state/theme/themeSelectors";
 
 const statsOverviewLimit = 5;
+
+type GenerateThemePaletteInput = {
+  coverPath: string;
+  options: ThemeExtractOptions;
+};
 
 export function SettingsRoute() {
   const queryClient = useQueryClient();
@@ -39,8 +56,67 @@ export function SettingsRoute() {
 
   const playbackQueueState = usePlaybackQueueState();
   const playbackPlayerStatus = usePlaybackStatus();
-  const playbackCoverPath = usePlaybackCoverPath() ?? undefined;
-  const { state: themeState, actions: themeActions } = useTheme();
+  const playbackCoverPath = usePlaybackCoverPath();
+  const resolvedCoverPath = playbackCoverPath?.trim() ?? "";
+  const setBackgroundThemePalette = useBackgroundShaderStore(
+    (state) => state.setThemePalette,
+  );
+
+  const themeActions = useThemeActions();
+  const themeModePreference = useThemeModePreference();
+  const resolvedThemeMode = useResolvedThemeMode();
+
+  const [fallbackThemeOptions] = useState<ThemeExtractOptions>(() =>
+    createDefaultThemeExtractOptions(),
+  );
+  const [themeOptions, setThemeOptions] = useState<ThemeExtractOptions>(
+    fallbackThemeOptions,
+  );
+  const [hasEditedThemeOptions, setHasEditedThemeOptions] = useState(false);
+  const [themeManualErrorMessage, setThemeManualErrorMessage] = useState<string | null>(
+    null,
+  );
+
+  const themeDefaultsQuery = useQuery({
+    ...themeQueries.defaultOptions(),
+    enabled: false,
+  });
+
+  const autoThemePaletteQuery = useQuery({
+    ...themeQueries.palette({
+      coverPath: resolvedCoverPath,
+      options: themeDefaultsQuery.data ?? fallbackThemeOptions,
+    }),
+    enabled: false,
+  });
+
+  const effectiveThemeOptions = hasEditedThemeOptions
+    ? themeOptions
+    : themeDefaultsQuery.data ?? fallbackThemeOptions;
+
+  const generateThemePaletteMutation = useMutation({
+    mutationFn: (input: GenerateThemePaletteInput) =>
+      generateThemeFromCover(input.coverPath, input.options),
+    onMutate: () => {
+      setThemeManualErrorMessage(null);
+    },
+    onSuccess: (palette, input) => {
+      queryClient.setQueryData(
+        queryKeys.theme.palette({
+          coverPath: input.coverPath,
+          options: input.options,
+        }),
+        palette,
+      );
+
+      const nextPalette = palette ?? null;
+      setBackgroundThemePalette(nextPalette);
+      applyTailwindThemePaletteVariables(nextPalette);
+    },
+    onError: (error: unknown) => {
+      setThemeManualErrorMessage(parseError(error));
+    },
+  });
 
   const scannerStatusQuery = useQuery({
     ...scannerQueries.status(),
@@ -145,6 +221,21 @@ export function SettingsRoute() {
   const scannerErrorMessage =
     scannerRuntimeErrorMessage || watchedRootsErrorMessage || scannerStatusErrorMessage;
 
+  const autoThemeErrorMessage = autoThemePaletteQuery.isError
+    ? parseError(autoThemePaletteQuery.error)
+    : null;
+
+  const manualThemePalette =
+    generateThemePaletteMutation.variables?.coverPath === resolvedCoverPath
+      ? generateThemePaletteMutation.data
+      : null;
+
+  const themePalette =
+    manualThemePalette ?? autoThemePaletteQuery.data ?? null;
+  const themeBusy =
+    generateThemePaletteMutation.isPending || autoThemePaletteQuery.isFetching;
+  const themeErrorMessage = themeManualErrorMessage || autoThemeErrorMessage;
+
   const onAddWatchedRoot = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const path = scannerNewRootPath.trim();
@@ -165,11 +256,11 @@ export function SettingsRoute() {
       queueState={playbackQueueState}
       playerStatus={playbackPlayerStatus}
       statsOverview={statsOverview}
-      currentCoverPath={playbackCoverPath}
-      themeOptions={themeState.themeOptions}
-      themePalette={themeState.themePalette}
-      themeBusy={themeState.themeBusy}
-      themeErrorMessage={themeState.themeErrorMessage}
+      currentCoverPath={playbackCoverPath ?? undefined}
+      themeOptions={effectiveThemeOptions}
+      themePalette={themePalette}
+      themeBusy={themeBusy}
+      themeErrorMessage={themeErrorMessage}
       onNewRootPathChange={scannerActions.setNewRootPath}
       onAddWatchedRoot={onAddWatchedRoot}
       onToggleWatchedRoot={(root) =>
@@ -180,10 +271,24 @@ export function SettingsRoute() {
       }
       onRemoveWatchedRoot={(id) => removeWatchedRootMutation.mutateAsync(id)}
       onRunScan={() => runScanMutation.mutateAsync()}
-      onThemeOptionsChange={themeActions.setThemeOptions}
-      onGenerateThemePalette={themeActions.generateThemePalette}
-      themeModePreference={themeState.themeModePreference}
-      resolvedThemeMode={themeState.resolvedThemeMode}
+      onThemeOptionsChange={(next) => {
+        setHasEditedThemeOptions(true);
+        setThemeManualErrorMessage(null);
+        setThemeOptions(next);
+      }}
+      onGenerateThemePalette={async () => {
+        if (!resolvedCoverPath) {
+          setThemeManualErrorMessage("No cover art available for the current track.");
+          return;
+        }
+
+        await generateThemePaletteMutation.mutateAsync({
+          coverPath: resolvedCoverPath,
+          options: effectiveThemeOptions,
+        });
+      }}
+      themeModePreference={themeModePreference}
+      resolvedThemeMode={resolvedThemeMode}
       onThemeModePreferenceChange={themeActions.setThemeModePreference}
     />
   );
