@@ -1,17 +1,17 @@
+import type { ReactNode } from "react";
 import { ListMusic, Rows4 } from "lucide-react";
 import { ScrollArea } from "@base-ui/react/scroll-area";
-import { PlayerState, QueueState } from "../types";
+import type { LibraryTrack, QueueState } from "../types";
 import { QueueView } from "../queue/QueueView";
 
 type RightSidebarProps = {
   tab: "queue" | "details";
   onTabChange: (tab: "queue" | "details") => void;
   queueState: QueueState;
-  playerState: PlayerState;
+  detailsPanel: ReactNode;
   onSelectQueueIndex: (index: number) => Promise<void>;
   onRemoveQueueTrack: (index: number) => Promise<void>;
   onClearQueue: () => Promise<void>;
-  formatDuration: (durationMS?: number) => string;
 };
 
 export function RightSidebar(props: RightSidebarProps) {
@@ -55,10 +55,7 @@ export function RightSidebar(props: RightSidebarProps) {
                 onClearQueue={props.onClearQueue}
               />
             ) : (
-              <TrackDetailsPanel
-                playerState={props.playerState}
-                formatDuration={props.formatDuration}
-              />
+              props.detailsPanel
             )}
           </ScrollArea.Content>
         </ScrollArea.Viewport>
@@ -70,13 +67,19 @@ export function RightSidebar(props: RightSidebarProps) {
   );
 }
 
-type TrackDetailsPanelProps = {
-  playerState: PlayerState;
+type RightSidebarTrackDetailsPanelProps = {
+  currentTrack?: LibraryTrack;
+  status: string;
+  positionMs: number;
+  durationMs?: number;
+  volume: number;
   formatDuration: (durationMS?: number) => string;
 };
 
-function TrackDetailsPanel(props: TrackDetailsPanelProps) {
-  const track = props.playerState.currentTrack;
+export function RightSidebarTrackDetailsPanel(
+  props: RightSidebarTrackDetailsPanelProps,
+) {
+  const track = props.currentTrack;
 
   if (!track) {
     return (
@@ -98,16 +101,10 @@ function TrackDetailsPanel(props: TrackDetailsPanelProps) {
         label="Track"
         value={`${track.discNo ? `${track.discNo}-` : ""}${track.trackNo ?? "-"}`}
       />
-      <DetailRow label="Status" value={props.playerState.status} />
-      <DetailRow
-        label="Position"
-        value={props.formatDuration(props.playerState.positionMs)}
-      />
-      <DetailRow
-        label="Duration"
-        value={props.formatDuration(props.playerState.durationMs)}
-      />
-      <DetailRow label="Volume" value={`${props.playerState.volume}%`} />
+      <DetailRow label="Status" value={props.status} />
+      <DetailRow label="Position" value={props.formatDuration(props.positionMs)} />
+      <DetailRow label="Duration" value={props.formatDuration(props.durationMs)} />
+      <DetailRow label="Volume" value={`${props.volume}%`} />
     </section>
   );
 }

@@ -1,7 +1,6 @@
 import { CSSProperties, FormEvent } from "react";
 import { coverPathToURL } from "../../shared/cover";
 import {
-  PlayerState,
   QueueState,
   ScanProgress,
   ScanStatus,
@@ -22,7 +21,7 @@ type SettingsViewProps = {
   newRootPath: string;
   errorMessage: string | null;
   queueState: QueueState;
-  playerState: PlayerState;
+  playerStatus: string;
   statsOverview: StatsOverview;
   currentCoverPath?: string;
   themeOptions: ThemeExtractOptions;
@@ -611,7 +610,7 @@ export function SettingsView(props: SettingsViewProps) {
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <MetricCard label="Queue Length" value={`${props.queueState.total}`} />
-        <MetricCard label="Player Status" value={props.playerState.status} />
+        <MetricCard label="Player Status" value={props.playerStatus} />
         <MetricCard
           label="Total Played"
           value={formatPlayedTime(props.statsOverview.totalPlayedMs)}

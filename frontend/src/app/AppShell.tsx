@@ -2,7 +2,10 @@ import { ScrollArea } from "@base-ui/react/scroll-area";
 import { lazy, Suspense, useState } from "react";
 import { Redirect, Route, Switch, useLocation } from "wouter";
 import { LeftSidebar } from "../features/layout/LeftSidebar";
-import { RightSidebar } from "../features/layout/RightSidebar";
+import {
+  RightSidebar,
+  RightSidebarTrackDetailsPanel,
+} from "../features/layout/RightSidebar";
 import { PlayerBar } from "../features/player/PlayerBar";
 import { TitleBar } from "../features/layout/TitleBar";
 import { useRouteModulePreloader } from "./hooks/useRouteModulePreloader";
@@ -11,12 +14,17 @@ import { useBootstrap } from "./providers/BootstrapContext";
 import { useTheme } from "./providers/ThemeContext";
 import {
   usePlaybackActions,
+  usePlaybackCurrentTrack,
   usePlaybackHasCurrentTrack,
   usePlaybackPlayerState,
+  usePlaybackProgressDurationMS,
+  usePlaybackProgressPositionMS,
   usePlaybackQueueState,
   usePlaybackSeekMax,
   usePlaybackSeekValue,
+  usePlaybackStatus,
   usePlaybackTransportBusy,
+  usePlaybackVolume,
 } from "./state/playback/playbackSelectors";
 import { formatDuration } from "./utils/appUtils";
 import { buildAlbumDetailPath, buildArtistDetailPath } from "./utils/routePaths";
@@ -178,7 +186,6 @@ export function AppShell() {
 function ShellRightSidebar() {
   const playbackActions = usePlaybackActions();
   const queueState = usePlaybackQueueState();
-  const playerState = usePlaybackPlayerState();
   const [rightSidebarTab, setRightSidebarTab] = useState<"queue" | "details">("queue");
 
   return (
@@ -186,10 +193,30 @@ function ShellRightSidebar() {
       tab={rightSidebarTab}
       onTabChange={setRightSidebarTab}
       queueState={queueState}
-      playerState={playerState}
+      detailsPanel={
+        rightSidebarTab === "details" ? <ShellTrackDetailsPanel /> : null
+      }
       onSelectQueueIndex={playbackActions.selectQueueIndex}
       onRemoveQueueTrack={playbackActions.removeQueueTrack}
       onClearQueue={playbackActions.clearQueue}
+    />
+  );
+}
+
+function ShellTrackDetailsPanel() {
+  const currentTrack = usePlaybackCurrentTrack();
+  const status = usePlaybackStatus();
+  const positionMs = usePlaybackProgressPositionMS();
+  const durationMs = usePlaybackProgressDurationMS();
+  const volume = usePlaybackVolume();
+
+  return (
+    <RightSidebarTrackDetailsPanel
+      currentTrack={currentTrack}
+      status={status}
+      positionMs={positionMs}
+      durationMs={durationMs}
+      volume={volume}
       formatDuration={formatDuration}
     />
   );

@@ -65,6 +65,10 @@ export function usePlaybackStatus(): string {
   return usePlaybackStoreSelector((state) => state.playerState.status);
 }
 
+export function usePlaybackVolume(): number {
+  return usePlaybackStoreSelector((state) => state.playerState.volume);
+}
+
 export function usePlaybackHasCurrentTrack(): boolean {
   return usePlaybackStoreSelector((state) => Boolean(state.playerState.currentTrack));
 }

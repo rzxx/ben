@@ -5,14 +5,14 @@ import { useStats } from "../providers/StatsContext";
 import { useTheme } from "../providers/ThemeContext";
 import {
   usePlaybackCoverPath,
-  usePlaybackPlayerState,
   usePlaybackQueueState,
+  usePlaybackStatus,
 } from "../state/playback/playbackSelectors";
 
 export function SettingsRoute() {
   const { state: scannerState, actions: scannerActions } = useScanner();
   const playbackQueueState = usePlaybackQueueState();
-  const playbackPlayerState = usePlaybackPlayerState();
+  const playbackPlayerStatus = usePlaybackStatus();
   const playbackCoverPath = usePlaybackCoverPath() ?? undefined;
   const { state: statsState } = useStats();
   const { state: themeState, actions: themeActions } = useTheme();
@@ -30,7 +30,7 @@ export function SettingsRoute() {
       newRootPath={scannerState.newRootPath}
       errorMessage={scannerState.errorMessage}
       queueState={playbackQueueState}
-      playerState={playbackPlayerState}
+      playerStatus={playbackPlayerStatus}
       statsOverview={statsState.overview}
       currentCoverPath={playbackCoverPath}
       themeOptions={themeState.themeOptions}
