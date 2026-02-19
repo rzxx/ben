@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { BootstrapProvider } from "./BootstrapProvider";
+import { BootstrapCacheHydrator } from "./BootstrapCacheHydrator";
 import { PlaybackStoreProvider } from "./PlaybackStoreProvider";
 import { QueryProvider } from "./QueryProvider";
 import { ScannerStoreProvider } from "./ScannerStoreProvider";
@@ -12,13 +12,12 @@ type AppProvidersProps = {
 export function AppProviders(props: AppProvidersProps) {
   return (
     <QueryProvider>
-      <BootstrapProvider>
-        <PlaybackStoreProvider>
-          <ScannerStoreProvider>
-            <ThemeStoreProvider>{props.children}</ThemeStoreProvider>
-          </ScannerStoreProvider>
-        </PlaybackStoreProvider>
-      </BootstrapProvider>
+      <BootstrapCacheHydrator />
+      <PlaybackStoreProvider>
+        <ScannerStoreProvider>
+          <ThemeStoreProvider>{props.children}</ThemeStoreProvider>
+        </ScannerStoreProvider>
+      </PlaybackStoreProvider>
     </QueryProvider>
   );
 }

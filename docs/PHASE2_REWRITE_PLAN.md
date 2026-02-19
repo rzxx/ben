@@ -16,33 +16,33 @@ This plan keeps the new app shell and route split from Phase 2, but replaces pro
 
 - Query client, default options, query key factory, and gateway modules exist.
 - Playback already uses modern scoped Zustand pattern (`createStore` + `useStore(store, selector)`) and event-driven sync module.
-- Query option builders (`libraryQueries`, `statsQueries`, `scannerQueries`, `themeQueries`) are implemented.
+- Query option builders (`bootstrapQueries`, `libraryQueries`, `statsQueries`, `scannerQueries`, `themeQueries`) are implemented.
 
 ### Current gaps
 
-- Legacy business-state providers/contexts for library, scanner, theme, and playback adapter were removed.
-- Theme defaults/palette fetch ownership is consolidated in provider flow; settings route now observes cache and performs manual palette mutation only.
-- Playback hot/cold recomposition in shell player path was removed; rerender-budget verification is still ongoing.
-- One-time DI store creation policy is now standardized as lint-safe lazy `useState(() => createStore())` initialization.
-- Docs/checklist and test coverage status still needs periodic refresh to reflect remaining validation work.
+- Legacy business-state providers/contexts for library, scanner, theme, playback adapter, and bootstrap context flow were removed.
+- Theme defaults/palette fetch ownership is consolidated in provider flow; settings route observes cache and performs manual palette mutation only.
+- Playback hot/cold recomposition in shell player path was removed; selector-level rerender audit is complete and runtime profiling spot checks remain a recurring task.
+- One-time DI store creation policy is standardized as lint-safe lazy `useState(() => createStore())` initialization.
+- Test coverage for stores/query keys/gateway shaping is still missing and remains the primary open gap.
 
 ### Rewrite state
 
 - Phase 2R-0: done (foundation is present; DI provider one-time store policy is standardized and lint-safe).
-- Phase 2R-1: mostly done (store/events landed; broad hot+cold player selector usage removed in shell path; perf validation ongoing).
-- Phase 2R-2: mostly done (library + detail routes are query-driven).
+- Phase 2R-1: mostly done (store/events landed; broad hot+cold player selector usage removed in shell path; ongoing runtime perf spot checks remain).
+- Phase 2R-2: done (library + detail routes are query-driven).
 - Phase 2R-3: done (scanner runtime/event split + query ownership landed; stats route polling scoped correctly).
-- Phase 2R-4: mostly done (theme mode moved to tiny Zustand store; defaults/palette are query/mutation driven with provider-owned fetch lifecycle; parity validation ongoing).
-- Phase 2R-5: mostly done (legacy context/provider business-state files removed; cleanup verification/docs updates still ongoing).
+- Phase 2R-4: done (theme mode moved to tiny Zustand store; defaults/palette are query/mutation driven with provider-owned fetch lifecycle).
+- Phase 2R-5: done (legacy context/provider business-state files removed; transitional dead code cleanup and docs refresh landed).
 
 ### Architecture status checklist
 
 - Playback (store topology + selectors): mostly done.
-- Library routes/details via query: mostly done.
+- Library routes/details via query: done.
 - Scanner via query + runtime slice: done.
 - Stats via query + scoped polling: done.
-- Theme via query + tiny store split: mostly done.
-- Legacy context/provider removal: mostly done.
+- Theme via query + tiny store split: done.
+- Legacy context/provider removal: done.
 
 ## What Zustand v5 Docs Changed for Our Direction (via btca)
 
@@ -116,24 +116,28 @@ This plan keeps the new app shell and route split from Phase 2, but replaces pro
 frontend/src/app/
   providers/
     AppProviders.tsx
+    BootstrapCacheHydrator.tsx
     QueryProvider.tsx
     PlaybackStoreProvider.tsx
+    ScannerStoreProvider.tsx
     ThemeStoreProvider.tsx
-    UIStoreProvider.tsx
   state/
     playback/
       playbackStore.ts
       playbackProgressStore.ts
       playbackSelectors.ts
       playbackEvents.ts
+    scanner/
+      scannerRuntimeStore.ts
+      scannerSelectors.ts
+      scannerEvents.ts
     theme/
       themeStore.ts
-    ui/
-      uiStore.ts
   query/
     client.ts
     keys.ts
     options.ts
+    bootstrapQueries.ts
     libraryQueries.ts
     statsQueries.ts
     scannerQueries.ts

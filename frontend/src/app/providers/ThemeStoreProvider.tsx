@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { useBackgroundShaderStore } from "../../shared/store/backgroundShaderStore";
+import { useAppBootstrapQuery } from "../hooks/useAppBootstrapQuery";
 import { themeQueries } from "../query/themeQueries";
 import { usePlaybackCoverPath } from "../state/playback/playbackSelectors";
 import { ThemeStoreContext } from "../state/theme/themeSelectors";
@@ -16,14 +17,13 @@ import {
   scheduleAfterPaintAndIdle,
   themeModeStorageKey,
 } from "../utils/appUtils";
-import { useBootstrap } from "./BootstrapContext";
 
 type ThemeStoreProviderProps = {
   children: ReactNode;
 };
 
 export function ThemeStoreProvider(props: ThemeStoreProviderProps) {
-  const { state: bootstrapState } = useBootstrap();
+  const { bootstrapSnapshot, isBootstrapped } = useAppBootstrapQuery();
   const playbackCoverPath = usePlaybackCoverPath();
   const resolvedCoverPath = playbackCoverPath?.trim() ?? "";
 
@@ -43,7 +43,7 @@ export function ThemeStoreProvider(props: ThemeStoreProviderProps) {
 
   const themeDefaultsQuery = useQuery({
     ...themeQueries.defaultOptions(),
-    enabled: bootstrapState.isBootstrapped,
+    enabled: isBootstrapped,
   });
 
   const themePaletteQuery = useQuery({
@@ -51,25 +51,25 @@ export function ThemeStoreProvider(props: ThemeStoreProviderProps) {
       coverPath: resolvedCoverPath,
       options: themeDefaultsQuery.data ?? fallbackThemeOptions,
     }),
-    enabled: bootstrapState.isBootstrapped && resolvedCoverPath.length > 0,
+    enabled: isBootstrapped && resolvedCoverPath.length > 0,
   });
 
   useEffect(() => {
-    if (!bootstrapState.isBootstrapped || hasHydratedThemePreference) {
+    if (!isBootstrapped || hasHydratedThemePreference) {
       return;
     }
 
     const storedThemeMode = window.localStorage.getItem(themeModeStorageKey);
     const nextPreference =
       storedThemeMode === null
-        ? bootstrapState.themeModePreference
+        ? bootstrapSnapshot.themeModePreference
         : parseThemeModePreference(storedThemeMode);
 
     themeStore.getState().actions.hydrateThemeModePreference(nextPreference);
   }, [
-    bootstrapState.isBootstrapped,
-    bootstrapState.themeModePreference,
+    bootstrapSnapshot.themeModePreference,
     hasHydratedThemePreference,
+    isBootstrapped,
     themeStore,
   ]);
 
@@ -127,14 +127,14 @@ export function ThemeStoreProvider(props: ThemeStoreProviderProps) {
   }, [themeDefaultsQuery.error, themeDefaultsQuery.isError, themeStore]);
 
   useEffect(() => {
-    if (!bootstrapState.isBootstrapped) {
+    if (!isBootstrapped) {
       return;
     }
 
     return scheduleAfterPaintAndIdle(() => {
       themeStore.getState().actions.setShaderReady(true);
     });
-  }, [bootstrapState.isBootstrapped, themeStore]);
+  }, [isBootstrapped, themeStore]);
 
   return (
     <ThemeStoreContext.Provider value={themeStore}>

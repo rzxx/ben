@@ -97,6 +97,19 @@ This produces a visible black screen because the native window background is dar
    - Keep intentional boot/splash background instead of blank black frame.
    - This improves perceived performance even if some startup work remains.
 
+## Post-rewrite status update (current branch)
+
+- Route-level code splitting is now in place via lazy route modules in `frontend/src/app/AppShell.tsx`.
+- Bootstrap startup state is query-owned (`frontend/src/app/query/bootstrapQueries.ts`) instead of provider-owned business context state.
+- Background shader activation remains deferred with post-paint/idle scheduling (`scheduleAfterPaintAndIdle`).
+- Because the original trace predates these changes, the timing values above should be treated as historical baseline only.
+
+### Next profiling pass
+
+- Capture a fresh production trace (`bun run build` + packaged runtime) on weak and strong machines.
+- Compare `navigationStart -> firstContentfulPaint` and long-task distribution against the historical baseline.
+- Re-check startup RPC/query fan-out, ensuring only bootstrap + first-route-critical queries run before interaction.
+
 ## Notes
 
 - This analysis is trace-driven and cross-checked against current code paths.

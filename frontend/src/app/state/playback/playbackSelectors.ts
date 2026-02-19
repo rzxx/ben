@@ -61,13 +61,6 @@ export function usePlaybackCoverPath(): string | null {
   });
 }
 
-export function usePlaybackStatsRefreshKey(): string {
-  return usePlaybackStoreSelector((state) => {
-    const trackID = state.playerState.currentTrack?.id ?? 0;
-    return `${state.playerState.status}:${trackID}`;
-  });
-}
-
 export function usePlaybackProgressPositionMS(): number {
   return usePlaybackProgressStoreSelector((state) => state.positionMs);
 }

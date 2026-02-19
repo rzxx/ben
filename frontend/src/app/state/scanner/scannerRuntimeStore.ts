@@ -11,7 +11,6 @@ export type ScannerRuntimeActions = {
 export type ScannerRuntimeStoreState = {
   newRootPath: string;
   lastProgress: ScanProgress | null;
-  scanCompletionCount: number;
   errorMessage: string | null;
   actions: ScannerRuntimeActions;
 };
@@ -25,13 +24,9 @@ export function createScannerRuntimeStore(): ScannerRuntimeStore {
         set({ newRootPath: value });
       },
       applyProgress: (progress) => {
-        set((state) => ({
+        set({
           lastProgress: progress,
-          scanCompletionCount:
-            progress.status === "completed"
-              ? state.scanCompletionCount + 1
-              : state.scanCompletionCount,
-        }));
+        });
       },
       setErrorMessage: (message) => {
         set({ errorMessage: message });
@@ -44,7 +39,6 @@ export function createScannerRuntimeStore(): ScannerRuntimeStore {
     return {
       newRootPath: "",
       lastProgress: null,
-      scanCompletionCount: 0,
       errorMessage: null,
       actions,
     };

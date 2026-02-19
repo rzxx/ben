@@ -3,7 +3,7 @@ import { FormEvent, useState } from "react";
 import { SettingsView } from "../../features/settings/SettingsView";
 import type { ScanStatus, ThemeExtractOptions } from "../../features/types";
 import { useBackgroundShaderStore } from "../../shared/store/backgroundShaderStore";
-import { useBootstrap } from "../providers/BootstrapContext";
+import { useAppBootstrapQuery } from "../hooks/useAppBootstrapQuery";
 import { queryKeys } from "../query/keys";
 import { scannerQueries } from "../query/scannerQueries";
 import { statsQueries } from "../query/statsQueries";
@@ -47,7 +47,7 @@ type GenerateThemePaletteInput = {
 
 export function SettingsRoute() {
   const queryClient = useQueryClient();
-  const { state: bootstrapState } = useBootstrap();
+  const { bootstrapSnapshot, isBootstrapped } = useAppBootstrapQuery();
 
   const scannerActions = useScannerRuntimeActions();
   const scannerNewRootPath = useScannerNewRootPath();
@@ -120,12 +120,12 @@ export function SettingsRoute() {
 
   const scannerStatusQuery = useQuery({
     ...scannerQueries.status(),
-    enabled: bootstrapState.isBootstrapped,
+    enabled: isBootstrapped,
   });
 
   const watchedRootsQuery = useQuery({
     ...scannerQueries.watchedRoots(),
-    enabled: bootstrapState.isBootstrapped,
+    enabled: isBootstrapped,
   });
 
   const addWatchedRootMutation = useMutation({
@@ -210,7 +210,7 @@ export function SettingsRoute() {
   });
 
   const statsOverview = statsOverviewQuery.data ?? createEmptyStatsOverview();
-  const scannerStatus = scannerStatusQuery.data ?? bootstrapState.scanStatus;
+  const scannerStatus = scannerStatusQuery.data ?? bootstrapSnapshot.scanStatus;
   const watchedRoots = watchedRootsQuery.data ?? [];
   const watchedRootsErrorMessage = watchedRootsQuery.isError
     ? parseError(watchedRootsQuery.error)
