@@ -5,6 +5,7 @@ import globals from "globals";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
+import tanstackQuery from "@tanstack/eslint-plugin-query";
 
 export default defineConfig(
   {
@@ -18,6 +19,7 @@ export default defineConfig(
 
   eslint.configs.recommended,
   tseslint.configs.recommended,
+  tanstackQuery.configs.recommended,
 
   {
     files: ["**/*.{js,mjs,cjs,ts,tsx,jsx}"],
