@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import { BootstrapProvider } from "./BootstrapProvider";
 import { PlaybackStoreProvider } from "./PlaybackStoreProvider";
 import { QueryProvider } from "./QueryProvider";
-import { ScannerProvider } from "./ScannerProvider";
+import { ScannerStoreProvider } from "./ScannerStoreProvider";
 import { ThemeProvider } from "./ThemeProvider";
 
 type AppProvidersProps = {
@@ -14,9 +14,9 @@ export function AppProviders(props: AppProvidersProps) {
     <QueryProvider>
       <BootstrapProvider>
         <PlaybackStoreProvider>
-          <ScannerProvider>
+          <ScannerStoreProvider>
             <ThemeProvider>{props.children}</ThemeProvider>
-          </ScannerProvider>
+          </ScannerStoreProvider>
         </PlaybackStoreProvider>
       </BootstrapProvider>
     </QueryProvider>

@@ -20,8 +20,9 @@ This plan keeps the new app shell and route split from Phase 2, but replaces pro
 
 ### Current gaps
 
-- Query builders are mostly not consumed by route/features yet (`useQuery` adoption is still pending).
-- `LibraryProvider`, `ScannerProvider`, `StatsProvider`, and `ThemeProvider` still own large business state via `useState` + effects.
+- Query builders are consumed in library and stats routes, but scanner/theme query ownership is still incomplete.
+- `ScannerProvider` and `ThemeProvider` still own large business state via `useState` + effects.
+- `LibraryProvider` is now largely legacy/dead path and should be removed during cleanup.
 - Provider tree is still heavy and business-state-centric, not DI-only.
 - Playback hot/cold split exists, but some selectors recombine hot progress into broad player objects, causing wider rerenders than needed.
 
@@ -29,7 +30,19 @@ This plan keeps the new app shell and route split from Phase 2, but replaces pro
 
 - Phase 2R-0: mostly done (foundation is present, but not consistently consumed).
 - Phase 2R-1: partially done (store/events landed; selector usage still needs tightening).
-- Phase 2R-2 through 2R-5: largely pending.
+- Phase 2R-2: mostly done (library + detail routes are query-driven).
+- Phase 2R-3: in progress (scanner runtime/event split underway; full scanner provider removal pending).
+- Phase 2R-4: pending.
+- Phase 2R-5: pending.
+
+### Architecture status checklist
+
+- Playback (store topology + selectors): partial.
+- Library routes/details via query: mostly done.
+- Scanner via query + runtime slice: in progress.
+- Stats via query + scoped polling: mostly done.
+- Theme via query + tiny store split: pending.
+- Legacy context/provider removal: pending.
 
 ## What Zustand v5 Docs Changed for Our Direction (via btca)
 
