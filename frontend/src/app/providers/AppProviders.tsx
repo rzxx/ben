@@ -3,7 +3,6 @@ import { BootstrapProvider } from "./BootstrapProvider";
 import { PlaybackStoreProvider } from "./PlaybackStoreProvider";
 import { QueryProvider } from "./QueryProvider";
 import { ScannerProvider } from "./ScannerProvider";
-import { StatsProvider } from "./StatsProvider";
 import { ThemeProvider } from "./ThemeProvider";
 
 type AppProvidersProps = {
@@ -16,9 +15,7 @@ export function AppProviders(props: AppProvidersProps) {
       <BootstrapProvider>
         <PlaybackStoreProvider>
           <ScannerProvider>
-            <StatsProvider>
-              <ThemeProvider>{props.children}</ThemeProvider>
-            </StatsProvider>
+            <ThemeProvider>{props.children}</ThemeProvider>
           </ScannerProvider>
         </PlaybackStoreProvider>
       </BootstrapProvider>
